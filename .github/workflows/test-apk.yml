@@ -1,0 +1,54 @@
+name: DE Test APK
+
+on:
+  push:
+    branches:
+      - i18n/de-batch-1
+  workflow_dispatch:
+
+concurrency:
+  group: de-test-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build DE test APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Prepare placeholder build configuration
+        run: cp secrets.defaults.properties secrets.properties
+
+      - name: Install debug signing keystore
+        run: |
+          mkdir -p ~/.android
+          cp .github/test-signing/debug.keystore ~/.android/debug.keystore
+
+      - name: Bump versionCode for in-place update
+        run: |
+          sed -i "s/versionCode = [0-9]*/versionCode = $((310 + ${{ github.run_number }}))/" app/build.gradle.kts
+
+      - name: Set .de application-id suffix
+        run: |
+          sed -i 's/        debug {/        debug {\n            applicationIdSuffix = ".de"/' app/build.gradle.kts
+
+      - name: Build debug APK
+        run: ./gradlew assembleSideloadDebug --no-daemon
+
+      - name: Upload DE test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arvio-de-test
+          path: app/build/outputs/apk/sideload/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
