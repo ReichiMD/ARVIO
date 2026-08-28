@@ -99,4 +99,218 @@
     <string name="settings_add_stalker_portal">Stalker-Portal hinzufügen</string>
     <string name="settings_stalker_middleware_hint">Stalker / Ministra-Middleware</string>
     <string name="settings_stalker_remove_hint">Zum Entfernen beide Felder leeren und bestätigen.</string>
+
+    <!-- Media detail (placeholders) -->
+    <string name="season">Staffel %d</string>
+    <string name="episode">Episode %d</string>
+
+    <!-- Actions -->
+    <string name="watched">Angesehen</string>
+    <string name="unwatched">Nicht angesehen</string>
+
+    <!-- Settings titles (non-settings-prefix, media/playback/trailer/interface) -->
+    <string name="content_language">Inhaltssprache</string>
+    <string name="default_audio">Standard-Audio</string>
+    <string name="subtitle_size">Untertitelgröße</string>
+    <string name="subtitle_color">Untertitelfarbe</string>
+    <string name="subtitle_style">Untertitelstil</string>
+    <string name="subtitle_font">Untertitelschrift</string>
+    <string name="subtitle_offset">Untertitelposition</string>
+    <string name="auto_play_next_title">Nächste automatisch abspielen</string>
+    <string name="autoplay">Automatische Wiedergabe</string>
+    <string name="auto_play_min_quality">Mindestqualität für automatische Wiedergabe</string>
+    <string name="trailer_auto_play">Trailer automatisch abspielen</string>
+    <string name="frame_rate">Bildrate anpassen</string>
+    <string name="quality_filters">Qualitäts-Regex-Filter</string>
+    <string name="card_layout">Kartenlayout</string>
+    <string name="ui_mode">UI-Modus</string>
+    <string name="skip_profile">Profilauswahl überspringen</string>
+    <string name="oled_black_background">Schwarzer Hintergrund für OLED</string>
+    <string name="clock_format">Uhrzeitformat</string>
+    <string name="show_budget">Budget auf Startseite anzeigen</string>
+    <string name="show_loading_stats">Lade-Statistiken anzeigen</string>
+    <string name="volume_boost">Lautstärkeverstärkung</string>
+    <string name="dns_provider">DNS-Anbieter</string>
+    <string name="custom_user_agent">Eigener User-Agent</string>
+    <string name="custom_user_agent_desc">Leer lassen, um ARVIO-Standards zu verwenden. Eigene Werte gelten nur, wenn eine Quelle keinen eigenen User-Agent mitliefert.</string>
+    <string name="add_playlist">Playlist hinzufügen</string>
+    <string name="refresh_iptv">TV-Daten aktualisieren</string>
+    <string name="delete_iptv">TV-Playlists löschen</string>
+    <string name="add_catalog">Katalog hinzufügen</string>
+    <string name="rename_catalog">Katalog umbenennen</string>
+    <string name="addons">Addons</string>
+    <string name="services">Dienste</string>
+    <string name="genres">Genres</string>
+    <string name="decades">Jahrzehnte</string>
+    <string name="franchises">Franchises</string>
+    <string name="networks">Sender</string>
+    <string name="featured">Empfohlen</string>
+    <string name="trending_in_shows">Beliebte Serien</string>
+    <string name="add_addon">Addon hinzufügen</string>
+    <string name="trakt_account">Trakt-Konto</string>
+    <string name="cloud_account">Cloud-Konto</string>
+    <string name="force_cloud_sync">Cloud-Sync erzwingen</string>
+    <string name="switch_profile">Profil wechseln</string>
+    <string name="app_version">App-Version</string>
+
+    <!-- Settings subtitles / descriptions (media/playback/trailer/interface) -->
+    <string name="app_language_desc">App-Texte, Titel, Beschreibungen und Metadaten</string>
+    <string name="subtitle_desc">Untertitelsprache automatisch wählen</string>
+    <string name="audio_desc">Bevorzugte Audiospur</string>
+    <string name="subtitle_size_desc">Textgröße der Untertitel</string>
+    <string name="subtitle_color_desc">Textfarbe der Untertitel</string>
+    <string name="subtitle_style_desc">Fett, Normal oder Hintergrund-Stil für Untertitel</string>
+    <string name="subtitle_font_desc">Schriftart während der Wiedergabe. Mitgelieferte Schriftarten überschreiben eingebettete ASS/SSA-Schriften, damit deine Auswahl immer sichtbar bleibt.</string>
+    <string name="subtitle_offset_desc">Vertikale Position der Untertitel</string>
+    <string name="subtitle_stylized">Stilisierte Untertitel</string>
+    <string name="subtitle_stylized_desc">Eingebettete ASS/SSA-Stile berücksichtigen, wenn die System-Schriftart genutzt wird. Mitgelieferte Schriftarten überschreiben eingebettete Stile.</string>
+    <string name="auto_play_desc">Nächste Episode automatisch starten</string>
+    <string name="autoplay_desc">Aus öffnet die Quell-Auswahl beim Abspielen</string>
+    <string name="auto_play_quality_desc">Mindestqualität für automatische Wiedergabe</string>
+    <string name="trailer_desc">Trailer im Hero-Banner abspielen</string>
+    <string name="trailer_sound">Trailer-Ton</string>
+    <string name="trailer_sound_desc">Trailer-Ton im Hero-Banner abspielen</string>
+    <string name="trailer_delay">Trailer-Verzögerung</string>
+    <string name="trailer_delay_desc">Sekunden, bevor der Trailer startet</string>
+    <string name="trailer_in_cards">Trailer in Karten</string>
+    <string name="trailer_in_cards_desc">TV: Trailer in der fokussierten Karte abspielen statt im Vollbild</string>
+    <string name="frame_rate_desc">Aus, Nahtlos oder Immer</string>
+    <string name="quality_filters_desc">Qualitätsstufen auf diesem Gerät ausschließen</string>
+    <string name="card_layout_desc">Querformat- oder Poster-Karten</string>
+    <string name="ui_mode_desc">TV, Tablet oder Telefon erzwingen</string>
+    <string name="skip_profile_desc">Zuletzt genutztes Profil nach Neustart automatisch laden</string>
+    <string name="oled_black_background_desc">Rein schwarze App-Hintergründe für OLED-Bildschirme nutzen</string>
+    <string name="clock_format_desc">12-Stunden- oder 24-Stunden-Format wählen</string>
+    <string name="show_budget_desc">Film-Budget im Hero-Banner der Startseite anzeigen</string>
+    <string name="show_episode_ratings">Episodenbewertungen anzeigen</string>
+    <string name="show_episode_ratings_desc">Episodenbewertungen als Zeile unter der Episodenliste anzeigen</string>
+    <string name="spoiler_blur">Spoiler-Blur</string>
+    <string name="spoiler_blur_desc">Nicht angesehene Episodenkarten verwischen, um Spoiler zu vermeiden</string>
+    <string name="accent_color">Akzentfarbe</string>
+    <string name="accent_color_desc">Akzentfarbe für Fokus-Ringe, Schaltflächen und ausgewählte Elemente wählen</string>
+    <string name="show_loading_stats_desc">Fortschritt der Stream-Auflösung anzeigen</string>
+    <string name="volume_boost_desc">Leise Quellen verstärken (über systemweite LoudnessEnhancer)</string>
+    <string name="dns_desc">API- und Stream-Anfragen auflösen</string>
+    <string name="add_catalog_desc">Trakt- oder MDBList-Katalog-URL importieren</string>
+
+    <!-- Player / audio -->
+    <string name="audio_track">Audiospur</string>
+    <string name="no_audio_tracks">Keine Audiospuren verfügbar</string>
+    <string name="press_back_to_close">Zurück drücken zum Schließen</string>
+
+    <!-- Content labels -->
+    <string name="in_cinema">Im Kino</string>
+    <string name="included_with_prime">In Prime enthalten</string>
+
+    <!-- In-player subtitle settings panel -->
+    <string name="subtitle_settings_title">Untertitel-Einstellungen</string>
+    <string name="subtitle_delay">Verzögerung</string>
+    <string name="subtitle_size_label">Größe</string>
+    <string name="subtitle_vertical_position">Vertikale Position</string>
+
+    <!-- AI Subtitles -->
+    <string name="ai_subtitles_section">KI-Untertitel</string>
+    <string name="ai_subtitle_translation_title">KI-Untertitelübersetzung</string>
+    <string name="ai_subtitle_translation_desc">Untertitel in Echtzeit übersetzen mit Groq oder Gemini</string>
+    <string name="ai_model_title">KI-Modell</string>
+    <string name="ai_model_desc">Übersetzungsanbieter und Modell wählen</string>
+    <string name="ai_auto_select_title">KI-Übersetzung automatisch wählen</string>
+    <string name="ai_auto_select_desc">KI automatisch aktivieren, wenn eine eingebaute Sprache verfügbar ist</string>
+    <string name="ai_find_best_match_title">Beste Untertitelübereinstimmung automatisch finden</string>
+    <string name="ai_find_best_match_desc">Best synchronisierten Untertitel aus deinen Addons automatisch wählen</string>
+    <string name="subtitle_preload_title">Untertitel vorab laden</string>
+    <string name="subtitle_preload_desc">Vor dem Video auf Untertitel warten, damit das Wechseln sofort funktioniert</string>
+    <string name="dv_compat_title">Dolby Vision Kompatibilität</string>
+    <string name="dv_compat_desc">Dolby Vision-Veröffentlichungen als HDR10 abspielen, wenn dieses Gerät sie nicht dekodieren kann</string>
+    <string name="ai_remove_hi_title">Hörgeschädigten-Text entfernen</string>
+    <string name="ai_remove_hi_desc">[Geklammerte] Hörgeschädigten-Kennzeichnungen vor der Übersetzung entfernen</string>
+    <string name="ai_api_key_title">API-Schlüssel</string>
+    <string name="ai_api_key_desc">Groq- oder Gemini-API-Schlüssel manuell eingeben</string>
+    <string name="ai_scan_qr_title">QR-Code scannen zum Setzen des Schlüssels</string>
+    <string name="ai_scan_qr_desc">Browser auf dem Telefon öffnen, um den API-Schlüssel einzugeben</string>
+    <string name="ai_groq_disclaimer">Groq Gratis-Tarif: ~30 Anfragen/Min_</string>
+    <string name="ai_gemini_disclaimer">Erfordert ein Google-Konto mit aktivierter Abrechnung. Kosten: unter 0,01 $ pro Film</string>
+    <string name="ai_key_not_set">Nicht gesetzt</string>
+    <string name="ai_model_dialog_subtitle">KI-Anbieter und Modell für die Untertitelübersetzung wählen</string>
+    <string name="ai_groq_model_note">Gratis-Tarif: 30 RPM / 500K RPD</string>
+    <string name="ai_gemini_model_note">Bessere Qualität · Erfordert ein Google-Konto mit aktivierter Abrechnung</string>
+    <string name="ai_api_key_dialog_subtitle_groq">Groq-API-Schlüssel eingeben</string>
+    <string name="ai_api_key_dialog_subtitle_gemini">Gemini-API-Schlüssel eingeben</string>
+    <string name="ai_key_saved_title">API-Schlüssel gespeichert</string>
+    <string name="ai_key_saved_subtitle">KI-Übersetzung ist einsatzbereit</string>
+    <string name="ai_qr_scan_hint">Mit dem Telefon scannen — Groq oder Gemini wählen</string>
+    <string name="smooth_scrolling">Sanfteres Scrollen</string>
+    <string name="smooth_scrolling_desc">Premium sanfte Übergänge beim Navigieren in Poster-Reihen nutzen</string>
+
+    <!-- Player (code) -->
+    <string name="player_cd_rewind">10 s zurückspulen</string>
+    <string name="player_cd_forward">10 s vorspulen</string>
+    <string name="player_cd_pip">Bild in Bild</string>
+    <string name="player_cd_volume">Lautstärke</string>
+    <string name="player_cd_aspect">Seitenverhältnis: %1$s</string>
+    <string name="player_cd_pause">Pause</string>
+    <string name="player_ai_translating">KI übersetzt</string>
+    <string name="player_cd_stop_casting">Übertragung stoppen</string>
+    <string name="player_cd_cast_to_tv">Auf TV übertragen</string>
+    <string name="player_muted">Stummgeschaltet</string>
+    <string name="player_cd_setup">Einrichtung</string>
+    <string name="player_cd_error">Fehler</string>
+    <string name="player_addon_setup_required">Addon-Einrichtung erforderlich</string>
+    <string name="player_playback_error">Wiedergabefehler</string>
+    <string name="player_error_generic">Ein unbekannter Fehler ist aufgetreten</string>
+    <string name="player_ai_no_key">KI-Untertitel: kein API-Schlüssel gesetzt. Unter Einstellungen → Allgemein hinzufügen.</string>
+    <string name="player_ai_rate_limited">KI-Untertitel: Ratenlimit erreicht — Übersetzung pausiert.</string>
+    <string name="player_ai_invalid_key">KI-Untertitel: ungültiger API-Schlüssel.</string>
+    <string name="player_ai_translation_error">KI-Untertitel: Übersetzungsfehler — %1$s</string>
+    <string name="player_ai_no_text_source">KI-Untertitel: diese Datei hat nur bildbasierte Untertitel (PGS) — es gibt keinen Text zum Übersetzen.</string>
+    <string name="player_error_imdb_resolve">IMDB-ID konnte nicht aufgelöst werden. Erneut versuchen.</string>
+
+    <!-- Details (code) -->
+    <string name="details_toast_debrid_downloading">Dieser Debrid-Torrent wird noch heruntergeladen. Andere Quelle wählen oder kurz warten.</string>
+    <string name="details_episode_code_short">S%1$d:E%2$d</string>
+    <string name="details_label_tv_series">Serie</string>
+    <string name="details_btn_mark_watched">Als angesehen markieren</string>
+    <string name="details_in_watchlist">In Merkliste</string>
+    <string name="details_cd_primary_provider">Primärer Streaming-Anbieter</string>
+    <string name="details_no_synopsis">Keine Episodenzusammenfassung verfügbar.</string>
+    <string name="details_spoiler">Spoiler</string>
+    <string name="details_cd_select_season">Staffel %1$d wählen</string>
+    <string name="details_cd_season_options">Staffel-Optionen anzeigen</string>
+    <string name="details_no_episodes_season">Keine Episoden für Staffel %1$d gefunden</string>
+    <string name="details_failed_load_season">Staffel %1$d konnte nicht geladen werden</string>
+    <string name="details_no_episode_selected">Keine Episode ausgewählt</string>
+    <string name="details_failed_update_watched">Angesehen-Status konnte nicht aktualisiert werden</string>
+    <string name="details_failed_trakt_watchlist_add">Zur Trakt-Merkliste hinzufügen fehlgeschlagen</string>
+    <string name="details_failed_trakt_watchlist_remove">Aus Trakt-Merkliste entfernen fehlgeschlagen</string>
+    <string name="details_failed_update_watchlist">Merkliste konnte nicht aktualisiert werden</string>
+    <string name="details_failed_mark_season_watched">Staffel als angesehen markieren fehlgeschlagen</string>
+    <string name="details_failed_sync_season_unwatched">Synchronisieren von Staffel %1$d als nicht angesehen mit Trakt fehlgeschlagen</string>
+    <string name="details_failed_mark_season_unwatched">Staffel als nicht angesehen markieren fehlgeschlagen</string>
+    <string name="details_marked_watched">Als angesehen markiert</string>
+    <string name="details_marked_unwatched">Als nicht angesehen markiert</string>
+    <string name="details_episode_marked_watched">S%1$dE%2$d als angesehen markiert</string>
+    <string name="details_episode_marked_unwatched">S%1$dE%2$d als nicht angesehen markiert</string>
+    <string name="details_season_marked_watched">Staffel %1$d als angesehen markiert</string>
+    <string name="details_season_marked_unwatched">Staffel %1$d als nicht angesehen markiert</string>
+    <string name="details_error_load_failed">Details konnten nicht geladen werden</string>
+
+    <!-- UI components -->
+    <string name="component_qr_code">QR-Code</string>
+    <string name="component_avatar">Avatar</string>
+    <string name="component_screensaver_hint">Beliebige Taste drücken zum Fortfahren</string>
+    <string name="component_badge_live">LIVE</string>
+    <string name="component_badge_tv">TV</string>
+    <string name="component_badge_movie">FILM</string>
+    <string name="component_mark_watched">Als angesehen markieren</string>
+    <string name="component_remove_continue_watching">Weiterschauen entfernen</string>
+    <string name="component_label_tv_series">Serie</string>
+    <string name="component_label_media">Medien</string>
+    <string name="component_media_logo">%1$s-Logo</string>
+    <string name="component_badge_new_episode">Neue Episode</string>
+    <string name="component_ep_left_one">Noch 1 Episode</string>
+    <string name="component_eps_left">Noch %1$d Episoden</string>
+    <string name="component_season_episode_marker">S%1$d • E%2$d</string>
+    <string name="person_section_biography">Biografie</string>
+    <string name="person_section_known_for">Bekannt für</string>
+    <string name="person_as_character">als %1$s</string>
 </resources>
