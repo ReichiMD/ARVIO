@@ -54,6 +54,42 @@ jobs:
         run: |
           sed -i 's/        debug {/        debug {\n            applicationIdSuffix = ".de"/' app/build.gradle.kts
 
+      - name: Pin debug build to the committed debug keystore
+        # Without an explicit signingConfig, Gradle falls back to a freshly generated
+        # per-build debug key on ephemeral runners, so every APK has a different
+        # signature and Android refuses in-place updates. Point the debug buildType at
+        # our committed .github/test-signing/debug.keystore (alias androiddebugkey).
+        run: |
+          KEYSTORE="$(pwd)/.github/test-signing/debug.keystore"
+          python3 - "$KEYSTORE" <<'PY'
+          import re, sys
+          ks = sys.argv[1]
+          p = "app/build.gradle.kts"
+          s = open(p, encoding="utf-8").read()
+          # Add a "testDebug" signing config right after the existing "release" block.
+          if 'create("testDebug")' not in s:
+              s = s.replace(
+                  '        create("release") {',
+                  '        create("testDebug") {\n'
+                  '            storeFile = file("' + ks + '")\n'
+                  '            storePassword = "android"\n'
+                  '            keyAlias = "androiddebugkey"\n'
+                  '            keyPassword = "android"\n'
+                  '        }\n'
+                  '        create("release") {',
+                  1,
+              )
+          # Assign it to the debug buildType (insert before versionNameSuffix).
+          if 'signingConfig = signingConfigs.getByName("testDebug")' not in s:
+              s = s.replace(
+                  '        debug {\n            isMinifyEnabled = false',
+                  '        debug {\n            isMinifyEnabled = false\n'
+                  '            signingConfig = signingConfigs.getByName("testDebug")',
+                  1,
+              )
+          open(p, "w", encoding="utf-8").write(s)
+          PY
+
       - name: Build debug APK
         run: ./gradlew assembleSideloadDebug --no-daemon
 
