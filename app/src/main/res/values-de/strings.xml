@@ -477,4 +477,215 @@
     <string name="tv_link_failed_start">TV-Authentifizierung konnte nicht gestartet werden</string>
     <string name="tv_link_failed_poll">Status der TV-Authentifizierung konnte nicht abgefragt werden</string>
     <string name="tv_link_approved_no_tokens">Genehmigt, aber Token fehlten. Erneut versuchen.</string>
+
+    <!-- App Update -->
+    <string name="app_update">App-Aktualisierung</string>
+    <string name="update_btn_ignore">Ignorieren</string>
+    <string name="update_btn_download">Herunterladen</string>
+    <string name="update_btn_install">Installieren</string>
+    <string name="update_btn_hide">Ausblenden</string>
+    <string name="update_btn_retry_install">Installation wiederholen</string>
+    <string name="update_msg_checking">GitHub-Releases prüfen…</string>
+    <string name="update_msg_available">Aktualisierung verfügbar: %1$s (%2$s)</string>
+    <string name="update_msg_downloading">Aktualisierung wird heruntergeladen…</string>
+    <string name="update_msg_ready_subtitle">%1$s ist zur Installation bereit.</string>
+    <string name="update_msg_installing">Aktualisierung wird installiert… Bitte der Systemaufforderung folgen.</string>
+    <string name="update_msg_failed">Aktualisierung fehlgeschlagen.</string>
+    <string name="update_msg_uptodate">Du hast bereits die neueste Version installiert.</string>
+    <string name="update_msg_no_info">Keine Release-Informationen verfügbar.</string>
+    <string name="update_msg_current_to_latest">Aktuelle Version %1$s -&gt; neueste %2$s</string>
+    <string name="update_msg_current_uptodate">Aktuelle Version %1$s ist aktuell</string>
+    <string name="update_msg_preparing">Vorbereitung…</string>
+    <string name="update_msg_ready">Die neueste ARVIO-Aktualisierung wurde heruntergeladen und ist zur Installation bereit.</string>
+    <string name="update_msg_installer_hint">Der Android-Paketinstaller sollte erscheinen. Falls nicht, kannst du „Installieren\" erneut drücken.</string>
+    <string name="update_check_failed">Auf Aktualisierungen prüfen fehlgeschlagen</string>
+    <string name="update_download_failed">Herunterladen fehlgeschlagen</string>
+    <string name="update_already_latest">Du hast bereits die neueste Version</string>
+    <string name="update_install_manual_confirm">Die Aktualisierung erfordert manuelle Bestätigung. Bitte aus „Downloads\" installieren.</string>
+    <string name="update_install_cancelled">Aktualisierung abgebrochen.</string>
+    <string name="update_install_blocked">Aktualisierung durch Systemrichtlinie blockiert.</string>
+    <string name="update_install_conflict">Aktualisierung steht im Konflikt mit der installierten Version. Zuerst deinstallieren.</string>
+    <string name="update_install_incompatible">Aktualisierung nicht mit diesem Gerät kompatibel.</string>
+    <string name="update_install_invalid">Aktualisierungspaket ist ungültig oder beschädigt.</string>
+    <string name="update_install_storage">Nicht genug Speicherplatz für die Installation.</string>
+    <string name="update_install_failed">Installation der Aktualisierung fehlgeschlagen.</string>
+
+    <!-- Update errors (data layer) -->
+    <string name="update_error_download_http">Herunterladen fehlgeschlagen: HTTP %1$d</string>
+    <string name="update_error_empty_download_body">Leerer Download-Body</string>
+    <string name="update_error_signature_conflict">Signaturkonflikt erkannt. Die installierte Version wurde mit einem anderen Schlüssel signiert.\n\nZum Aktualisieren bitte zuerst die aktuelle Version deinstallieren:\nEinstellungen &gt; Apps &gt; %1$s &gt; Deinstallieren\n\nDanach die neue Version installieren. Deine über die Cloud synchronisierten Daten (Merkliste, Fortschritt) werden nach der Anmeldung wiederhergestellt.</string>
+    <string name="update_error_github_api">GitHub-API-Fehler: %1$d</string>
+    <string name="update_error_empty_release_response">Leere GitHub-Release-Antwort</string>
+    <string name="update_error_draft_prerelease">Neuestes Release ist Entwurf/Vorabversion</string>
+    <string name="update_error_missing_release_tag">Release hat keinen Tag/Namen</string>
+    <string name="update_error_no_apk_asset">Keine APK-Datei im Release gefunden</string>
+
+    <!-- Profile (code) -->
+    <string name="profile_edit_title">Profil bearbeiten</string>
+    <string name="profile_name_hint">Profilname</string>
+    <string name="profile_lock">Profilsperre</string>
+    <string name="profile_set_pin">PIN festlegen</string>
+    <string name="profile_change_pin">PIN ändern</string>
+    <string name="profile_remove_pin">PIN entfernen</string>
+    <string name="profile_change_photo">Foto ändern</string>
+    <string name="profile_upload_photo">Foto hochladen</string>
+    <string name="profile_remove_photo">Foto entfernen</string>
+    <string name="profile_enter_pin">PIN eingeben</string>
+    <string name="profile_pin_entry_cd">PIN-Eingabe</string>
+    <string name="profile_confirm_pin">PIN bestätigen</string>
+    <string name="profile_pin_setup_hint">4–5 Ziffern zum Sperren dieses Profils</string>
+    <string name="profile_pin_reenter">PIN zur Bestätigung erneut eingeben</string>
+    <string name="profile_clear">Löschen</string>
+    <string name="profile_pin_invalid">PIN muss 4–5 Ziffern haben</string>
+    <string name="profile_pin_mismatch">PINs stimmen nicht überein</string>
+    <string name="profile_avatar_import_failed">Avatar-Bild konnte nicht importiert werden</string>
+    <string name="profile_created_success">Profil erfolgreich erstellt</string>
+    <string name="profile_updated">Profil aktualisiert</string>
+    <string name="profile_deleted">Profil gelöscht</string>
+    <string name="profile_pin_set_success">Profil-PIN erfolgreich festgelegt</string>
+
+    <!-- Settings labels (profile/sync/connection) -->
+    <string name="enter_code">Code eingeben:</string>
+    <string name="syncing">Wird synchronisiert</string>
+    <string name="sync">Synchronisieren</string>
+    <string name="connected">Verbunden</string>
+    <string name="connect">Verbinden</string>
+    <string name="whos_watching">Wer schaut?</string>
+    <string name="profiles">Profile</string>
+    <string name="manage_profiles">Profile verwalten</string>
+    <string name="add_profile">Profil hinzufügen</string>
+    <string name="enter_pin_to_unlock">PIN zum Entsperren eingeben</string>
+    <string name="set_profile_pin">Profil-PIN festlegen</string>
+    <string name="done">Fertig</string>
+    <string name="save">Speichern</string>
+    <string name="connect_to_cloud">Mit ARVIO Cloud verbinden</string>
+
+    <!-- Login (code) -->
+    <string name="login_tagline_main">Deine Bibliothek, gemacht für den TV.</string>
+    <string name="login_tagline_sub">Merkliste, Verlauf und Trakt-Sync bleiben an dein Konto gebunden.</string>
+    <string name="login_create_account">Konto erstellen</string>
+    <string name="login_sign_in_continue">Anmelden zum Fortfahren</string>
+    <string name="login_email">E-Mail</string>
+    <string name="login_password">Passwort</string>
+    <string name="login_sign_up">Registrieren</string>
+    <string name="login_have_account">Schon ein Konto? Anmelden</string>
+    <string name="login_no_account">Noch kein Konto? Registrieren</string>
+    <string name="login_privacy_notice">Beim Erstellen eines Kontos werden deine E-Mail-Adresse und die Cloud-Daten gespeichert, die du synchronisieren möchtest.</string>
+    <string name="login_read_privacy_policy">Datenschutzerklärung lesen</string>
+    <string name="login_error_enter_password">Bitte gib dein Passwort ein</string>
+    <string name="login_error_password_short">Passwort muss mindestens 6 Zeichen lang sein</string>
+    <string name="login_error_wait_seconds">Bitte warte %1$d s, bevor du ein weiteres Konto erstellst</string>
+
+    <!-- Auth (code) -->
+    <string name="auth_account_exists">Konto existiert bereits. Stattdessen anmelden.</string>
+    <string name="auth_signin_retry">Anmelden fehlgeschlagen. Bitte erneut versuchen.</string>
+    <string name="auth_invalid_credentials">Ungültige E-Mail oder Passwort.</string>
+    <string name="auth_verify_email">Bitte bestätige deine E-Mail, um fortzufahren.</string>
+    <string name="auth_signin_failed">Anmelden fehlgeschlagen</string>
+    <string name="auth_signup_failed">Registrieren fehlgeschlagen</string>
+    <string name="auth_unable_create_account">Konto konnte nicht erstellt werden</string>
+    <string name="auth_response_incomplete">Auth-Antwort unvollständig</string>
+    <string name="auth_failed_import_session">Auth-Sitzung konnte nicht importiert werden</string>
+    <string name="auth_google_failed">Google-Anmeldung fehlgeschlagen</string>
+    <string name="auth_unexpected_credential">Unerwarteter Anmeldedaten-Typ</string>
+    <string name="auth_failed_parse_google">Google-Anmeldedaten konnten nicht gelesen werden</string>
+
+    <!-- Auth validation -->
+    <string name="auth_email_required">E-Mail ist erforderlich</string>
+    <string name="auth_email_invalid">Gib eine gültige E-Mail-Adresse ein</string>
+    <string name="auth_email_real_required">Verwende eine echte E-Mail-Adresse</string>
+
+    <!-- Home Server (code) -->
+    <string name="homeserver_connection_failed">Home-Server-Verbindung fehlgeschlagen</string>
+    <string name="homeserver_code_signin_failed">Anmeldung per Code fehlgeschlagen</string>
+    <string name="homeserver_server_connection_failed">Server-Verbindung fehlgeschlagen</string>
+    <string name="homeserver_test_failed">Home-Server-Test fehlgeschlagen</string>
+    <string name="homeserver_enter_url">Gültige Server-URL eingeben</string>
+    <string name="homeserver_enter_password">Passwort oder Token eingeben</string>
+    <string name="homeserver_enter_username">Benutzernamen eingeben</string>
+    <string name="homeserver_none_connected">Kein Home Server verbunden</string>
+    <string name="homeserver_no_activation_code">Server hat keinen Aktivierungscode zurückgegeben</string>
+    <string name="homeserver_no_reachable_url">Keine erreichbare Server-URL für dieses Konto gefunden</string>
+    <string name="homeserver_identity_mismatch">Server-Identität passte nicht zum Server des gewählten Kontos</string>
+    <string name="homeserver_no_libraries">Keine zugänglichen Bibliotheken für dieses Konto gefunden</string>
+    <string name="homeserver_disabled_incomplete">Home Server ist deaktiviert oder unvollständig</string>
+    <string name="homeserver_invalid_code_url">Ungültige Code-Anmelde-URL</string>
+    <string name="homeserver_code_signin_failed_code">Anmeldung per Code fehlgeschlagen (%1$d)</string>
+    <string name="homeserver_code_poll_failed">Abfrage der Code-Anmeldung fehlgeschlagen (%1$d)</string>
+    <string name="homeserver_invalid_url">Ungültige Server-URL</string>
+    <string name="homeserver_request_failed">Server-Anfrage fehlgeschlagen (%1$d)</string>
+    <string name="homeserver_signin_failed_code">Server-Anmeldung fehlgeschlagen (%1$d)</string>
+    <string name="homeserver_no_playable_account">Server-Anmeldung hat kein abspielbares Konto zurückgegeben</string>
+    <string name="homeserver_missing_token">Konto-Token fehlt</string>
+
+    <!-- Cloud (code) -->
+    <string name="cloud_login_failed_start">Cloud-Anmeldung konnte nicht gestartet werden</string>
+    <string name="cloud_signin_failed_start">Cloud-Anmeldung konnte nicht gestartet werden</string>
+    <string name="cloud_signin_could_not_start">Cloud-Anmeldung konnte nicht gestartet werden. Erneut versuchen.</string>
+    <string name="cloud_failed_import_tokens">Sitzungs-Token konnten nicht importiert werden</string>
+    <string name="cloud_signin_expired">Cloud-Anmeldung abgelaufen. Erneut versuchen.</string>
+    <string name="cloud_signin_failed">Cloud-Anmeldung fehlgeschlagen. Erneut versuchen.</string>
+    <string name="cloud_sync_failed">Cloud-Sync fehlgeschlagen</string>
+    <string name="cloud_sync_failed_upload">Cloud-Sync beim Hochladen fehlgeschlagen</string>
+
+    <!-- Sync (data layer) -->
+    <string name="sync_failed">Sync fehlgeschlagen: %1$s</string>
+    <string name="sync_in_progress">Sync läuft bereits</string>
+    <string name="sync_supabase_auth_failed">Supabase-Authentifizierung fehlgeschlagen</string>
+
+    <!-- Trakt (data layer) -->
+    <string name="trakt_not_authenticated">Nicht bei Trakt authentifiziert</string>
+
+    <!-- Watchlist (code/data) -->
+    <string name="watchlist_error_load_trakt">Trakt-Merkliste konnte nicht geladen werden</string>
+    <string name="watchlist_error_refresh">Aktualisieren fehlgeschlagen</string>
+    <string name="watchlist_toast_removed">Aus Merkliste entfernt</string>
+    <string name="watchlist_failed_remove_trakt">Aus Trakt-Merkliste entfernen fehlgeschlagen</string>
+    <string name="watchlist_failed_remove">Aus Merkliste entfernen fehlgeschlagen</string>
+    <string name="added_to_watchlist">Zur Merkliste hinzugefügt</string>
+
+    <!-- Home (code) -->
+    <string name="home_top10_movies_today">Top 10 Filme heute</string>
+    <string name="home_top10_shows_today">Top 10 Serien heute</string>
+    <string name="home_please_check_connection">Bitte überprüfe deine Verbindung</string>
+    <string name="home_sports_addon_required">Füge zuerst ein Sport-Live-TV-Addon hinzu</string>
+    <string name="home_sports_opening">Live-Event wird geöffnet…</string>
+    <string name="home_sports_playback_failed">Dieses Live-Event konnte nicht abgespielt werden</string>
+    <string name="home_sports_event_not_live">Dieses Event ist noch nicht live</string>
+    <string name="home_cd_primary_provider">Primärer Streaming-Anbieter</string>
+    <string name="home_cd_rank">Platz #%1$d</string>
+    <string name="home_no_episode_info">Keine Episoden-Infos verfügbar</string>
+    <string name="home_already_watched">Bereits angesehen</string>
+    <string name="home_removed_continue_watching">Aus Weiterschauen entfernt</string>
+    <string name="home_failed_remove_continue_watching">Aus Weiterschauen entfernen fehlgeschlagen</string>
+    <string name="home_failed_load_content">Inhalte konnten nicht geladen werden</string>
+
+    <!-- Continue / launcher (data layer) -->
+    <string name="continue_season_episode">Weiterschauen S%1$dE%2$d</string>
+    <string name="continue_season_episode_at">Weiterschauen S%1$dE%2$d bei %3$s</string>
+    <string name="continue_at">Weiterschauen bei %1$s</string>
+    <string name="continue_from">Weiterschauen ab %1$s</string>
+    <string name="continue_label">Weiterschauen</string>
+    <string name="play_start_s1e1">S1E1 starten</string>
+    <string name="launcher_continue_from">%1$s ab %2$s</string>
+    <string name="launcher_continue_dash">%1$s - %2$s</string>
+
+    <!-- Addon (data layer) -->
+    <string name="addon_failed_add">Addon hinzufügen fehlgeschlagen</string>
+    <string name="addon_opensubtitles_description">Untertitel von OpenSubtitles</string>
+    <string name="addon_error_url_empty">Addon-URL ist leer</string>
+    <string name="addon_http_local_scraper_description">HTTP- lokales Scraper-Bundle (%1$d HTTP-Anbieter)</string>
+
+    <!-- Avatar (data layer) -->
+    <string name="avatar_decode_failed">Ausgewähltes Avatar-Bild konnte nicht dekodiert werden</string>
+    <string name="avatar_download_failed">Avatar-Download fehlgeschlagen: HTTP %1$d</string>
+    <string name="avatar_response_empty">Leere Avatar-Antwort</string>
+    <string name="avatar_upload_failed">Avatar-Upload fehlgeschlagen: HTTP %1$d</string>
+    <string name="avatar_cat_animals">Tiere</string>
+    <string name="avatar_cat_characters">Figuren</string>
+    <string name="avatar_cat_media">Medien</string>
+    <string name="avatar_cat_nature">Natur</string>
+
+    <!-- Context menu hint -->
+    <string name="context_press_back_cancel">Zurück drücken zum Abbrechen</string>
 </resources>
