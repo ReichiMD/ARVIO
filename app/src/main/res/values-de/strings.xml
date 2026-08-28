@@ -99,6 +99,28 @@
     <string name="settings_add_stalker_portal">Stalker-Portal hinzufügen</string>
     <string name="settings_stalker_middleware_hint">Stalker / Ministra-Middleware</string>
     <string name="settings_stalker_remove_hint">Zum Entfernen beide Felder leeren und bestätigen.</string>
+    <string name="settings_add_stalker_portal_button">Stalker-Portal hinzufügen</string>
+    <string name="settings_cd_edit_stalker_config">Stalker-Portal bearbeiten</string>
+    <string name="settings_cd_manage_stalker_categories">Stalker-Kategorien verwalten</string>
+    <string name="settings_cd_move_stalker_down">Stalker-Portal nach unten verschieben</string>
+    <string name="settings_cd_move_stalker_up">Stalker-Portal nach oben verschieben</string>
+    <string name="settings_cd_remove_stalker_portal">Stalker-Portal entfernen</string>
+    <string name="settings_cd_toggle_stalker_portal">Stalker-Portal aktivieren oder deaktivieren</string>
+    <string name="settings_iptv_hide_all">Alle ausblenden</string>
+    <string name="settings_iptv_hide_all_desc">Alle Kategorien dieser Quelle ausblenden</string>
+    <string name="settings_iptv_show_all">Alle einblenden</string>
+    <string name="settings_iptv_show_all_desc">Alle Kategorien dieser Quelle einblenden</string>
+    <string name="settings_section_stalker_portals">STALKER-PORTALE</string>
+    <string name="settings_stalker_add_hint">Bis zu 3 Stalker-/Ministra-Portale hinzufügen</string>
+    <string name="settings_stalker_categories">Stalker-Kategorien</string>
+    <string name="settings_stalker_configured">Eingerichtet</string>
+    <string name="settings_stalker_create_another">Weiteres Stalker-Portal hinzufügen</string>
+    <string name="settings_stalker_max_reached">Maximal 3 Stalker-Portale erreicht</string>
+    <string name="settings_stalker_not_configured">Nicht eingerichtet</string>
+    <string name="settings_stalker_portal_name_label">Portalname</string>
+    <string name="settings_stalker_portal_name_placeholder">z.B. Portal 1</string>
+    <string name="settings_stalker_remove">Portal entfernen</string>
+    <string name="settings_stalker_rename_title">Portal umbenennen</string>
 
     <!-- Media detail (placeholders) -->
     <string name="season">Staffel %d</string>
