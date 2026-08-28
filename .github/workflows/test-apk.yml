@@ -29,6 +29,18 @@ jobs:
       - name: Prepare placeholder build configuration
         run: cp secrets.defaults.properties secrets.properties
 
+      - name: Inject TMDB API key
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          if [ -z "$TMDB_API_KEY" ]; then
+            echo "::warning::TMDB_API_KEY secret not set — APK will build without TMDB (placeholder only)."
+            exit 0
+          fi
+          # secrets.properties is gitignored and never committed; the secrets-gradle-plugin
+          # reads it to generate BuildConfig.TMDB_API_KEY (TMDB v3, @Query("api_key")).
+          sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+
       - name: Install debug signing keystore
         run: |
           mkdir -p ~/.android
