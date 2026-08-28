@@ -59,10 +59,13 @@ jobs:
         # per-build debug key on ephemeral runners, so every APK has a different
         # signature and Android refuses in-place updates. Point the debug buildType at
         # our committed .github/test-signing/debug.keystore (alias androiddebugkey).
+        # NOTE: must run AFTER the ".de application-id suffix" step, so we anchor on
+        # "isMinifyEnabled = false" (unique to the debug buildType) rather than on the
+        # "debug {" line that the suffix step already modified.
         run: |
           KEYSTORE="$(pwd)/.github/test-signing/debug.keystore"
           python3 - "$KEYSTORE" <<'PY'
-          import re, sys
+          import sys
           ks = sys.argv[1]
           p = "app/build.gradle.kts"
           s = open(p, encoding="utf-8").read()
@@ -79,11 +82,13 @@ jobs:
                   '        create("release") {',
                   1,
               )
-          # Assign it to the debug buildType (insert before versionNameSuffix).
+          # Assign it to the debug buildType. Anchor on "isMinifyEnabled = false",
+          # which is unique to the debug buildType and unaffected by the earlier
+          # applicationIdSuffix injection.
           if 'signingConfig = signingConfigs.getByName("testDebug")' not in s:
               s = s.replace(
-                  '        debug {\n            isMinifyEnabled = false',
-                  '        debug {\n            isMinifyEnabled = false\n'
+                  '            isMinifyEnabled = false',
+                  '            isMinifyEnabled = false\n'
                   '            signingConfig = signingConfigs.getByName("testDebug")',
                   1,
               )
