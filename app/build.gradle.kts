@@ -37,7 +37,7 @@ android {
         // Fire TV devices can be as low as Android 7.1 (API 25) or lower depending on model/OS.
         minSdk = 23
         targetSdk = 36
-        versionCode = 310
+        versionCode = 900001 // test-only bump, see debug{} signing setup above; reverted before PR
         versionName = "1.9.995"
         buildConfigField("String", "GITHUB_OWNER", "\"ProdigyV21\"")
         buildConfigField("String", "GITHUB_REPO", "\"ARVIO\"")
@@ -160,7 +160,16 @@ android {
         debug {
             isMinifyEnabled = false
             isDebuggable = true
-            // applicationIdSuffix = ".debug" // Disabled to preserve settings between debug/release
+            // Test-APK setup for this feature branch only (removed before PR, see docs/10
+            // in the private Büro repo). Explicit signingConfig, not the AGP default debug
+            // config - the implicit one is not reliable for this project's flavors.
+            applicationIdSuffix = ".test"
+            signingConfig = signingConfigs.create("stalkerEpgTestDebug") {
+                storeFile = rootProject.file(".github/test-signing/debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
             versionNameSuffix = "-debug"
 
             // Build config fields for debug

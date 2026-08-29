@@ -1,0 +1,61 @@
+name: Build test APK (Stalker EPG, debug, parallel app id)
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: test-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build sideload debug test APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Prepare placeholder build configuration
+        run: cp secrets.defaults.properties secrets.properties
+
+      - name: Build test APK
+        run: ./gradlew assembleSideloadDebug --no-daemon
+
+      - name: Locate built APK
+        id: locate
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/sideload/debug -name '*.apk' | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::No APK found under app/build/outputs/apk/sideload/debug"
+            exit 1
+          fi
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Verify signature matches the committed test keystore
+        run: |
+          EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore -storepass android -alias androiddebugkey | grep -i "SHA256:")
+          ACTUAL=$(keytool -printcert -jarfile "${{ steps.locate.outputs.apk_path }}" -v | grep -i "SHA256:" | head -1)
+          echo "Expected (keystore): $EXPECTED"
+          echo "Actual (APK):        $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::APK signature does not match the committed test keystore - in-place update would fail on device"
+            exit 1
+          fi
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stalker-epg-test-apk
+          path: ${{ steps.locate.outputs.apk_path }}
+          retention-days: 14
