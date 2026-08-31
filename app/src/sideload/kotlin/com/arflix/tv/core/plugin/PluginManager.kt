@@ -1103,6 +1103,43 @@ class PluginManager @Inject constructor(
         Log.d(TAG, "Downloaded ${newScrapers.size}/${plugins.size} extensions for repo $repoId")
     }
 
+    /**
+     * Sync scrapers from Cloud-Sync restore by saving repositories/scrapers
+     * and downloading .cs3 files for EXTERNAL_DEX scrapers if they don't exist locally.
+     * Non-EXTERNAL_DEX scrapers (e.g., NUVIO_JS) are saved without downloading.
+     */
+    suspend fun syncScrapersFromCloud(
+        repos: List<PluginRepository>,
+        scrapers: List<ScraperInfo>
+    ) = withContext(Dispatchers.IO) {
+        if (repos.isNotEmpty()) dataStore.saveRepositories(repos)
+        if (scrapers.isEmpty()) return@withContext
+
+        dataStore.saveScrapers(scrapers)
+
+        // Download .cs3 files for EXTERNAL_DEX scrapers that don't exist locally
+        val downloadSemaphore = Semaphore(MAX_PARALLEL_DOWNLOADS)
+        val jobs = scrapers
+            .filter { it.type == RepositoryType.EXTERNAL_DEX }
+            .map { scraper ->
+                async {
+                    downloadSemaphore.withPermit {
+                        try {
+                            if (!externalExtensionLoader.extensionFileExists(scraper.id)) {
+                                // scraper.filename carries the download URL for EXTERNAL_DEX scrapers
+                                externalExtensionLoader.downloadExtension(scraper.id, scraper.filename)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error syncing scraper ${scraper.id}: ${e.message}", e)
+                        }
+                    }
+                }
+            }
+
+        jobs.awaitAll()
+        Log.d(TAG, "Synced ${scrapers.size} scrapers from Cloud-Sync")
+    }
+
     suspend fun clearAllPlugins() {
         dataStore.saveRepositories(emptyList())
         dataStore.saveScrapers(emptyList())

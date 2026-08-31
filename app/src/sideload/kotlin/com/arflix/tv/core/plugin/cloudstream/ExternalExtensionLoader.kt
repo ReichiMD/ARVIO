@@ -197,6 +197,14 @@ class ExternalExtensionLoader @Inject constructor(
         scraperId.replace(':', '_').replace('/', '_')
 
     /**
+     * Check if a .cs3 DEX file already exists for the given scraper.
+     */
+    fun extensionFileExists(scraperId: String): Boolean {
+        val dexFile = File(extensionsDir, "${safeFileName(scraperId)}.cs3")
+        return dexFile.exists()
+    }
+
+    /**
      * Download a .cs3 DEX file for the given scraper.
      * Returns the local file path, or null on failure.
      */

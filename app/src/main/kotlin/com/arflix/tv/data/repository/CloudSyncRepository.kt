@@ -10,6 +10,7 @@ import com.arflix.tv.data.model.AddonType
 import com.arflix.tv.data.model.CatalogConfig
 import com.arflix.tv.data.model.Profile
 import com.arflix.tv.data.repository.ContinueWatchingItem
+import com.arflix.tv.core.plugin.PluginManager
 import com.arflix.tv.network.OkHttpProvider
 import com.arflix.tv.ui.components.CARD_LAYOUT_MODE_LANDSCAPE
 import com.arflix.tv.ui.components.catalogueRowLayoutKeyFromPreferenceName
@@ -102,6 +103,7 @@ class CloudSyncRepository @Inject constructor(
     private val profileAvatarImageManager: ProfileAvatarImageManager,
     private val invalidationBus: CloudSyncInvalidationBus,
     private val pluginDataStore: com.arflix.tv.data.local.PluginDataStore,
+    private val pluginManager: PluginManager,
     private val syncProviderStore: com.arflix.tv.data.repository.sync.SyncProviderStore
 ) {
     private val TAG = "CloudSync"
@@ -1788,16 +1790,23 @@ class CloudSyncRepository @Inject constructor(
 
         // Restore plugin repositories and scrapers
         try {
+            var repos: List<com.arflix.tv.domain.model.PluginRepository> = emptyList()
+            var scrapers: List<com.arflix.tv.domain.model.ScraperInfo> = emptyList()
+
             root.optJSONArray("pluginRepositories")?.toString()?.takeIf { it.isNotBlank() }?.let { json ->
                 val type = com.google.gson.reflect.TypeToken.getParameterized(List::class.java, com.arflix.tv.domain.model.PluginRepository::class.java).type
-                val repos: List<com.arflix.tv.domain.model.PluginRepository> = gson.fromJson(json, type) ?: emptyList()
-                if (repos.isNotEmpty()) pluginDataStore.saveRepositories(repos)
+                repos = gson.fromJson(json, type) ?: emptyList()
             }
             root.optJSONArray("pluginScrapers")?.toString()?.takeIf { it.isNotBlank() }?.let { json ->
                 val type = com.google.gson.reflect.TypeToken.getParameterized(List::class.java, com.arflix.tv.domain.model.ScraperInfo::class.java).type
-                val scrapers: List<com.arflix.tv.domain.model.ScraperInfo> = gson.fromJson(json, type) ?: emptyList()
-                if (scrapers.isNotEmpty()) pluginDataStore.saveScrapers(scrapers)
+                scrapers = gson.fromJson(json, type) ?: emptyList()
             }
+
+            // Sync scrapers and download .cs3 files for EXTERNAL_DEX scrapers
+            if (repos.isNotEmpty() || scrapers.isNotEmpty()) {
+                pluginManager.syncScrapersFromCloud(repos, scrapers)
+            }
+
             if (root.has("pluginsEnabled")) pluginDataStore.setPluginsEnabled(root.optBoolean("pluginsEnabled", false))
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e

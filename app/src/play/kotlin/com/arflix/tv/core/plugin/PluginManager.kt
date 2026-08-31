@@ -29,6 +29,8 @@ class PluginManager @Inject constructor() {
 
     suspend fun removeRepository(repoId: String) {}
 
+    suspend fun syncScrapersFromCloud(repos: List<PluginRepository>, scrapers: List<ScraperInfo>) {}
+
     suspend fun clearAllPlugins() {}
 
     suspend fun reconcileWithRemoteRepoUrls(
