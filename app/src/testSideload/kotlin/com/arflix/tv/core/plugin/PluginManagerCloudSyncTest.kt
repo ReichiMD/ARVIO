@@ -8,9 +8,11 @@ import com.arflix.tv.data.repository.CloudSyncInvalidationBus
 import com.arflix.tv.domain.model.PluginRepository
 import com.arflix.tv.domain.model.RepositoryType
 import com.arflix.tv.domain.model.ScraperInfo
+import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
@@ -42,8 +44,8 @@ class PluginManagerCloudSyncTest {
             externalExtensionRunner,
             invalidationBus
         )
-        coEvery { dataStore.saveRepositories(any()) } just io.mockk.Runs
-        coEvery { dataStore.saveScrapers(any()) } just io.mockk.Runs
+        coEvery { dataStore.saveRepositories(any()) } just Runs
+        coEvery { dataStore.saveScrapers(any()) } just Runs
     }
 
     private fun scraper(id: String, type: RepositoryType = RepositoryType.EXTERNAL_DEX) = ScraperInfo(
