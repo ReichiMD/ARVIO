@@ -1113,6 +1113,43 @@ class PluginManager @Inject constructor(
         triggerRemoteSync("all plugins cleared")
     }
 
+    /**
+     * Restore plugin repositories and scrapers from a cloud sync snapshot. Unlike
+     * addRepository/refreshRepository, the scraper metadata here comes straight from the
+     * snapshot instead of a freshly fetched manifest — but EXTERNAL_DEX scrapers still need
+     * their actual .cs3 DEX file downloaded, since a cloud snapshot only carries metadata,
+     * not the binary plugin itself. Scrapers whose file already exists locally are left alone.
+     */
+    suspend fun syncScrapersFromCloud(
+        repos: List<PluginRepository>,
+        scrapers: List<ScraperInfo>
+    ) = withContext(Dispatchers.IO) {
+        if (repos.isNotEmpty()) dataStore.saveRepositories(repos)
+        if (scrapers.isEmpty()) return@withContext
+        dataStore.saveScrapers(scrapers)
+
+        val missing = scrapers.filter {
+            it.type == RepositoryType.EXTERNAL_DEX && !externalExtensionLoader.hasLocalExtension(it.id)
+        }
+        if (missing.isEmpty()) return@withContext
+
+        val downloadSemaphore = Semaphore(MAX_PARALLEL_DOWNLOADS)
+        val jobs = missing.map { scraper ->
+            async {
+                downloadSemaphore.withPermit {
+                    try {
+                        if (externalExtensionLoader.downloadExtension(scraper.id, scraper.filename) == null) {
+                            Log.e(TAG, "Cloud restore: failed to download extension ${scraper.name}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Cloud restore: error downloading extension ${scraper.name}: ${e.message}", e)
+                    }
+                }
+            }
+        }
+        jobs.awaitAll()
+    }
+
     companion object {
         private const val MAX_PARALLEL_DOWNLOADS = 10
     }

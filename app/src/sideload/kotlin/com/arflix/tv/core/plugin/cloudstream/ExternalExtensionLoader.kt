@@ -254,6 +254,13 @@ class ExternalExtensionLoader @Inject constructor(
     }
 
     /**
+     * Check whether a .cs3 DEX file for [scraperId] is already present locally, without
+     * loading it. Used by cloud-sync restore to decide whether a re-download is needed.
+     */
+    fun hasLocalExtension(scraperId: String): Boolean =
+        File(extensionsDir, "${safeFileName(scraperId)}.cs3").exists()
+
+    /**
      * Load a .cs3 DEX file and return the MainAPI instance(s) registered by the plugin.
      */
     fun loadExtension(scraperId: String): List<MainAPI> {

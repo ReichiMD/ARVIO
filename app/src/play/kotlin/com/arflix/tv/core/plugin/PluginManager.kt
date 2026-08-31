@@ -31,6 +31,8 @@ class PluginManager @Inject constructor() {
 
     suspend fun clearAllPlugins() {}
 
+    suspend fun syncScrapersFromCloud(repos: List<PluginRepository>, scrapers: List<ScraperInfo>) {}
+
     suspend fun reconcileWithRemoteRepoUrls(
         remotePlugins: List<RemotePluginInfo>,
         removeMissingLocal: Boolean = true
