@@ -22,15 +22,20 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      # This build only needs to exercise R8 minification the same way a real
-      # release build does — it doesn't need working cloud sync / Trakt / TMDB.
-      # These are synthetic placeholder values (not real secrets, not sourced
-      # from repository secrets) that merely satisfy the format checks in
-      # validateReleaseCloudSecrets (app/build.gradle.kts) so the release
-      # build type's Gradle task runs at all.
-      - name: Prepare fake-but-valid runtime configuration (no real secrets)
+      # This build only needs real TMDB access (so there's a catalog to browse
+      # and open a detail page from, which is what actually invokes a scraper).
+      # Cloud sync / Trakt stay synthetic placeholder values (not real secrets,
+      # not sourced from repository secrets) that merely satisfy the format
+      # checks in validateReleaseCloudSecrets (app/build.gradle.kts) so the
+      # release build type's Gradle task runs at all.
+      - name: Prepare runtime configuration (real TMDB, fake cloud/Trakt)
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: |
           cp secrets.defaults.properties secrets.properties
+          if [ -n "$TMDB_API_KEY" ]; then
+            sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+          fi
           cat >> secrets.properties <<'EOF'
           APP_ANON_KEY=fake.test.only.placeholder.jwt.not.a.real.credential.padding
           SUPABASE_URL=https://fake-test-project.supabase.co
@@ -38,15 +43,20 @@ jobs:
           TRAKT_CLIENT_SECRET=fake_test_only_placeholder_secret
           EOF
 
-      - name: Inject fixed test signing into release build type
+      - name: Inject parallel-install suffix + fixed test signing into release build type
         run: |
-          # The release {} block's own signingConfig line runs AFTER this point in
-          # the file and would silently overwrite a signingConfig assigned right at
-          # the top of the block, falling back to AGP's ephemeral auto-generated
-          # debug key instead (still installable, just a different signature every
-          # build). So define the fixed config at the top level, then repoint the
-          # release block's existing fallback (signingConfigs.getByName("debug"),
-          # first occurrence only — the same string also appears in staging {}) at it.
+          # applicationIdSuffix is safe to insert right at the top of release {} —
+          # nothing later in the block touches it. signingConfig is NOT safe there:
+          # the block's own existing conditional assignment runs AFTER this point
+          # and would silently overwrite ours, falling back to AGP's ephemeral
+          # auto-generated debug key instead (still installable, just a different
+          # signature every build — that's why the previous run "succeeded" but
+          # didn't actually use our fixed key). So the signing config is defined at
+          # the signingConfigs {} level instead, and the release block's existing
+          # fallback (signingConfigs.getByName("debug"), first occurrence only —
+          # the same string also appears in staging {}) is repointed at it.
+          sed -i '/^        release {/a\
+              applicationIdSuffix = ".r8"' app/build.gradle.kts
           sed -i '/^    signingConfigs {/a\
         create("fixedTestRelease") {\
             storeFile = rootProject.file(".github/test-signing/debug.keystore")\
