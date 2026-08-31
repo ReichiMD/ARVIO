@@ -1,6 +1,9 @@
 name: Test APK (CloudStream C1 R8 repro)
 
 on:
+  push:
+    branches:
+      - claude/cloudstream-plugin-fixes-30ce3z
   workflow_dispatch:
 
 jobs:
