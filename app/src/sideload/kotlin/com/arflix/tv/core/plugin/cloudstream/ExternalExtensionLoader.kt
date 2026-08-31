@@ -183,6 +183,18 @@ class ExternalExtensionLoader @Inject constructor(
     /** Cache of loaded class loaders by scraper ID */
     private val classLoaderCache = ConcurrentHashMap<String, DexClassLoader>()
 
+    // plugin.load() runs the CloudStream library's own MainAPI/extractor registration
+    // machinery, which reads and writes shared, non-thread-safe library globals
+    // (extractorApis, APIHolder.allProviders) directly — ExternalExtractorRegistry's own
+    // lock only covers OUR post-load registerAll() call, not what happens inside
+    // plugin.load() itself. ARVIO loads multiple scrapers concurrently, so two plugins'
+    // load() calls raced on those library globals and crashed with
+    // ConcurrentModificationException (confirmed via device repro, 31.08.2026) even after
+    // ExternalExtractorRegistry was made internally thread-safe. Serializing the whole
+    // load-and-register critical section (not just our own registry calls) is the only
+    // way to protect against library-internal mutation we don't control.
+    private val pluginLoadLock = Any()
+
     /** Tracks which scraper IDs have already been scanned for extractors */
     private val extractorPreloadedIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
@@ -277,7 +289,7 @@ class ExternalExtensionLoader @Inject constructor(
         // Ensure DEX file is read-only (fix for existing downloads on API 28+)
         ensureDexReadOnly(dexFile)
 
-        return try {
+        return synchronized(pluginLoadLock) { try {
             val classLoader = DexClassLoader(
                 dexFile.absolutePath,
                 codeCacheDir.absolutePath,
@@ -418,7 +430,7 @@ class ExternalExtensionLoader @Inject constructor(
                 Log.e(TAG, "Failed to load extension $scraperId (linkage error): ${e.message}", e)
             }
             emptyList()
-        }
+        } }
     }
 
     /**
@@ -451,7 +463,7 @@ class ExternalExtensionLoader @Inject constructor(
         // Ensure read-only
         ensureDexReadOnly(dexFile)
 
-        return try {
+        return synchronized(pluginLoadLock) { try {
             val classLoader = DexClassLoader(
                 dexFile.absolutePath,
                 codeCacheDir.absolutePath,
@@ -571,7 +583,7 @@ class ExternalExtensionLoader @Inject constructor(
             val missing = extractMissingClassName(e)
             diagnostics.addStep("FAILED: ${missing ?: e.message?.take(200)}")
             emptyList()
-        }
+        } }
     }
 
     /**
@@ -601,7 +613,7 @@ class ExternalExtensionLoader @Inject constructor(
             ensureDexReadOnly(dexFile)
 
             totalScanned++
-            try {
+            try { synchronized(pluginLoadLock) {
                 val classLoader = classLoaderCache.getOrPut(scraperId) {
                     DexClassLoader(
                         dexFile.absolutePath,
@@ -646,7 +658,7 @@ class ExternalExtensionLoader @Inject constructor(
                     } catch (_: Error) {
                     }
                 }
-            } catch (e: Exception) {
+            } } catch (e: Exception) {
                 Log.w(TAG, "ensureExtractorsLoaded: failed for $scraperId: ${e.message}")
             } catch (e: Error) {
                 Log.w(TAG, "ensureExtractorsLoaded: linkage error for $scraperId: ${e.message}")
