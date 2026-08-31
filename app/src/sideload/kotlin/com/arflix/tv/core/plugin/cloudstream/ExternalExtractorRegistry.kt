@@ -23,18 +23,28 @@ class ExternalExtractorRegistry @Inject constructor() {
     private val builtInExtractors = mutableSetOf<ExtractorApi>()
     private var installed = false
 
-    fun registerExtractor(extractor: ExtractorApi) {
+    // extractorApis is a plain, non-thread-safe MutableList owned by the CloudStream
+    // library. ARVIO loads/unloads multiple plugins concurrently (see PluginManager's
+    // MAX_CONCURRENT_SCRAPERS), so two plugins registering their extractors at the same
+    // time raced on this shared list — one thread's .add() invalidated another thread's
+    // in-flight .any{} iterator, crashing with ConcurrentModificationException (confirmed
+    // via device repro, 31.08.2026). All our own reads/writes are serialized through this
+    // lock; plain synchronized (not a coroutines Mutex) because these bodies are quick,
+    // non-suspending, in-memory list operations.
+    private val registryLock = Any()
+
+    fun registerExtractor(extractor: ExtractorApi): Unit = synchronized(registryLock) {
         // Avoid duplicates by mainUrl
         if (extractorApis.any { it.mainUrl == extractor.mainUrl }) return
         extractorApis.add(extractor)
         Log.d(TAG, "Registered extractor: ${extractor.name} (${extractor.mainUrl})")
     }
 
-    fun registerAll(extractorList: List<ExtractorApi>) {
+    fun registerAll(extractorList: List<ExtractorApi>): Unit = synchronized(registryLock) {
         extractorList.forEach { registerExtractor(it) }
     }
 
-    fun unregisterExtractors(extractors: List<ExtractorApi>) {
+    fun unregisterExtractors(extractors: List<ExtractorApi>): Unit = synchronized(registryLock) {
         val targets = extractors.filter { it !in builtInExtractors }
         if (targets.isNotEmpty()) {
             extractorApis.removeAll(targets.toSet())
@@ -42,7 +52,7 @@ class ExternalExtractorRegistry @Inject constructor() {
         }
     }
 
-    fun clear() {
+    fun clear(): Unit = synchronized(registryLock) {
         missingExtractorDomains.clear()
         val toRemove = extractorApis.filter { it !in builtInExtractors }
         if (toRemove.isNotEmpty()) {
@@ -89,7 +99,7 @@ class ExternalExtractorRegistry @Inject constructor() {
      * extractorApis list directly, so no delegate setup is needed.
      * This method ensures the library's built-in extractors are available.
      */
-    fun installGlobal() {
+    fun installGlobal(): Unit = synchronized(registryLock) {
         if (installed) return
         installed = true
         builtInExtractors.addAll(extractorApis)
