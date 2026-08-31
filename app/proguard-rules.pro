@@ -48,6 +48,20 @@
     public <methods>;
 }
 
+# Kotlin standard library — full keep. Externally-compiled CloudStream .cs3
+# plugins are loaded via DexClassLoader at runtime; R8 only sees ARVIO's own
+# code graph, so it inlines/strips stdlib utility classes (e.g. the SetsKt/
+# CollectionsKt/MapsKt "top-level function" classes, kotlin.Pair) once nothing
+# in app code calls them as a class anymore — but a plugin's precompiled
+# bytecode still references them by exact name and breaks with
+# NoClassDefFoundError at runtime. Confirmed via device repro (C1, 31.08.2026)
+# with real third-party plugins (Bnyro/GermanProviders):
+#   NoClassDefFoundError: Failed resolution of: Lkotlin/collections/SetsKt;
+#   NoClassDefFoundError: Failed resolution of: [Lkotlin/Pair;
+-keep class kotlin.** { *; }
+-keep interface kotlin.** { *; }
+-dontwarn kotlin.**
+
 # Kotlin coroutines
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
