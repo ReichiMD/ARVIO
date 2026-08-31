@@ -14,6 +14,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
@@ -36,6 +37,14 @@ class PluginManagerCloudSyncTest {
 
     @Before
     fun setUp() {
+        // PluginManager eagerly reads these as constructor-time property initializers
+        // (`val scrapers: Flow<...> = dataStore.scrapers`, etc.), so they must be stubbed
+        // before construction or the strict mock throws on the very first property access.
+        every { dataStore.repositories } returns flowOf(emptyList())
+        every { dataStore.scrapers } returns flowOf(emptyList())
+        every { dataStore.pluginsEnabled } returns flowOf(false)
+        every { dataStore.groupStreamsByRepository } returns flowOf(false)
+
         manager = PluginManager(
             dataStore,
             runtime,
