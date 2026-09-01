@@ -1114,6 +1114,16 @@ fun DetailsScreen(
             },
             onSelect = { stream ->
                 if (isPendingDebridStream(stream)) {
+                    // TEMPORARY DIAGNOSTIC (C5 follow-up, remove before real PR): print the
+                    // exact fields isPendingDebridStream() matched against, so we can see
+                    // which one contains the false-positive keyword. println (not Log.d) is
+                    // used deliberately -- proguard-rules.pro strips Log.d/v/i in release
+                    // builds via -assumenosideeffects, but println survives.
+                    System.err.println(
+                        "[C5Diag] isPendingDebridStream matched: source=${stream.source} " +
+                            "addonName=${stream.addonName} quality=${stream.quality} " +
+                            "url=${stream.url} description=${stream.description}"
+                    )
                     viewModel.showToast(
                         context.getString(R.string.details_toast_debrid_downloading),
                         ToastType.ERROR
