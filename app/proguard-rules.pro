@@ -69,6 +69,19 @@
     volatile <fields>;
 }
 
+# kotlinx.serialization (C6 follow-up, 01.09.2026): adding the dependency alone
+# (app/build.gradle.kts) wasn't enough — same pattern as kotlin.** (C1) and
+# okhttp3.** (C4) above. ARVIO's own code never references KSerializer/Json
+# directly (only externally loaded .cs3 plugin bytecode does, invisible to
+# R8's static reachability analysis), so without an explicit keep R8 strips it
+# as dead code despite it being a real, resolvable dependency at compile time.
+# Confirmed via device logcat: NoClassDefFoundError persisted for
+# kotlinx.serialization.KSerializer across multiple plugins even after the
+# dependency was added.
+-keep class kotlinx.serialization.** { *; }
+-keep interface kotlinx.serialization.** { *; }
+-dontwarn kotlinx.serialization.**
+
 # ============================================
 # Retrofit / OkHttp
 # ============================================
