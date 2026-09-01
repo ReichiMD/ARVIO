@@ -79,8 +79,22 @@
 -keepattributes Signature
 -keepattributes Exceptions
 
-# OkHttp platform used only on JVM and when Conscrypt dependency is available
--dontwarn okhttp3.internal.platform.**
+# okhttp3 public API types (Interceptor, RequestBody, Response, ...) appear as
+# parameter/return types on NiceHttp's Requests.get/post/etc. (and their
+# synthetic $default bridge methods) and CloudStream's public MainAPI/
+# ExtractorApi surface. Without a keep rule here, R8 renames these classes
+# (e.g. okhttp3.Interceptor -> q9.e0) — which changes the ERASED METHOD
+# SIGNATURE of every NiceHttp/CloudStream method that mentions them as a
+# parameter type, even though the method's own name and its declaring class
+# are correctly kept by the com.lagradost.** rule below. An externally
+# compiled .cs3 plugin still calls the ORIGINAL signature (with
+# okhttp3.Interceptor), so it gets NoSuchMethodError at runtime even though
+# the method visibly "exists" under its own name. Confirmed via R8's
+# mapping.txt residualsignature entries for Requests.get$default/post$default
+# (C4 follow-up, 01.09.2026, device-tested with ~20 real plugins).
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-dontwarn okhttp3.**
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
