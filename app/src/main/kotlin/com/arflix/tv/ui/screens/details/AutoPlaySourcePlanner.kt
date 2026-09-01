@@ -103,7 +103,16 @@ internal fun isAutoPlayableStream(stream: StreamSource): Boolean {
 }
 
 internal fun isPendingDebridStream(stream: StreamSource): Boolean {
-    val text = listOfNotNull(stream.source, stream.addonName, stream.quality, stream.url, stream.description)
+    // Deliberately excludes stream.url: a URL is a technical string (CDN hostnames,
+    // routing/tracking path segments), not human-readable status text, and will
+    // eventually contain one of the keywords below by coincidence. Confirmed via
+    // device diagnostic (C5 follow-up, 01.09.2026): a plain Voe hoster HLS link
+    // was flagged as "still downloading" purely because its CDN hostname contained
+    // "caching" (https://ugc-cdn-caching-<id>.cloudwindow-route.com/...) -- nothing
+    // torrent/debrid related at all. This false-positive fired on every single
+    // stream the user tried, since almost any CDN URL can contain one of these
+    // common words somewhere in its hostname or query string.
+    val text = listOfNotNull(stream.source, stream.addonName, stream.quality, stream.description)
         .joinToString(" ")
         .lowercase()
     return listOf(
