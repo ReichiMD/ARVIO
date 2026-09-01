@@ -62,12 +62,27 @@
 -keep interface kotlin.** { *; }
 -dontwarn kotlin.**
 
-# Kotlin coroutines
--keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
--keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
--keepclassmembernames class kotlinx.** {
-    volatile <fields>;
-}
+# Kotlin coroutines — full keep. The previous name-only rules here only
+# protected a couple of specific classes/fields, leaving R8 free to merge and
+# rename the rest of kotlinx.coroutines — including the runBlocking facade
+# (BuildersKt/BuildersKt__BuildersKt). CloudStream's own bundled
+# WebViewResolver (com.lagradost.cloudstream3.network.WebViewResolver,
+# compiled directly into ARVIO's release dex, not an externally loaded
+# plugin) calls kotlinx.coroutines.runBlocking(...) from inside an OkHttp
+# Interceptor to bridge its suspend WebView-challenge logic into a
+# synchronous call. R8 renamed/merged the runBlocking$default bridge it
+# compiled against into a method that no longer exists under that name at
+# runtime, causing NoSuchMethodError (observed as "runBlockingK$default")
+# on the OkHttp Dispatcher thread — an uncaught exception there crashes the
+# whole app immediately whenever a scraper's search hits a Cloudflare-
+# protected page via WebViewResolver. Confirmed via device logcat (C6,
+# 01.09.2026): FATAL EXCEPTION during "Kinoger"/search, crash reproduced on
+# a real device build. This broke code entirely inside ARVIO's own bundled
+# dex (not a DexClassLoader-loaded plugin), showing the same broad-keep
+# fix as kotlin.**/okhttp3.**/kotlinx.serialization.** is needed here too.
+-keep class kotlinx.coroutines.** { *; }
+-keep interface kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
 
 # ============================================
 # Retrofit / OkHttp
