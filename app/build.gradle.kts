@@ -274,6 +274,14 @@ ksp {
             force("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.0")
             force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
             force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+            // The NiceHttp/CloudStream library bump (C4, 01.09.2026) shifted which
+            // transitive kotlinx-datetime version wins Gradle's default "highest
+            // wins" resolution, breaking AuthRepository.kt's Clock.System.now()
+            // calls with "Unresolved reference 'System'" — no version was pinned
+            // before, it was purely whatever the highest transitive request was.
+            // Pin explicitly so a future dependency bump elsewhere can't shift it
+            // again.
+            force("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
         }
     }
 
