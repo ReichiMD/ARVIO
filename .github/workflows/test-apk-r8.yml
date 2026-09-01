@@ -45,19 +45,24 @@ jobs:
 
       - name: DIAGNOSTIC - inspect resolved NiceHttp version and Requests.class bytecode
         run: |
-          ./gradlew :app:dependencies --configuration sideloadReleaseRuntimeClasspath --no-daemon 2>&1 | grep -B2 -A2 -i nicehttp || echo "no nicehttp lines found in dependency tree"
+          set +e
+          ./gradlew :app:dependencies --configuration sideloadReleaseRuntimeClasspath --no-daemon 2>&1 | grep -B2 -A2 -i nicehttp
           echo "--- locating resolved NiceHttp jar(s) in Gradle cache ---"
           find ~/.gradle /root/.gradle -iname "*nicehttp*.jar" 2>/dev/null
-          echo "--- javap on Requests.class from each found jar ---"
+          echo "--- javap on Requests.class from each found jar (pre-R8, raw dependency) ---"
           for jar in $(find ~/.gradle /root/.gradle -iname "*nicehttp*.jar" 2>/dev/null); do
             echo "=== $jar ==="
-            mkdir -p /tmp/nhinspect && rm -rf /tmp/nhinspect/* && cd /tmp/nhinspect
+            mkdir -p /tmp/nhinspect && rm -rf /tmp/nhinspect/* && cd /tmp/nhinspect || exit 0
             unzip -o -q "$jar" "com/lagradost/nicehttp/Requests.class" 2>&1
             if [ -f com/lagradost/nicehttp/Requests.class ]; then
-              javap -p com/lagradost/nicehttp/Requests.class | grep -i "get\|post"
+              javap -p com/lagradost/nicehttp/Requests.class 2>&1 | grep -i "get\|post"
+            else
+              echo "(Requests.class not found at that path inside the jar)"
+              unzip -l "$jar" | grep -i "Requests"
             fi
-            cd -
+            cd "$OLDPWD" || true
           done
+          set -e
 
       - name: Inject parallel-install suffix + fixed test signing into release build type
         run: |
@@ -75,6 +80,18 @@ jobs:
 
       - name: Build sideload release APK (R8 minification active)
         run: ./gradlew assembleSideloadRelease --no-daemon
+
+      - name: DIAGNOSTIC - check R8 mapping/usage output for NiceHttp Requests
+        if: always()
+        run: |
+          set +e
+          echo "--- files in mapping output dir ---"
+          find app/build/outputs/mapping -type f
+          echo "--- usage.txt entries mentioning nicehttp (methods R8 REMOVED) ---"
+          grep -i "nicehttp" app/build/outputs/mapping/sideloadRelease/usage.txt
+          echo "--- mapping.txt entries mentioning nicehttp (renames, if any) ---"
+          grep -i "nicehttp" app/build/outputs/mapping/sideloadRelease/mapping.txt
+          set -e
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
