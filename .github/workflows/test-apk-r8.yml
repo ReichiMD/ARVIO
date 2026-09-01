@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - claude/cloudstream-plugin-fixes-cftmod
+      - claude/cloudstream-plugin-fixes-nle2d6
   workflow_dispatch:
 
 jobs:
