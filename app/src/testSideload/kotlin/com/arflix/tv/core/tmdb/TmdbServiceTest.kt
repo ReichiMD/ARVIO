@@ -1,12 +1,16 @@
 package com.arflix.tv.core.tmdb
 
+import android.util.Log
 import com.arflix.tv.data.api.TmdbApi
 import com.arflix.tv.data.api.TmdbExternalIds
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Test
 import java.io.IOException
 
@@ -16,6 +20,14 @@ import java.io.IOException
 class TmdbServiceTest {
     private val tmdbApi = mockk<TmdbApi>()
     private val service = TmdbService(tmdbApi)
+
+    @Before
+    fun setUp() {
+        // android.util.Log isn't mocked by default in plain JVM unit tests (no
+        // Robolectric here) and throws when called — stub it for the error-path test.
+        mockkStatic(Log::class)
+        every { Log.w(any(), any<String>()) } returns 0
+    }
 
     @Test
     fun `movie type resolves via movie external ids endpoint`() = runBlocking {
