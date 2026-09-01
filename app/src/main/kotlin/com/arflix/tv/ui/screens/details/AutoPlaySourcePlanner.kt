@@ -103,6 +103,12 @@ internal fun isAutoPlayableStream(stream: StreamSource): Boolean {
 }
 
 internal fun isPendingDebridStream(stream: StreamSource): Boolean {
+    // CloudStream/.cs3 plugin results are always direct scraper-provided HTTP/HLS links —
+    // there's no debrid caching step, so this check doesn't apply. Without this guard, a
+    // plugin stream's own URL/quality/label text can coincidentally contain one of the trigger
+    // words below (e.g. a CDN hostname like "cdn-caching-xyz.example.com" contains "caching")
+    // and gets wrongly blocked as "still downloading" even though it's ready to play.
+    if (stream.addonId.startsWith("plugin_")) return false
     val text = listOfNotNull(stream.source, stream.addonName, stream.quality, stream.url, stream.description)
         .joinToString(" ")
         .lowercase()

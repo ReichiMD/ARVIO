@@ -1462,24 +1462,9 @@ class DetailsViewModel @Inject constructor(
         )
     }
 
-    private fun isPendingDebridStream(stream: StreamSource): Boolean {
-        val text = listOfNotNull(stream.source, stream.addonName, stream.quality, stream.url)
-            .joinToString(" ")
-            .lowercase()
-        return listOf(
-            "torrent being downloaded",
-            "being downloaded",
-            "still downloading",
-            "queued",
-            "not cached",
-            "uncached",
-            "cache pending",
-            "caching",
-            "processing torrent",
-            "download in progress"
-        ).any { text.contains(it) }
-    }
-
+    // isPendingDebridStream() lives in AutoPlaySourcePlanner.kt (same package) — both call
+    // sites must share the exact same check so they never drift out of sync (they used to be
+    // two near-identical private copies; this one was even missing the `description` field).
     private fun sortPlayableStreamsFirst(streams: List<StreamSource>): List<StreamSource> {
         return streams.sortedBy { if (isPendingDebridStream(it)) 1 else 0 }
     }
