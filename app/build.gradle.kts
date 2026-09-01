@@ -437,6 +437,11 @@ ksp {
     add("sideloadImplementation", files("libs/quickjs-kt-android-1.0.5-nuvio.aar"))
     add("sideloadImplementation", "com.fasterxml.jackson.core:jackson-databind:2.17.0")
     add("sideloadImplementation", "com.fasterxml.jackson.module:jackson-module-kotlin:2.17.0")
+    // kotlinx.serialization: many community .cs3 plugins use @Serializable/KSerializer for JSON
+    // instead of Jackson (confirmed via device logcat, 01.09.2026: NoClassDefFoundError for
+    // kotlinx.serialization.KSerializer across several unrelated GermanProviders plugins —
+    // never a bundled dependency here, same class of gap as C4's missing NiceHttp/library-android).
+    add("sideloadImplementation", "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     add("sideloadImplementation", "com.github.Blatzar:NiceHttp:0.4.18")
     add("sideloadImplementation", "org.conscrypt:conscrypt-android:2.5.3")
     add("sideloadImplementation", "com.github.recloudstream.cloudstream:library-android:v4.8.0") {
@@ -583,13 +588,18 @@ dependencies {
     add("sideloadImplementation", files("libs/quickjs-kt-android-1.0.5-nuvio.aar"))
     add("sideloadImplementation", "com.fasterxml.jackson.core:jackson-databind:2.17.0")
     add("sideloadImplementation", "com.fasterxml.jackson.module:jackson-module-kotlin:2.17.0")
+    // kotlinx.serialization: many community .cs3 plugins use @Serializable/KSerializer for JSON
+    // instead of Jackson (confirmed via device logcat, 01.09.2026: NoClassDefFoundError for
+    // kotlinx.serialization.KSerializer across several unrelated GermanProviders plugins —
+    // never a bundled dependency here, same class of gap as C4's missing NiceHttp/library-android).
+    add("sideloadImplementation", "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     add("sideloadImplementation", "com.github.Blatzar:NiceHttp:0.4.18")
     add("sideloadImplementation", "org.conscrypt:conscrypt-android:2.5.3")
     add("sideloadImplementation", "com.github.recloudstream.cloudstream:library-android:v4.8.0") {
         exclude(group = "org.mozilla", module = "rhino")
     }
     add("sideloadImplementation", "org.webjars.npm:crypto-js:4.2.0")
-    
+
     // Runtime helpers used by the sideload plugin extractor stack.
     add("sideloadImplementation", "org.mozilla:rhino:1.8.1")
     add("sideloadImplementation", "com.google.re2j:re2j:1.8")
