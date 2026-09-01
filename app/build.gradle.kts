@@ -272,16 +272,29 @@ ksp {
     configurations.all {
         resolutionStrategy {
             force("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.0")
-            // Pinned at 1.7.3 — turns out this IS load-bearing, just undocumented: bumping
-            // to 1.11.0 (tried 01.09.2026, to match cloudstream:library-android's own
-            // declared coroutines version and fix a WebViewResolver NoSuchMethodError, see
-            // proguard-rules.pro's kotlinx.coroutines.** keep comment for the real fix)
-            // immediately crashed app startup instead — TelegramStreamingProxy's embedded
-            // Ktor server (io.ktor:ktor-server-cio:2.3.7) calls
-            // kotlinx.coroutines.internal.LockFreeLinkedListNode.addLast(...), an internal
-            // (non-public, no compatibility guarantee) API whose shape changed by 1.11.0.
-            // Reverted to 1.7.3 so Ktor keeps working; the WebViewResolver crash this was
-            // chasing turned out to be an R8 keep-rule gap instead, not a real version gap.
+            // Pinned at 1.7.3 — load-bearing for Ktor, and NOT freely bumpable. This pin is
+            // one half of a hard three-way constraint; read this before touching it (C8,
+            // 01.09.2026, all claims verified by disassembling the actual published jars):
+            //
+            //   * Ktor 2.x needs coroutines <= 1.10.2. Two separate blockers:
+            //       - ktor-events <= 2.3.11 calls the 1-arg
+            //         kotlinx.coroutines.internal.LockFreeLinkedListNode.addLast(node), which
+            //         became addLast(node, int) in 1.9.0. Fixed from ktor-events 2.3.12 on.
+            //       - ktor-io (EVERY 2.x release, incl. 2.3.13) calls
+            //         kotlinx.coroutines.EventLoopKt.processNextEventInCurrentThread(), which
+            //         was removed in 1.11.0. Only Ktor 3.x drops that call — and Ktor 3 is
+            //         not reachable here anyway, since supabase-kt 2.0.4 is bound to Ktor 2.x.
+            //   * cloudstream:library-android v4.8.0 needs coroutines >= 1.11.0: it is built
+            //     against 1.11.0 and its WebViewResolver calls BuildersKt.runBlockingK$default(),
+            //     which does not exist in any release below 1.11.0.
+            //
+            // So no single coroutines version satisfies both, and the 1.7.3 -> 1.11.0 bump
+            // tried on 01.09.2026 could never have worked: it traded the WebViewResolver crash
+            // for a Ktor startup crash. Resolved on the cloudstream side instead — library-android
+            // is pinned back to v4.7.0 (built against 1.10.2, uses plain runBlocking$default,
+            // which 1.7.3 provides). See the library-android dependency comment below.
+            //
+            // If coroutines ever has to move past 1.10.2, Ktor 2.x must go first.
             force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
             force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
             // The NiceHttp/CloudStream library bump (C4, 01.09.2026) shifted which
@@ -454,7 +467,14 @@ ksp {
     add("sideloadImplementation", "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     add("sideloadImplementation", "com.github.Blatzar:NiceHttp:0.4.18")
     add("sideloadImplementation", "org.conscrypt:conscrypt-android:2.5.3")
-    add("sideloadImplementation", "com.github.recloudstream.cloudstream:library-android:v4.8.0") {
+    // Pinned at v4.7.0 on purpose — do NOT bump to v4.8.0 without also solving the
+    // coroutines conflict documented in the resolutionStrategy force() block above.
+    // v4.8.0 is built against kotlinx-coroutines 1.11.0 and its WebViewResolver calls
+    // BuildersKt.runBlockingK$default(), a method that exists ONLY in 1.11.0 — verified
+    // by disassembling kotlinx-coroutines-core-jvm 1.7.3/1.8.1/1.9.0/1.10.1/1.10.2/1.11.0:
+    // runBlockingK is absent from every version below 1.11.0. v4.7.0 declares 1.10.2 and
+    // uses the plain runBlocking$default bridge, which 1.7.3 has. (C8, 01.09.2026)
+    add("sideloadImplementation", "com.github.recloudstream.cloudstream:library-android:v4.7.0") {
         exclude(group = "org.mozilla", module = "rhino")
     }
     add("sideloadImplementation", "org.mozilla:rhino:1.8.1")
@@ -605,7 +625,14 @@ dependencies {
     add("sideloadImplementation", "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     add("sideloadImplementation", "com.github.Blatzar:NiceHttp:0.4.18")
     add("sideloadImplementation", "org.conscrypt:conscrypt-android:2.5.3")
-    add("sideloadImplementation", "com.github.recloudstream.cloudstream:library-android:v4.8.0") {
+    // Pinned at v4.7.0 on purpose — do NOT bump to v4.8.0 without also solving the
+    // coroutines conflict documented in the resolutionStrategy force() block above.
+    // v4.8.0 is built against kotlinx-coroutines 1.11.0 and its WebViewResolver calls
+    // BuildersKt.runBlockingK$default(), a method that exists ONLY in 1.11.0 — verified
+    // by disassembling kotlinx-coroutines-core-jvm 1.7.3/1.8.1/1.9.0/1.10.1/1.10.2/1.11.0:
+    // runBlockingK is absent from every version below 1.11.0. v4.7.0 declares 1.10.2 and
+    // uses the plain runBlocking$default bridge, which 1.7.3 has. (C8, 01.09.2026)
+    add("sideloadImplementation", "com.github.recloudstream.cloudstream:library-android:v4.7.0") {
         exclude(group = "org.mozilla", module = "rhino")
     }
     add("sideloadImplementation", "org.webjars.npm:crypto-js:4.2.0")

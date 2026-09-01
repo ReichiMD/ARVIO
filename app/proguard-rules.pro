@@ -69,16 +69,22 @@
     volatile <fields>;
 }
 
-# kotlinx.coroutines (01.09.2026): those three narrow rules above were never enough for
-# externally loaded .cs3 plugin bytecode — same root cause as kotlin.** (C1), okhttp3.**
-# (C4), and kotlinx.serialization.** (C6) above: ARVIO's own code calls
-# kotlinx.coroutines.runBlocking (e.g. cloudstream:library-android's WebViewResolver) in a
-# form R8 is free to merge/rename since it only sees that one call site, but a precompiled
-# .cs3 plugin calling the same public API by its original name/signature can't find it.
-# Confirmed via device crash: NoSuchMethodError on a coroutines builder bridge method
-# (runBlockingK$default) inside WebViewResolver.intercept() — first mistaken for a genuine
-# coroutines-version gap (see app/build.gradle.kts's force() comment for that dead end),
-# actually the same R8 gap as the other three libraries above, just never covered.
+# kotlinx.coroutines (01.09.2026): broadened to the same shape as kotlin.** (C1),
+# okhttp3.** (C4) and kotlinx.serialization.** (C6) — externally loaded .cs3 plugin
+# bytecode calls coroutines API that ARVIO's own code never references, so R8's static
+# reachability analysis cannot see those call sites.
+#
+# NOTE on history: this rule was originally added on the theory that it also fixed the
+# C8 device crash (NoSuchMethodError on BuildersKt.runBlockingK$default inside
+# WebViewResolver.intercept). It did NOT, and could not have — the follow-up device test
+# reproduced the crash unchanged with this rule already in place. R8 cannot keep a method
+# that is not in the bundled jar at all, and runBlockingK does not exist in coroutines
+# 1.7.3; it was introduced in 1.11.0, which is what cloudstream:library-android v4.8.0 is
+# built against. That was a real version mismatch, not a shrinking artifact, and it is
+# fixed in app/build.gradle.kts by pinning library-android back to v4.7.0.
+#
+# The rule is kept anyway: it is correct on its own merits for plugin-invoked coroutines
+# API, exactly like the other three libraries above. It is just not what fixed C8.
 -keep class kotlinx.coroutines.** { *; }
 -keep interface kotlinx.coroutines.** { *; }
 -dontwarn kotlinx.coroutines.**

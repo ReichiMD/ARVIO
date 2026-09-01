@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - claude/cloudstream-plugin-fixes-cftmod
+      - claude/cloudstream-plugin-c6-c8-fg25jb
   workflow_dispatch:
 
 jobs:
@@ -62,6 +63,68 @@ jobs:
             fi
             cd "$OLDPWD" || true
           done
+          set -e
+
+      # C8 guard. The C8 crash was a precompiled dependency calling a kotlinx.coroutines
+      # method absent from the coroutines version actually bundled here (library-android
+      # v4.8.0 -> BuildersKt.runBlockingK$default, added in coroutines 1.11.0, bundled
+      # 1.7.3). R8 cannot fix that, -dontwarn kotlinx.coroutines.** hides it at build time,
+      # and it only surfaces as a device crash once the code path runs. This resolves that
+      # class of mismatch statically, before any device test. Logic validated offline
+      # against both a known-good pair (ktor 2.x vs coroutines 1.7.3 -> 0 findings) and the
+      # known-bad C8 pair (runBlockingK vs 1.7.3 -> 1 finding).
+      - name: DIAGNOSTIC - cloudstream/NiceHttp coroutines references vs bundled coroutines
+        run: |
+          set +e
+          echo "--- resolved cloudstream / coroutines versions ---"
+          ./gradlew :app:dependencies --configuration sideloadReleaseRuntimeClasspath --no-daemon 2>&1 \
+            | grep -iE "cloudstream|kotlinx-coroutines" | sort -u
+          WORK=/tmp/c8check; rm -rf "$WORK"; mkdir -p "$WORK/callers" "$WORK/coroutines"
+          echo "--- unpacking caller artifacts (cloudstream library-android, NiceHttp) ---"
+          for art in $(find ~/.gradle /root/.gradle \( -iname "*library-android*.aar" -o -iname "*library-android*.jar" -o -iname "*nicehttp*.jar" \) 2>/dev/null); do
+            echo "    $art"
+            case "$art" in
+              *.aar) unzip -o -q "$art" classes.jar -d "$WORK" 2>/dev/null && unzip -o -q "$WORK/classes.jar" '*.class' -d "$WORK/callers" ;;
+              *.jar) unzip -o -q "$art" '*.class' -d "$WORK/callers" ;;
+            esac
+          done
+          echo "--- unpacking bundled kotlinx-coroutines ---"
+          for cj in $(find ~/.gradle /root/.gradle -iname "kotlinx-coroutines-core-jvm-*.jar" 2>/dev/null); do
+            echo "    $cj"; unzip -o -q "$cj" '*.class' -d "$WORK/coroutines"
+          done
+          if [ -z "$(find "$WORK/callers" -name '*.class' 2>/dev/null | head -1)" ] \
+             || [ -z "$(find "$WORK/coroutines" -name '*.class' 2>/dev/null | head -1)" ]; then
+            echo "!! nothing unpacked - adjust the find paths above; skipping check"
+            set -e; exit 0
+          fi
+          # Index of every method name the bundled coroutines actually defines. Inline-class
+          # mangling suffixes (foo-Ab1Cd2) are stripped on both sides so they cannot cause
+          # false positives. NOTE: the grep pattern must stay single-quoted - "$-" would be
+          # expanded by the shell and silently break the index.
+          find "$WORK/coroutines" -name '*.class' | xargs -n 200 javap -p 2>/dev/null \
+            | grep -oE '[A-Za-z_$][A-Za-z0-9_$]*(-[A-Za-z0-9_]+)?\(' | tr -d '(' \
+            | sed 's/-.*//' | sort -u > /tmp/c8_index.txt
+          echo "    bundled coroutines defines $(wc -l < /tmp/c8_index.txt) distinct method names"
+          echo "--- extracting kotlinx.coroutines references from caller bytecode ---"
+          (cd "$WORK/callers" && find . -name '*.class' | xargs -n 200 javap -p -c 2>/dev/null) \
+            | grep -oE '// (Method|InterfaceMethod) kotlinx/coroutines/[^ :]+:' \
+            | sed -E 's|// [A-Za-z]+ ||; s|:$||' | sort -u > /tmp/c8_refs.txt
+          echo "    callers reference $(wc -l < /tmp/c8_refs.txt) distinct coroutines methods"
+          MISSING=0
+          while read -r ref; do
+            cls="${ref%.*}"; meth="${ref##*.}"; meth="${meth//\"/}"; meth="${meth%%-*}"
+            [ "$meth" = "<init>" ] && continue
+            if [ ! -f "$WORK/coroutines/${cls}.class" ]; then
+              echo "    MISSING CLASS : $cls  (ref: $ref)"; MISSING=$((MISSING+1)); continue
+            fi
+            grep -qxF "$meth" /tmp/c8_index.txt || { echo "    MISSING METHOD: $ref"; MISSING=$((MISSING+1)); }
+          done < /tmp/c8_refs.txt
+          if [ "$MISSING" -eq 0 ]; then
+            echo "OK - every coroutines method the plugin libraries call exists in the bundled version"
+          else
+            echo "!! $MISSING unresolvable reference(s) - this is the C8 failure mode; expect a device"
+            echo "   NoSuchMethodError/NoClassDefFoundError on the code path that uses them."
+          fi
           set -e
 
       - name: Inject parallel-install suffix + fixed test signing into release build type
