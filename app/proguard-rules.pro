@@ -99,6 +99,23 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
 
+# kotlinx.serialization runtime. ARVIO's own app code uses @Serializable/Json
+# (AuthRepository, TraktRepository, DataStoreSessionManager, ...) exclusively
+# through reified inline functions (Json.encodeToString<T>/decodeFromString<T>),
+# which the Kotlin compiler inlines at every call site — so no ARVIO bytecode
+# ever references core marker types like kotlinx.serialization.KSerializer by
+# exact class name post-inlining. R8's reachability analysis then strips/
+# renames those classes for release, same failure mode as the kotlin.**
+# stripping in C1 and the okhttp3.** stripping in C4. Several externally
+# compiled .cs3 plugins (e.g. Bnyro/GermanProviders' KellerKino, FilmFrei24,
+# PlutoTV) use kotlinx.serialization directly and reference KSerializer by
+# name, so their load()/loadLinks() calls fail with NoClassDefFoundError —
+# meaning a result can be found in search but never turns into a playable
+# link. Confirmed via device logcat (C5 investigation, 01.09.2026).
+-keep class kotlinx.serialization.** { *; }
+-keep interface kotlinx.serialization.** { *; }
+-dontwarn kotlinx.serialization.**
+
 # ============================================
 # Gson serialization
 # ============================================
