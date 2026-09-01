@@ -272,8 +272,27 @@ ksp {
     configurations.all {
         resolutionStrategy {
             force("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.0")
-            force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-            force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+            // CloudStream's library-android:v4.8.0 (C4 bump) is compiled against
+            // kotlinx-coroutines 1.11.0 (its own gradle/libs.versions.toml pins
+            // kotlinxCoroutines = "1.11.0"). The previous force here pinned an
+            // unrelated, much older 1.7.3 with no recorded reason — that left
+            // CloudStream's bundled WebViewResolver (network/WebViewResolver.kt,
+            // compiled directly into ARVIO's own release dex, not a plugin)
+            // calling a BuildersKt.runBlocking$default overload that only exists
+            // in the newer coroutines ABI it was actually compiled against. At
+            // runtime the resolved 1.7.3 jar doesn't have that method, so it
+            // crashed with NoSuchMethodError ("runBlockingK$default") on the
+            // OkHttp Dispatcher thread — fatal, since that thread has no default
+            // exception handler — every time a scraper's search hit a
+            // Cloudflare-protected page via WebViewResolver. This is a genuine
+            // ABI/version mismatch, not R8 stripping (confirmed via device
+            // logcat, C6, 01.09.2026: the class name showed unobfuscated as
+            // kotlinx.coroutines.BuildersKt even under a full
+            // `-keep class kotlinx.coroutines.**` proguard rule, and the crash
+            // persisted unchanged — ruling out obfuscation as the cause).
+            // Matching CloudStream's own pinned version removes the mismatch.
+            force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+            force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
             // The NiceHttp/CloudStream library bump (C4, 01.09.2026) shifted which
             // transitive kotlinx-datetime version wins Gradle's default "highest
             // wins" resolution, breaking AuthRepository.kt's Clock.System.now()
@@ -376,7 +395,7 @@ ksp {
     implementation("org.jsoup:jsoup:1.17.2")
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // Image loading - Coil
     implementation("io.coil-kt:coil-compose:2.5.0")
@@ -448,7 +467,7 @@ ksp {
 
     // Unit Testing
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("io.mockk:mockk:1.13.8")
     testImplementation("app.cash.turbine:turbine:1.0.0")  // Flow testing
     testImplementation("com.google.truth:truth:1.1.5")    // Better assertions
@@ -463,7 +482,7 @@ ksp {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.2.0")
     androidTestImplementation("io.mockk:mockk-android:1.13.8")
-    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
 
 secrets {
