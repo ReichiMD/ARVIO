@@ -43,6 +43,22 @@ jobs:
           TRAKT_CLIENT_SECRET=fake_test_only_placeholder_secret
           EOF
 
+      - name: DIAGNOSTIC - inspect resolved NiceHttp version and Requests.class bytecode
+        run: |
+          ./gradlew :app:dependencies --configuration sideloadReleaseRuntimeClasspath --no-daemon 2>&1 | grep -B2 -A2 -i nicehttp || echo "no nicehttp lines found in dependency tree"
+          echo "--- locating resolved NiceHttp jar(s) in Gradle cache ---"
+          find ~/.gradle /root/.gradle -iname "*nicehttp*.jar" 2>/dev/null
+          echo "--- javap on Requests.class from each found jar ---"
+          for jar in $(find ~/.gradle /root/.gradle -iname "*nicehttp*.jar" 2>/dev/null); do
+            echo "=== $jar ==="
+            mkdir -p /tmp/nhinspect && rm -rf /tmp/nhinspect/* && cd /tmp/nhinspect
+            unzip -o -q "$jar" "com/lagradost/nicehttp/Requests.class" 2>&1
+            if [ -f com/lagradost/nicehttp/Requests.class ]; then
+              javap -p com/lagradost/nicehttp/Requests.class | grep -i "get\|post"
+            fi
+            cd -
+          done
+
       - name: Inject parallel-install suffix + fixed test signing into release build type
         run: |
           sed -i '/^        release {/a\
