@@ -69,6 +69,20 @@
     volatile <fields>;
 }
 
+# kotlinx.coroutines (01.09.2026): those three narrow rules above were never enough for
+# externally loaded .cs3 plugin bytecode — same root cause as kotlin.** (C1), okhttp3.**
+# (C4), and kotlinx.serialization.** (C6) above: ARVIO's own code calls
+# kotlinx.coroutines.runBlocking (e.g. cloudstream:library-android's WebViewResolver) in a
+# form R8 is free to merge/rename since it only sees that one call site, but a precompiled
+# .cs3 plugin calling the same public API by its original name/signature can't find it.
+# Confirmed via device crash: NoSuchMethodError on a coroutines builder bridge method
+# (runBlockingK$default) inside WebViewResolver.intercept() — first mistaken for a genuine
+# coroutines-version gap (see app/build.gradle.kts's force() comment for that dead end),
+# actually the same R8 gap as the other three libraries above, just never covered.
+-keep class kotlinx.coroutines.** { *; }
+-keep interface kotlinx.coroutines.** { *; }
+-dontwarn kotlinx.coroutines.**
+
 # kotlinx.serialization (C6 follow-up, 01.09.2026): adding the dependency alone
 # (app/build.gradle.kts) wasn't enough — same pattern as kotlin.** (C1) and
 # okhttp3.** (C4) above. ARVIO's own code never references KSerializer/Json

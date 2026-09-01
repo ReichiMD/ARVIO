@@ -272,18 +272,18 @@ ksp {
     configurations.all {
         resolutionStrategy {
             force("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.0")
-            // Was pinned at 1.7.3 for reasons lost to history (no comment, pre-dates the
-            // CloudStream work). cloudstream:library-android v4.8.0 itself depends on
-            // kotlinx-coroutines 1.11.0 (its own gradle/libs.versions.toml) — forcing the
-            // much older 1.7.3 downgrades that dependency's own transitive request, and its
-            // internal (non-public) API surface isn't binary-compatible across that gap.
-            // Confirmed via device crash: WebViewResolver.intercept() (library-android,
-            // used by several CloudStream plugins during source search) hit
-            // NoSuchMethodError on a coroutines-internal runBlocking bridge method that
-            // doesn't exist in 1.7.3's build. Bumped the force to match what
-            // library-android actually compiles against instead of guessing a value.
-            force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
-            force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+            // Pinned at 1.7.3 — turns out this IS load-bearing, just undocumented: bumping
+            // to 1.11.0 (tried 01.09.2026, to match cloudstream:library-android's own
+            // declared coroutines version and fix a WebViewResolver NoSuchMethodError, see
+            // proguard-rules.pro's kotlinx.coroutines.** keep comment for the real fix)
+            // immediately crashed app startup instead — TelegramStreamingProxy's embedded
+            // Ktor server (io.ktor:ktor-server-cio:2.3.7) calls
+            // kotlinx.coroutines.internal.LockFreeLinkedListNode.addLast(...), an internal
+            // (non-public, no compatibility guarantee) API whose shape changed by 1.11.0.
+            // Reverted to 1.7.3 so Ktor keeps working; the WebViewResolver crash this was
+            // chasing turned out to be an R8 keep-rule gap instead, not a real version gap.
+            force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+            force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
             // The NiceHttp/CloudStream library bump (C4, 01.09.2026) shifted which
             // transitive kotlinx-datetime version wins Gradle's default "highest
             // wins" resolution, breaking AuthRepository.kt's Clock.System.now()
