@@ -272,8 +272,18 @@ ksp {
     configurations.all {
         resolutionStrategy {
             force("org.jetbrains.kotlin:kotlin-metadata-jvm:2.3.0")
-            force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-            force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+            // Was pinned at 1.7.3 for reasons lost to history (no comment, pre-dates the
+            // CloudStream work). cloudstream:library-android v4.8.0 itself depends on
+            // kotlinx-coroutines 1.11.0 (its own gradle/libs.versions.toml) — forcing the
+            // much older 1.7.3 downgrades that dependency's own transitive request, and its
+            // internal (non-public) API surface isn't binary-compatible across that gap.
+            // Confirmed via device crash: WebViewResolver.intercept() (library-android,
+            // used by several CloudStream plugins during source search) hit
+            // NoSuchMethodError on a coroutines-internal runBlocking bridge method that
+            // doesn't exist in 1.7.3's build. Bumped the force to match what
+            // library-android actually compiles against instead of guessing a value.
+            force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+            force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
             // The NiceHttp/CloudStream library bump (C4, 01.09.2026) shifted which
             // transitive kotlinx-datetime version wins Gradle's default "highest
             // wins" resolution, breaking AuthRepository.kt's Clock.System.now()
