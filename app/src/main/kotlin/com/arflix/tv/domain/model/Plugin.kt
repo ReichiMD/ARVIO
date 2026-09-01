@@ -122,6 +122,39 @@ data class LocalScraperResult(
 )
 
 /**
+ * Shared by DetailsViewModel's initial source search and PlayerViewModel's in-player
+ * source switcher — keep both call sites on this single mapping so they never drift apart.
+ *
+ * When `provider` (the site/scraper name, e.g. "Filmo") is present, `name` is the
+ * mirror/host the link actually plays from (e.g. "Voe") — surfaced via sourceLabel so the
+ * source list shows both ("Filmo · Voe") instead of silently dropping the host.
+ */
+fun LocalScraperResult.toStreamSource(): com.arflix.tv.data.model.StreamSource {
+    val hostLabel = name?.takeIf { provider != null && it.isNotBlank() }
+    return com.arflix.tv.data.model.StreamSource(
+        source = title,
+        addonName = provider ?: name ?: "Plugin",
+        addonId = "plugin_${provider?.lowercase()?.replace(" ", "_") ?: "unknown"}",
+        quality = quality ?: "Unknown",
+        size = size ?: "",
+        sizeBytes = null,
+        url = url,
+        infoHash = infoHash,
+        fileIdx = null,
+        behaviorHints = if (headers != null || hostLabel != null) {
+            com.arflix.tv.data.model.StreamBehaviorHints(
+                notWebReady = false,
+                proxyHeaders = headers?.let { com.arflix.tv.data.model.ProxyHeaders(request = it) },
+                sourceLabel = hostLabel
+            )
+        } else null,
+        subtitles = emptyList(),
+        sources = emptyList(),
+        description = null
+    )
+}
+
+/**
  * Manifest format for external extension repositories.
  */
 @JsonClass(generateAdapter = true)

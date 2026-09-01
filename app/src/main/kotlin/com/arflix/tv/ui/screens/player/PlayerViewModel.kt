@@ -31,6 +31,7 @@ import com.arflix.tv.data.repository.LauncherContinueWatchingRepository
 import com.arflix.tv.data.repository.TraktRepository
 import com.arflix.tv.data.repository.WatchHistoryEntry
 import com.arflix.tv.data.repository.WatchHistoryRepository
+import com.arflix.tv.domain.model.toStreamSource
 import com.arflix.tv.util.AnimeMapper
 import com.arflix.tv.util.AppLogger
 import com.arflix.tv.util.Constants
@@ -63,7 +64,8 @@ import java.time.Clock
 import javax.inject.Inject
 
 private fun isSupplementalStream(stream: StreamSource): Boolean =
-    stream.addonId == "iptv_xtream_vod" || stream.addonId == HomeServerRepository.ADDON_ID
+    stream.addonId == "iptv_xtream_vod" || stream.addonId == HomeServerRepository.ADDON_ID ||
+        stream.addonId.startsWith("plugin_")
 
 private fun Addon.isVodStreamingAddon(): Boolean =
     isEnabled &&
@@ -200,7 +202,8 @@ class PlayerViewModel @Inject constructor(
     private val animeMapper: AnimeMapper,
     private val tmdbApi: TmdbApi,
     private val skipIntroRepository: SkipIntroRepository,
-    private val playbackTelemetryRepository: PlaybackTelemetryRepository
+    private val playbackTelemetryRepository: PlaybackTelemetryRepository,
+    private val pluginManager: com.arflix.tv.core.plugin.PluginManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlayerUiState())
@@ -534,6 +537,7 @@ class PlayerViewModel @Inject constructor(
         cancelFindBestMatch()
         vodAppendJob?.cancel()
         homeServerAppendJob?.cancel()
+        pluginScraperJob?.cancel()
         streamPrewarmJob?.cancel()
         focusedStreamPrewarmJob?.cancel()
         streamSelectionJob?.cancel()
@@ -789,6 +793,16 @@ class PlayerViewModel @Inject constructor(
                         )
                     }.onFailure(childFailed("vodAppend"))
                 }
+                pluginScraperJob?.cancel()
+                pluginScraperJob = launch {
+                    runCatching {
+                        appendPluginSourcesInBackground(
+                            mediaType = mediaType,
+                            seasonNumber = seasonNumber,
+                            episodeNumber = episodeNumber
+                        )
+                    }.onFailure(childFailed("pluginAppend"))
+                }
                 // Fetch metadata in background
                 launch {
                     runCatching { fetchMediaMetadata(mediaType, mediaId) }
@@ -956,6 +970,14 @@ class PlayerViewModel @Inject constructor(
                         seasonNumber = seasonNumber,
                         episodeNumber = episodeNumber,
                         timeoutMs = 15_000L
+                    )
+                }
+                pluginScraperJob?.cancel()
+                pluginScraperJob = launch {
+                    appendPluginSourcesInBackground(
+                        mediaType = mediaType,
+                        seasonNumber = seasonNumber,
+                        episodeNumber = episodeNumber
                     )
                 }
 
@@ -4331,6 +4353,7 @@ class PlayerViewModel @Inject constructor(
     private var subtitleRefreshJob: Job? = null
     private var vodAppendJob: Job? = null
     private var homeServerAppendJob: Job? = null
+    private var pluginScraperJob: Job? = null
     private var subtitleSelectionJob: Job? = null
     private var streamPrewarmJob: Job? = null
     private var focusedStreamPrewarmJob: Job? = null
@@ -4342,7 +4365,8 @@ class PlayerViewModel @Inject constructor(
     private fun sourceLookupStillActive(currentJob: Job? = null): Boolean {
         val supplementalStillLoading =
             (homeServerAppendJob != null && homeServerAppendJob !== currentJob && homeServerAppendJob?.isActive == true) ||
-                (vodAppendJob != null && vodAppendJob !== currentJob && vodAppendJob?.isActive == true)
+                (vodAppendJob != null && vodAppendJob !== currentJob && vodAppendJob?.isActive == true) ||
+                (pluginScraperJob != null && pluginScraperJob !== currentJob && pluginScraperJob?.isActive == true)
         return !primaryStreamResolutionFinal || supplementalStillLoading
     }
 
@@ -4432,6 +4456,50 @@ class PlayerViewModel @Inject constructor(
         prewarmTopStreams(sortedStreams, preferredLanguage)
         if (shouldAutoplayHomeServer) {
             pickPreferredStream(sortedStreams, preferredLanguage)?.let { selectStream(it) }
+        }
+    }
+
+    // CloudStream/.cs3 plugin sources (see PluginManager, sideload flavor only — a no-op
+    // empty Flow on the play flavor) are otherwise invisible in the in-player "change source"
+    // list: unlike the normal addon search this ViewModel already runs, plugin scraping only
+    // ran on the Details screen before playback started, so the player's own source list never
+    // saw those results. Runs the same streaming scraper search DetailsViewModel uses and merges
+    // results in as they arrive, same pattern as the home-server/VOD supplemental appends above.
+    private suspend fun appendPluginSourcesInBackground(
+        mediaType: MediaType,
+        seasonNumber: Int?,
+        episodeNumber: Int?
+    ) {
+        val tmdbIdStr = currentMediaId.toString()
+        val pluginMediaType = if (mediaType == MediaType.MOVIE) "movie" else "tv"
+        pluginManager.executeScrapersStreaming(
+            tmdbId = tmdbIdStr,
+            mediaType = pluginMediaType,
+            season = if (mediaType != MediaType.MOVIE) (seasonNumber ?: 1) else null,
+            episode = if (mediaType != MediaType.MOVIE) (episodeNumber ?: 1) else null
+        ).collect { (_, results) ->
+            // A null result means "this scraper just started" (progress signal only, per
+            // PluginManager.executeScrapersStreaming) — nothing to merge yet.
+            val pluginStreams = results?.map { it.toStreamSource() }.orEmpty()
+            if (pluginStreams.isEmpty()) return@collect
+            val preferredLanguage = _uiState.value.preferredAudioLanguage.ifBlank { "en" }
+            val merged = sortStreamsByQualityAndSize(
+                (_uiState.value.streams + pluginStreams).distinctBy(::providerScopedStreamIdentity),
+                preferredLanguage
+            )
+            val shouldAutoplay = _uiState.value.selectedStreamUrl.isNullOrBlank()
+            val currentJob = currentCoroutineContext()[Job]
+            _uiState.value = _uiState.value.copy(
+                streams = merged,
+                isLoadingStreams = false,
+                sourceSearchActive = sourceLookupStillActive(currentJob),
+                streamProgress = null,
+                streamLoadPhase = null
+            )
+            prewarmTopStreams(merged, preferredLanguage)
+            if (shouldAutoplay) {
+                pickPreferredStream(merged, preferredLanguage)?.let { selectStream(it) }
+            }
         }
     }
 
