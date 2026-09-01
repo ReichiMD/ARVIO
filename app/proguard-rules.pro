@@ -69,6 +69,22 @@
     volatile <fields>;
 }
 
+# kotlinx.coroutines.internal is a non-public, unstable API (the coroutines
+# library's own consumer rules above only protect two class names + volatile
+# fields, on the assumption that only kotlinx-coroutines itself calls into it).
+# Ktor 2.3.7's precompiled io.ktor.events.Events class breaks that assumption:
+# its bytecode directly invokes
+# kotlinx.coroutines.internal.LockFreeLinkedListHead.addLast(LockFreeLinkedListNode),
+# inherited from LockFreeLinkedListNode. Since Events is used by every
+# embeddedServer(CIO) instance (TelegramStreamingProxy.start(), created eagerly
+# in ArflixApplication.onCreate() via Hilt), R8 minifying/optimizing that
+# internal package caused a startup crash on every launch (C5, 01.09.2026):
+#   NoSuchMethodError: No virtual method addLast(...)V in class Ln8/k;
+# Same shape as the C1 (kotlin.**) and C4 (okhttp3.**) fixes: a precompiled
+# third-party library reaches into a package our keep rules didn't fully cover.
+-keep class kotlinx.coroutines.internal.** { *; }
+-dontwarn kotlinx.coroutines.internal.**
+
 # ============================================
 # Retrofit / OkHttp
 # ============================================
