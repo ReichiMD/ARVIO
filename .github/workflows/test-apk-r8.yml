@@ -6,6 +6,7 @@ on:
       - claude/cloudstream-plugin-fixes-cftmod
       - claude/cloudstream-plugin-c6-c8-fg25jb
       - claude/cloudstream-dns-search-lang-tlfjyb
+      - claude/c14-repo-parser-debug-q4zu3o
   workflow_dispatch:
 
 jobs:

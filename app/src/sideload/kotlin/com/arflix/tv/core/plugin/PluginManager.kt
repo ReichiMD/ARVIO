@@ -303,7 +303,7 @@ class PluginManager @Inject constructor(
             // If the URL points to a specific .json file (not manifest.json),
             // try external format first to avoid a wasted 404 on the NuvioTV path.
             if (isExplicitJsonFile) {
-                Log.d(TAG, "URL ends in .json — trying external format first: $sanitizedUrl")
+                Log.w(TAG, "URL ends in .json — trying external format first: $sanitizedUrl")
                 val externalResult = externalRepoParser.tryParse(sanitizedUrl, fallbackName)
                 if (externalResult != null) {
                     return@withContext addExternalRepository(sanitizedUrl, externalResult)
@@ -312,7 +312,7 @@ class PluginManager @Inject constructor(
 
             // Try NuvioTV format (with canonicalized /manifest.json URL)
             val canonicalManifestUrl = canonicalizeManifestUrl(sanitizedUrl)
-            Log.d(TAG, "Trying NuvioTV manifest: $canonicalManifestUrl")
+            Log.w(TAG, "Trying NuvioTV manifest: $canonicalManifestUrl")
 
             val manifest = fetchManifest(canonicalManifestUrl)
             if (manifest != null) {
@@ -321,13 +321,14 @@ class PluginManager @Inject constructor(
 
             // If we haven't tried external format yet, try it now
             if (!isExplicitJsonFile) {
-                Log.d(TAG, "NuvioTV manifest not found, trying external format: $sanitizedUrl")
+                Log.w(TAG, "NuvioTV manifest not found, trying external format: $sanitizedUrl")
                 val externalResult = externalRepoParser.tryParse(sanitizedUrl, fallbackName)
                 if (externalResult != null) {
                     return@withContext addExternalRepository(sanitizedUrl, externalResult)
                 }
             }
 
+            Log.e(TAG, "Failed to add repository: no format matched $sanitizedUrl")
             Result.failure(Exception("Failed to parse repository: unrecognized format"))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add repository: ${e.message}", e)
@@ -407,7 +408,7 @@ class PluginManager @Inject constructor(
         val existingRepo = dataStore.repositories.first()
             .find { normalizeUrl(it.url) == normalizeUrl(repoUrl) }
         if (existingRepo != null) {
-            Log.d(TAG, "External repository already exists: ${existingRepo.name} (${existingRepo.url})")
+            Log.w(TAG, "External repository already exists: ${existingRepo.name} (${existingRepo.url})")
             return Result.success(existingRepo)
         }
 
@@ -425,7 +426,7 @@ class PluginManager @Inject constructor(
         dataStore.addRepository(repo)
         downloadDexExtensions(repo.id, parseResult.plugins)
 
-        Log.d(TAG, "External repository added: ${repo.name} with ${parseResult.plugins.size} extensions")
+        Log.w(TAG, "External repository added: ${repo.name} with ${parseResult.plugins.size} extensions")
         triggerRemoteSync("repo added: ${repo.name}")
         return Result.success(repo)
     }
@@ -1133,7 +1134,7 @@ class PluginManager @Inject constructor(
         existingScrapers.addAll(newScrapers)
         dataStore.saveScrapers(existingScrapers)
 
-        Log.d(TAG, "Downloaded ${newScrapers.size}/${plugins.size} extensions for repo $repoId")
+        Log.w(TAG, "Downloaded ${newScrapers.size}/${plugins.size} extensions for repo $repoId")
     }
 
     suspend fun clearAllPlugins() {

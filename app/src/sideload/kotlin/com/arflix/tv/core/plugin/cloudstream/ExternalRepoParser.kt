@@ -59,8 +59,13 @@ class ExternalRepoParser @Inject constructor(
         if (trimmed.contains("\"pluginLists\"")) {
             try {
                 val manifest = repoManifestAdapter.fromJson(trimmed)
-                if (manifest != null && manifest.pluginLists.isNotEmpty()) {
-                    Log.d(TAG, "Parsed as repo manifest: ${manifest.name}, ${manifest.pluginLists.size} plugin lists")
+                if (manifest == null || manifest.pluginLists.isEmpty()) {
+                    // Valid JSON, but nothing usable came out of it — the caller would
+                    // otherwise fall through to the NuvioTV path and report only
+                    // "unrecognized format", which hides that we got this far.
+                    Log.w(TAG, "Repo manifest has no plugin lists (manifest=${manifest != null}) for $url")
+                } else {
+                    Log.w(TAG, "Parsed as repo manifest: ${manifest.name}, ${manifest.pluginLists.size} plugin lists")
                     val allPlugins = coroutineScope {
                         manifest.pluginLists.map { listUrl ->
                             async {
@@ -76,7 +81,7 @@ class ExternalRepoParser @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "Not a repo manifest: ${e.message}")
+                Log.w(TAG, "Not a repo manifest ($url): ${e.javaClass.simpleName}: ${e.message}")
             }
         }
 
@@ -84,8 +89,10 @@ class ExternalRepoParser @Inject constructor(
         if (trimmed.startsWith("[")) {
             try {
                 val plugins = pluginListAdapter.fromJson(trimmed)
-                if (!plugins.isNullOrEmpty() && plugins.first().internalName.isNotBlank()) {
-                    Log.d(TAG, "Parsed as direct plugins list: ${plugins.size} plugins")
+                if (plugins.isNullOrEmpty() || plugins.first().internalName.isBlank()) {
+                    Log.w(TAG, "Direct plugins list unusable (entries=${plugins?.size ?: 0}) for $url")
+                } else {
+                    Log.w(TAG, "Parsed as direct plugins list: ${plugins.size} plugins")
                     val repoName = fallbackName ?: inferRepoName(url)
                     return@withContext ExternalRepoParseResult(
                         name = repoName,
@@ -94,17 +101,25 @@ class ExternalRepoParser @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "Not a direct plugins list: ${e.message}")
+                Log.w(TAG, "Not a direct plugins list ($url): ${e.javaClass.simpleName}: ${e.message}")
             }
         }
 
+        // Nothing matched. Show the head of what we actually received — a login page,
+        // an HTML error page or a raw-host redirect all look identical from the outside.
+        Log.w(TAG, "No known repository format matched $url; body starts: ${trimmed.take(200)}")
         null
     }
 
     private suspend fun fetchPluginList(url: String): List<ExternalPluginEntry>? = withContext(Dispatchers.IO) {
         val body = fetchBody(url) ?: return@withContext null
         try {
-            val list = pluginListAdapter.fromJson(body.trim()) ?: return@withContext null
+            val list = pluginListAdapter.fromJson(body.trim())
+            if (list == null) {
+                Log.w(TAG, "Plugin list parsed to null for $url")
+                return@withContext null
+            }
+            Log.w(TAG, "Plugin list $url yielded ${list.size} entries")
             list.map { entry ->
                 entry.copy(
                     url = resolveUrl(url, entry.url),
@@ -112,7 +127,7 @@ class ExternalRepoParser @Inject constructor(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse plugin list from $url: ${e.message}")
+            Log.e(TAG, "Failed to parse plugin list from $url: ${e.javaClass.simpleName}: ${e.message}")
             null
         }
     }
