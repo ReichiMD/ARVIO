@@ -80,7 +80,9 @@ class TmdbMetadataService @Inject constructor(
             return null
         }
 
-        Log.i(
+        // Warn level for the same reason as the runner's yield lines: device captures are
+        // warn-filtered, and which languages were searched is the whole question here.
+        Log.w(
             TAG,
             "fetchEnrichment($tmdbId, $contentType) languages=$tags " +
                 "-> ${enrichment.alternativeTitles.size} alternative titles"

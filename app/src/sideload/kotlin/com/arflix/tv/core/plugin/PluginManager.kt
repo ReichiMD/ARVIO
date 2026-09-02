@@ -639,7 +639,7 @@ class PluginManager @Inject constructor(
             return@coroutineScope emptyList()
         }
 
-        Log.i(TAG, "Executing ${enabledScraperList.size} scrapers for $mediaType:$tmdbId")
+        Log.w(TAG, "Executing ${enabledScraperList.size} scrapers for $mediaType:$tmdbId")
 
         // Preload all extractors from EXTERNAL_DEX repos before any scraper runs
         val dexScraperIds = enabledScraperList
@@ -661,12 +661,14 @@ class PluginManager @Inject constructor(
         }.awaitAll()
 
         // Info level on purpose: the per-scraper outcome lines are the only way to tell
-        // how much the plugin subsystem actually contributes, and a release logcat
-        // captured on a device typically has debug filtered out — which made earlier
-        // device reports unmeasurable (only failures were visible, never the hits).
+        // how much the plugin subsystem actually contributes. Warn level on purpose:
+        // device captures come back filtered to warnings, so debug was invisible, then
+        // info was too — four separate device reports in a row carried only failures and
+        // never a single hit, leaving the yield unmeasured. This is a measurement line,
+        // and it has to survive the filter people actually use.
         val producing = results.count { it.isNotEmpty() }
         val deduped = results.flatten().distinctBy { it.url }
-        Log.i(
+        Log.w(
             TAG,
             "Scraper run finished for $mediaType:$tmdbId - " +
                 "$producing/${enabledScraperList.size} scrapers produced results, " +
@@ -693,7 +695,7 @@ class PluginManager @Inject constructor(
             return@channelFlow
         }
 
-        Log.i(TAG, "Streaming execution of ${enabledList.size} scrapers for $mediaType:$tmdbId")
+        Log.w(TAG, "Streaming execution of ${enabledList.size} scrapers for $mediaType:$tmdbId")
 
         // Preload all extractors from EXTERNAL_DEX repos before any scraper runs
         val dexScraperIds = enabledList.filter { it.type == RepositoryType.EXTERNAL_DEX }.map { it.id }
@@ -725,11 +727,10 @@ class PluginManager @Inject constructor(
                 }
             }
         }
-        // Info level on purpose: this and the per-scraper "returned N results" lines are
-        // the only way to tell how much the plugin subsystem actually contributes. A
-        // release logcat captured on a device usually has debug filtered out, which made
-        // earlier device reports unmeasurable - only failures were ever visible.
-        Log.i(
+        // Warn level on purpose: this and the per-scraper "returned N results" lines are
+        // the only way to tell how much the plugin subsystem actually contributes, and
+        // device captures come back filtered to warnings. See the sibling call site.
+        Log.w(
             TAG,
             "Scraper run finished for $mediaType:$tmdbId - " +
                 "${producingCount.get()}/${enabledList.size} scrapers produced results, " +
@@ -848,7 +849,7 @@ class PluginManager @Inject constructor(
                 return emptyList()
             }
 
-            Log.i(TAG, "Scraper ${scraper.name} returned ${results.size} results")
+            Log.w(TAG, "Scraper ${scraper.name} returned ${results.size} results")
             results.map { it.copy(provider = scraper.name) }
 
         } catch (e: Exception) {
@@ -878,7 +879,7 @@ class PluginManager @Inject constructor(
                 Log.w(TAG, "DEX scraper ${scraper.name} timed out after ${SCRAPER_TIMEOUT_MS}ms")
                 return emptyList()
             }
-            Log.i(TAG, "DEX scraper ${scraper.name} returned ${results.size} results")
+            Log.w(TAG, "DEX scraper ${scraper.name} returned ${results.size} results")
             results.map { it.copy(provider = scraper.name) }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to execute DEX scraper ${scraper.name}: ${e.message}", e)
@@ -1107,7 +1108,10 @@ class PluginManager @Inject constructor(
                             enabled = true,
                             manifestEnabled = plugin.status == 1,
                             logo = plugin.iconUrl,
-                            contentLanguage = emptyList(),
+                            // The repository manifest names the language of the site this
+                            // plugin scrapes; the plugin list shows it as a flag badge so
+                            // it is visible which providers cover which language.
+                            contentLanguage = listOfNotNull(plugin.language?.takeIf { it.isNotBlank() }),
                             formats = null,
                             type = RepositoryType.EXTERNAL_DEX
                         )

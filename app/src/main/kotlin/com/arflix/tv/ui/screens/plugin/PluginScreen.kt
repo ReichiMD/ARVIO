@@ -43,6 +43,8 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import androidx.compose.material3.Icon
 import com.arflix.tv.R
+import com.arflix.tv.domain.model.ScraperInfo
+import com.arflix.tv.ui.components.languageBadgeText
 import com.arflix.tv.ui.components.MobileSettingsCategory
 import com.arflix.tv.ui.components.MobileSettingsRow
 import com.arflix.tv.ui.components.SettingsRow
@@ -188,7 +190,7 @@ fun PluginScreen(
                         MobileSettingsRow(
                             icon = Icons.Default.Extension,
                             title = scraper.name,
-                            subtitle = scraper.id,
+                            subtitle = scraperSubtitle(scraper),
                             value = if (scraper.enabled) "On" else "Off",
                             isFocused = false,
                             showDivider = idx < scrapers.lastIndex,
@@ -321,7 +323,7 @@ fun PluginScreen(
                         index = slotIndex,
                         focusedIndex = focusedIndex,
                         title = scraper.name,
-                        subtitle = scraper.id,
+                        subtitle = scraperSubtitle(scraper),
                         isEnabled = scraper.enabled,
                         onToggle = { enabled -> viewModel.onEvent(PluginUiEvent.ToggleScraper(scraper.id, enabled)) }
                     )
@@ -717,4 +719,16 @@ fun WarningDialog(
             }
         }
     }
+}
+
+/**
+ * Leads the row's second line with the language of the site this scraper covers, so the
+ * list shows at a glance which providers serve which language. Falls back to the bare id
+ * for plugins whose repository manifest does not declare one.
+ */
+private fun scraperSubtitle(scraper: ScraperInfo): String {
+    val badge = scraper.contentLanguage
+        .firstOrNull { it.isNotBlank() }
+        ?.let(::languageBadgeText)
+    return if (badge != null) "$badge \u00B7 ${scraper.id}" else scraper.id
 }

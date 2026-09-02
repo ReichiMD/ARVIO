@@ -210,10 +210,21 @@ object OkHttpProvider {
         val shown = addresses.take(3).joinToString { it.hostAddress ?: it.toString() }
         if (sinkholed) {
             Log.w(TAG, "DNS $source resolved $hostname to a blocked address: $shown")
+            return
+        }
+        // Warn level for the first answer per host and resolver, info for the repeats.
+        // Device captures come back filtered to warnings — an info-only diagnostic has
+        // now been lost three times running — but one line per host stays quiet enough
+        // to belong at warn, where a line per request would not.
+        if (loggedResolutions.add("$source|$hostname")) {
+            Log.w(TAG, "DNS $source resolved $hostname -> $shown (${addresses.size} total)")
         } else {
             Log.i(TAG, "DNS $source resolved $hostname -> $shown (${addresses.size} total)")
         }
     }
+
+    /** Hosts already reported at warn level, reset whenever the DNS setting changes. */
+    private val loggedResolutions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     private val apiDnsLoggingInterceptor = Interceptor { chain ->
         val request = chain.request()
@@ -442,7 +453,8 @@ object OkHttpProvider {
 
     fun setDnsProvider(provider: AppDnsProvider) {
         selectedDnsProvider = provider
-        Log.i(TAG, "Using DNS provider=$provider")
+        loggedResolutions.clear()
+        Log.w(TAG, "Using DNS provider=$provider")
         dnsScope.launch {
             appConnectionPool.evictAll()
             playbackConnectionPool.evictAll()

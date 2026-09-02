@@ -131,6 +131,7 @@ data class LocalScraperResult(
  */
 fun LocalScraperResult.toStreamSource(): com.arflix.tv.data.model.StreamSource {
     val hostLabel = name?.takeIf { provider != null && it.isNotBlank() }
+    val languageHint = language?.takeIf { it.isNotBlank() }
     return com.arflix.tv.data.model.StreamSource(
         source = title,
         addonName = provider ?: name ?: "Plugin",
@@ -141,11 +142,12 @@ fun LocalScraperResult.toStreamSource(): com.arflix.tv.data.model.StreamSource {
         url = url,
         infoHash = infoHash,
         fileIdx = null,
-        behaviorHints = if (headers != null || hostLabel != null) {
+        behaviorHints = if (headers != null || hostLabel != null || languageHint != null) {
             com.arflix.tv.data.model.StreamBehaviorHints(
                 notWebReady = false,
                 proxyHeaders = headers?.let { com.arflix.tv.data.model.ProxyHeaders(request = it) },
-                sourceLabel = hostLabel
+                sourceLabel = hostLabel,
+                language = languageHint
             )
         } else null,
         subtitles = emptyList(),
@@ -178,6 +180,9 @@ data class ExternalPluginEntry(
     val status: Int = 1,
     val authors: List<String>? = null,
     val tvTypes: List<String>? = null,
+    // CloudStream repository manifests carry the language of the site a plugin scrapes,
+    // "most often a language tag like \"en\" or \"zh-TW\"" per their own SitePlugin model.
+    val language: String? = null,
     val iconUrl: String? = null,
     val url: String,
     val fileSize: Long? = null,

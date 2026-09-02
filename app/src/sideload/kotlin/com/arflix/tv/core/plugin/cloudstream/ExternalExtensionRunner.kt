@@ -44,6 +44,10 @@ private const val LOADLINKS_TIMEOUT_MS = 60_000L
 private const val MIN_TITLE_SIMILARITY = 0.5
 private const val MAX_ALT_TITLES = 8
 
+// The yield lines below are logged at WARN, not INFO. Device captures come back filtered
+// to warnings, so anything quieter never reaches a bug report — four runs in a row carried
+// only failures and no hits at all. These lines exist to be read off a device.
+
 /**
  * Executes external DEX extensions by bridging between NuvioTV's TMDB ID-based system
  * and the extensions' text search-based API.
@@ -194,7 +198,7 @@ class ExternalExtensionRunner @Inject constructor(
             diagnostics.addStep("Missing extractors: ${missing.take(5).joinToString()}")
         }
 
-        return links.filterValid().map { it.toLocalScraperResult(api.name) }
+        return links.filterValid().map { it.toLocalScraperResult(api.name, api.lang) }
     }
 
     private suspend fun executeSearchBasedWithDiagnostics(
@@ -330,7 +334,7 @@ class ExternalExtensionRunner @Inject constructor(
         )
 
         diagnostics.addStep("loadLinks returned: success=$success, ${links.size} links, ${subtitles.size} subs")
-        return links.filterValid().map { it.toLocalScraperResult(api.name) }
+        return links.filterValid().map { it.toLocalScraperResult(api.name, api.lang) }
     }
 
     private fun extractMissingClass(e: Error): String? {
@@ -466,8 +470,8 @@ class ExternalExtensionRunner @Inject constructor(
             return emptyList()
         }
 
-        Log.i(TAG, "TmdbProvider ${api.name}: ${links.size} links, ${subtitles.size} subs")
-        return links.filterValid().map { link -> link.toLocalScraperResult(api.name) }
+        Log.w(TAG, "TmdbProvider ${api.name}: ${links.size} links, ${subtitles.size} subs")
+        return links.filterValid().map { link -> link.toLocalScraperResult(api.name, api.lang) }
     }
 
     private suspend fun executeSearchBased(
@@ -511,7 +515,7 @@ class ExternalExtensionRunner @Inject constructor(
                 .forEach(::add)
         }
 
-        Log.i(TAG, "SearchBased ${api.name} [lang=${api.lang}]: searching for \"$title\" (${candidateTitles.size} candidates: ${candidateTitles.joinToString(" | ")})")
+        Log.w(TAG, "SearchBased ${api.name} [lang=${api.lang}]: searching for \"$title\" (${candidateTitles.size} candidates: ${candidateTitles.joinToString(" | ")})")
 
         var outcome = trySearch(api, title)
         var searchResults = outcome.items
@@ -557,7 +561,7 @@ class ExternalExtensionRunner @Inject constructor(
             }
             return emptyList()
         }
-        Log.i(TAG, "SearchBased ${api.name}: ${searchResults.size} results")
+        Log.w(TAG, "SearchBased ${api.name}: ${searchResults.size} results")
 
         val bestMatch = findBestMatch(searchResults, candidateTitles, year, mediaType)
         if (bestMatch == null) {
@@ -621,8 +625,8 @@ class ExternalExtensionRunner @Inject constructor(
             return emptyList()
         }
 
-        Log.i(TAG, "SearchBased ${api.name}: ${links.size} links, ${subtitles.size} subs")
-        return links.filterValid().map { link -> link.toLocalScraperResult(api.name) }
+        Log.w(TAG, "SearchBased ${api.name}: ${links.size} links, ${subtitles.size} subs")
+        return links.filterValid().map { link -> link.toLocalScraperResult(api.name, api.lang) }
     }
 
     /** Extract year from SearchResponse concrete types (not in the interface). */
@@ -883,7 +887,10 @@ class ExternalExtensionRunner @Inject constructor(
         }
     }
 
-    private fun ExtractorLink.toLocalScraperResult(providerName: String): LocalScraperResult {
+    private fun ExtractorLink.toLocalScraperResult(
+        providerName: String,
+        providerLanguage: String?
+    ): LocalScraperResult {
         val qualityStr = Qualities.getStringByInt(quality).ifEmpty { null }
         val streamType = when (type) {
             ExtractorLinkType.M3U8 -> "hls"
@@ -902,7 +909,11 @@ class ExternalExtensionRunner @Inject constructor(
             quality = qualityStr,
             type = streamType,
             headers = allHeaders.ifEmpty { null },
-            provider = providerName
+            provider = providerName,
+            // CloudStream's MainAPI.lang is the language of the site the link came from,
+            // which for these single-language regional providers is the language of the
+            // stream too. The source list turns it into a flag badge.
+            language = providerLanguage?.takeIf { it.isNotBlank() }
         )
     }
 }

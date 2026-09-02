@@ -1499,26 +1499,6 @@ private fun rowSubtitle(presentation: SourcePresentation): String {
         .joinToString(" · ")
 }
 
-private fun languageBadgeText(language: String?): String? {
-    if (language.isNullOrBlank()) return null
-    val normalized = language.trim().uppercase()
-    return when {
-        normalized.contains("MULTI") || normalized.contains("LANG") -> "🌐 MULTI"
-        normalized in setOf("EN", "ENG", "ENGLISH") -> "🇬🇧 EN"
-        normalized in setOf("NL", "NLD", "DUT", "DUTCH", "NEDERLANDS") -> "🇳🇱 NL"
-        normalized in setOf("JA", "JPN", "JAPANESE") -> "🇯🇵 JA"
-        normalized in setOf("KO", "KOR", "KOREAN") -> "🇰🇷 KO"
-        normalized in setOf("ES", "SPA", "SPANISH") -> "🇪🇸 ES"
-        normalized in setOf("FR", "FRE", "FRA", "FRENCH") -> "🇫🇷 FR"
-        normalized in setOf("DE", "GER", "DEU", "GERMAN") -> "🇩🇪 DE"
-        normalized in setOf("IT", "ITA", "ITALIAN") -> "🇮🇹 IT"
-        normalized in setOf("HI", "HIN", "HINDI") -> "🇮🇳 HI"
-        normalized in setOf("TA", "TAM", "TAMIL") -> "🇮🇳 TA"
-        normalized in setOf("TE", "TEL", "TELUGU") -> "🇮🇳 TE"
-        else -> normalized.take(6)
-    }
-}
-
 private fun bestMatchReason(presentation: SourcePresentation): String {
     return listOfNotNull(
         presentation.transportLabel?.let {
