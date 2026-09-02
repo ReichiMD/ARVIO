@@ -639,7 +639,7 @@ class PluginManager @Inject constructor(
             return@coroutineScope emptyList()
         }
 
-        Log.d(TAG, "Executing ${enabledScraperList.size} scrapers for $mediaType:$tmdbId")
+        Log.i(TAG, "Executing ${enabledScraperList.size} scrapers for $mediaType:$tmdbId")
 
         // Preload all extractors from EXTERNAL_DEX repos before any scraper runs
         val dexScraperIds = enabledScraperList
@@ -660,9 +660,20 @@ class PluginManager @Inject constructor(
             }
         }.awaitAll()
 
-        results.flatten()
-            .distinctBy { it.url }
-            .take(MAX_RESULT_ITEMS)
+        // Info level on purpose: the per-scraper outcome lines are the only way to tell
+        // how much the plugin subsystem actually contributes, and a release logcat
+        // captured on a device typically has debug filtered out — which made earlier
+        // device reports unmeasurable (only failures were visible, never the hits).
+        val producing = results.count { it.isNotEmpty() }
+        val deduped = results.flatten().distinctBy { it.url }
+        Log.i(
+            TAG,
+            "Scraper run finished for $mediaType:$tmdbId - " +
+                "$producing/${enabledScraperList.size} scrapers produced results, " +
+                "${results.sumOf { it.size }} results total, ${deduped.size} after dedupe"
+        )
+
+        deduped.take(MAX_RESULT_ITEMS)
     }
 
     /**
@@ -682,7 +693,7 @@ class PluginManager @Inject constructor(
             return@channelFlow
         }
 
-        Log.d(TAG, "Streaming execution of ${enabledList.size} scrapers for $mediaType:$tmdbId")
+        Log.i(TAG, "Streaming execution of ${enabledList.size} scrapers for $mediaType:$tmdbId")
 
         // Preload all extractors from EXTERNAL_DEX repos before any scraper runs
         val dexScraperIds = enabledList.filter { it.type == RepositoryType.EXTERNAL_DEX }.map { it.id }
@@ -693,19 +704,37 @@ class PluginManager @Inject constructor(
             externalExtensionLoader.ensureExtractorsLoaded(allDexIds)
         }
 
-        // Launch all scrapers concurrently within the channelFlow scope
-        enabledList.forEach { scraper ->
-            launch {
-                try {
-                    send(scraper to null)
-                    val results = executeScraperWithSingleFlight(scraper, tmdbId, mediaType, season, episode)
-                    send(scraper to results)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Scraper ${scraper.id} streaming failed: ${e.message}")
-                    send(scraper to emptyList())
+        // Launch all scrapers concurrently, wrapped in coroutineScope so we can log a
+        // single summary once every scraper has finished. Streaming behaviour is
+        // unchanged - each send() still happens the moment that scraper is done.
+        val producingCount = java.util.concurrent.atomic.AtomicInteger(0)
+        val resultCount = java.util.concurrent.atomic.AtomicInteger(0)
+        coroutineScope {
+            enabledList.forEach { scraper ->
+                launch {
+                    try {
+                        send(scraper to null)
+                        val results = executeScraperWithSingleFlight(scraper, tmdbId, mediaType, season, episode)
+                        if (results.isNotEmpty()) producingCount.incrementAndGet()
+                        resultCount.addAndGet(results.size)
+                        send(scraper to results)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Scraper ${scraper.id} streaming failed: ${e.message}")
+                        send(scraper to emptyList())
+                    }
                 }
             }
         }
+        // Info level on purpose: this and the per-scraper "returned N results" lines are
+        // the only way to tell how much the plugin subsystem actually contributes. A
+        // release logcat captured on a device usually has debug filtered out, which made
+        // earlier device reports unmeasurable - only failures were ever visible.
+        Log.i(
+            TAG,
+            "Scraper run finished for $mediaType:$tmdbId - " +
+                "${producingCount.get()}/${enabledList.size} scrapers produced results, " +
+                "${resultCount.get()} results total"
+        )
     }
 
     /**
@@ -819,7 +848,7 @@ class PluginManager @Inject constructor(
                 return emptyList()
             }
 
-            Log.d(TAG, "Scraper ${scraper.name} returned ${results.size} results")
+            Log.i(TAG, "Scraper ${scraper.name} returned ${results.size} results")
             results.map { it.copy(provider = scraper.name) }
 
         } catch (e: Exception) {
@@ -849,7 +878,7 @@ class PluginManager @Inject constructor(
                 Log.w(TAG, "DEX scraper ${scraper.name} timed out after ${SCRAPER_TIMEOUT_MS}ms")
                 return emptyList()
             }
-            Log.d(TAG, "DEX scraper ${scraper.name} returned ${results.size} results")
+            Log.i(TAG, "DEX scraper ${scraper.name} returned ${results.size} results")
             results.map { it.copy(provider = scraper.name) }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to execute DEX scraper ${scraper.name}: ${e.message}", e)

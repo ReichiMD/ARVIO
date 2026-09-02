@@ -466,7 +466,7 @@ class ExternalExtensionRunner @Inject constructor(
             return emptyList()
         }
 
-        Log.d(TAG, "TmdbProvider ${api.name}: ${links.size} links, ${subtitles.size} subs")
+        Log.i(TAG, "TmdbProvider ${api.name}: ${links.size} links, ${subtitles.size} subs")
         return links.filterValid().map { link -> link.toLocalScraperResult(api.name) }
     }
 
@@ -555,7 +555,7 @@ class ExternalExtensionRunner @Inject constructor(
             }
             return emptyList()
         }
-        Log.d(TAG, "SearchBased ${api.name}: ${searchResults.size} results")
+        Log.i(TAG, "SearchBased ${api.name}: ${searchResults.size} results")
 
         val bestMatch = findBestMatch(searchResults, candidateTitles, year, mediaType)
         if (bestMatch == null) {
@@ -619,7 +619,7 @@ class ExternalExtensionRunner @Inject constructor(
             return emptyList()
         }
 
-        Log.d(TAG, "SearchBased ${api.name}: ${links.size} links, ${subtitles.size} subs")
+        Log.i(TAG, "SearchBased ${api.name}: ${links.size} links, ${subtitles.size} subs")
         return links.filterValid().map { link -> link.toLocalScraperResult(api.name) }
     }
 
