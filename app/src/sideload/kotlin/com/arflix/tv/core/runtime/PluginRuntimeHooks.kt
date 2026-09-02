@@ -9,6 +9,9 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.nicehttp.ignoreAllSSLErrors
 
 import okhttp3.Cache
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import org.conscrypt.Conscrypt
 import java.io.File
@@ -50,7 +53,14 @@ object PluginRuntimeHooks {
 
             try {
                 app.baseClient = OkHttpClient.Builder()
-                    .cookieJar(okhttp3.CookieJar.NO_COOKIES)
+                    // Session cookies, not NO_COOKIES. Scraper sites routinely hand out a
+                    // session cookie on the first request (or on a redirect) and expect it
+                    // back on the next one; with NO_COOKIES every request looks like a
+                    // brand-new visitor, which is what bot protection is built to reject.
+                    // ARVIO already reached this conclusion for playback (PlaybackCookieJar
+                    // in PlayerScreen.kt) — the plugin client just never got the same
+                    // treatment. In-memory only: nothing is persisted across app restarts.
+                    .cookieJar(PluginCookieJar)
                     .followRedirects(true)
                     .followSslRedirects(true)
                     .ignoreAllSSLErrors()
@@ -73,5 +83,45 @@ object PluginRuntimeHooks {
 
     fun onActivityDestroy() {
         AcraApplication.setActivity(null)
+    }
+}
+
+/**
+ * In-memory cookie jar for the cloudstream plugin HTTP client, mirroring
+ * PlaybackCookieJar in PlayerScreen.kt: per-host storage, expiry honoured, no
+ * persistence. Shared by every plugin, which is intentional — cloudstream's own
+ * client is a single shared instance too, and extractors frequently follow a link
+ * from one host to another expecting the session to survive.
+ */
+private object PluginCookieJar : CookieJar {
+    private val cookiesByHost = java.util.concurrent.ConcurrentHashMap<String, List<Cookie>>()
+
+    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+        if (cookies.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val host = url.host
+        val current = cookiesByHost[host].orEmpty().toMutableList()
+
+        cookies.forEach { cookie ->
+            if (cookie.expiresAt <= now) return@forEach
+            current.removeAll { existing ->
+                existing.name == cookie.name &&
+                    existing.domain == cookie.domain &&
+                    existing.path == cookie.path
+            }
+            current.add(cookie)
+        }
+
+        if (current.isEmpty()) cookiesByHost.remove(host) else cookiesByHost[host] = current
+    }
+
+    override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        val stored = cookiesByHost[url.host] ?: return emptyList()
+        val now = System.currentTimeMillis()
+        val valid = stored.filter { it.expiresAt > now }
+        if (valid.size != stored.size) {
+            if (valid.isEmpty()) cookiesByHost.remove(url.host) else cookiesByHost[url.host] = valid
+        }
+        return valid.filter { it.matches(url) }
     }
 }
