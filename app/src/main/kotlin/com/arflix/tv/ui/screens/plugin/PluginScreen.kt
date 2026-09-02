@@ -722,13 +722,28 @@ fun WarningDialog(
 }
 
 /**
- * Leads the row's second line with the language of the site this scraper covers, so the
- * list shows at a glance which providers serve which language. Falls back to the bare id
- * for plugins whose repository manifest does not declare one.
+ * The row's second line: what the provider covers, not how it is addressed internally.
+ *
+ * This used to print the scraper id — a UUID plus the plugin name, e.g.
+ * "e3b83847-0f51-4f5b-8324-4c4c6331dbd0:FlixiTV". The name is already the row's title,
+ * and the UUID is an internal key nobody acts on, so it was noise on every single row.
+ * Language, content types and version are the three things a user actually chooses a
+ * provider by.
  */
+@Composable
 private fun scraperSubtitle(scraper: ScraperInfo): String {
-    val badge = scraper.contentLanguage
-        .firstOrNull { it.isNotBlank() }
-        ?.let(::languageBadgeText)
-    return if (badge != null) "$badge \u00B7 ${scraper.id}" else scraper.id
+    val movies = stringResource(R.string.movies)
+    val series = stringResource(R.string.series)
+    val types = scraper.supportedTypes.map { it.lowercase() }
+    val typeLabel = when {
+        types.contains("movie") && types.contains("tv") -> "$movies / $series"
+        types.contains("movie") -> movies
+        types.contains("tv") -> series
+        else -> null
+    }
+    return listOfNotNull(
+        scraper.contentLanguage.firstOrNull { it.isNotBlank() }?.let(::languageBadgeText),
+        typeLabel,
+        scraper.version.takeIf { it.isNotBlank() && it != "0" }?.let { "v$it" }
+    ).joinToString(" \u00B7 ")
 }
