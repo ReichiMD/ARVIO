@@ -17,6 +17,14 @@
 # ============================================
 # Log stripping for release builds
 # Remove debug/verbose/info logs for maximum performance
+#
+# NOTE FOR DIAGNOSTICS: this deletes every Log.i call from the release APK, not
+# just from its output. A diagnostic added at info level therefore does not exist
+# in the build people install and can never appear in a device logcat, however it
+# is captured. 2d7854e raised the scraper-yield lines from debug to info to make
+# them measurable on a device and they stayed invisible for exactly this reason,
+# through five device reports. Anything meant to be read off a release build must
+# be logged at WARN or above.
 # ============================================
 -assumenosideeffects class android.util.Log {
     public static int v(...);

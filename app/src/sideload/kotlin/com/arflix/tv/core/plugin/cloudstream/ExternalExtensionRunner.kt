@@ -44,9 +44,10 @@ private const val LOADLINKS_TIMEOUT_MS = 60_000L
 private const val MIN_TITLE_SIMILARITY = 0.5
 private const val MAX_ALT_TITLES = 8
 
-// The yield lines below are logged at WARN, not INFO. Device captures come back filtered
-// to warnings, so anything quieter never reaches a bug report — four runs in a row carried
-// only failures and no hits at all. These lines exist to be read off a device.
+// The yield lines below are logged at WARN, not INFO. proguard-rules.pro strips Log.i from
+// release builds, so an info-level diagnostic is absent from the installed APK rather than
+// merely filtered out of the capture — which is why five device reports in a row carried
+// only failures and no hits at all. These lines exist to be read off a release build.
 
 /**
  * Executes external DEX extensions by bridging between NuvioTV's TMDB ID-based system

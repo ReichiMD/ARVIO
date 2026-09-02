@@ -213,9 +213,10 @@ object OkHttpProvider {
             return
         }
         // Warn level for the first answer per host and resolver, info for the repeats.
-        // Device captures come back filtered to warnings — an info-only diagnostic has
-        // now been lost three times running — but one line per host stays quiet enough
-        // to belong at warn, where a line per request would not.
+        // proguard-rules.pro strips Log.i from release builds, so the info half of this
+        // is a debug-build convenience only and the warn half is what a device report
+        // will actually carry. One line per host is quiet enough to belong at warn; a
+        // line per request would not be.
         if (loggedResolutions.add("$source|$hostname")) {
             Log.w(TAG, "DNS $source resolved $hostname -> $shown (${addresses.size} total)")
         } else {

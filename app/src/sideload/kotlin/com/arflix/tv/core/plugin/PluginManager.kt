@@ -662,10 +662,10 @@ class PluginManager @Inject constructor(
 
         // Info level on purpose: the per-scraper outcome lines are the only way to tell
         // how much the plugin subsystem actually contributes. Warn level on purpose:
-        // device captures come back filtered to warnings, so debug was invisible, then
-        // info was too — four separate device reports in a row carried only failures and
-        // never a single hit, leaving the yield unmeasured. This is a measurement line,
-        // and it has to survive the filter people actually use.
+        // proguard-rules.pro strips Log.v/d/i from release builds entirely, so the info
+        // level this used to sit at did not exist in the installed APK at all — five
+        // device reports in a row carried only failures and never a single hit. Warn is
+        // the quietest level that survives into a release build.
         val producing = results.count { it.isNotEmpty() }
         val deduped = results.flatten().distinctBy { it.url }
         Log.w(
@@ -729,7 +729,7 @@ class PluginManager @Inject constructor(
         }
         // Warn level on purpose: this and the per-scraper "returned N results" lines are
         // the only way to tell how much the plugin subsystem actually contributes, and
-        // device captures come back filtered to warnings. See the sibling call site.
+        // release builds strip Log.i outright. See the sibling call site.
         Log.w(
             TAG,
             "Scraper run finished for $mediaType:$tmdbId - " +
