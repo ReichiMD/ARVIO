@@ -149,7 +149,7 @@ class ExternalExtensionRunner @Inject constructor(
         }
 
         diagnostics.addStep("Fetching TMDB metadata...")
-        val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId, contentType)
+        val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId, contentType, api.lang)
         val movieName = enrichment?.localizedTitle
         diagnostics.addStep("TMDB title: ${movieName ?: "(null)"}")
 
@@ -211,7 +211,7 @@ class ExternalExtensionRunner @Inject constructor(
         }
 
         diagnostics.addStep("Fetching TMDB metadata...")
-        val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId, contentType)
+        val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId, contentType, api.lang)
         if (enrichment == null) {
             diagnostics.addStep("TMDB enrichment FAILED")
             return emptyList()
@@ -481,7 +481,7 @@ class ExternalExtensionRunner @Inject constructor(
             "movie" -> ContentType.MOVIE
             else -> ContentType.SERIES
         }
-        val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId, contentType)
+        val enrichment = tmdbMetadataService.fetchEnrichment(tmdbId, contentType, api.lang)
         if (enrichment == null) {
             Log.e(TAG, "Failed to fetch TMDB enrichment for $tmdbId")
             return emptyList()
@@ -490,11 +490,13 @@ class ExternalExtensionRunner @Inject constructor(
         val title = enrichment.localizedTitle ?: return emptyList()
         val year = enrichment.releaseInfo?.take(4)?.toIntOrNull()
 
-        // Build candidate titles for multi-language matching: primary localized title,
-        // TMDB original title (often non-English for foreign content), plus alt titles
-        // per country. Filter alts to Latin-script and cap the list — TMDB returns
-        // translations in every script (Cyrillic/CJK/Arabic/Thai/etc.), and trying
-        // each one against a Spanish/Portuguese/English provider wastes requests.
+        // Build candidate titles for multi-language matching: English primary title,
+        // TMDB original title (often non-English for foreign content), plus the titles
+        // TmdbMetadataService resolved for the user's content language AND for this
+        // provider's own language (api.lang). Filter alts to Latin-script and cap the
+        // list — TMDB returns translations in every script (Cyrillic/CJK/Arabic/Thai),
+        // and trying each one against a Spanish/Portuguese/English provider wastes
+        // requests.
         val candidateTitles = buildList {
             add(title)
             enrichment.originalTitle
@@ -509,7 +511,7 @@ class ExternalExtensionRunner @Inject constructor(
                 .forEach(::add)
         }
 
-        Log.i(TAG, "SearchBased ${api.name}: searching for \"$title\" (${candidateTitles.size} candidates: ${candidateTitles.joinToString(" | ")})")
+        Log.i(TAG, "SearchBased ${api.name} [lang=${api.lang}]: searching for \"$title\" (${candidateTitles.size} candidates: ${candidateTitles.joinToString(" | ")})")
 
         var outcome = trySearch(api, title)
         var searchResults = outcome.items

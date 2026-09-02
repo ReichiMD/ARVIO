@@ -158,7 +158,9 @@ object OkHttpProvider {
         override fun lookup(hostname: String): List<InetAddress> {
             val provider = selectedDnsProvider
             return try {
-                selectedDns(provider).lookup(hostname)
+                val resolved = selectedDns(provider).lookup(hostname)
+                logResolution(provider, hostname, resolved, viaFallback = false)
+                resolved
             } catch (selectedFailure: UnknownHostException) {
                 if (provider == AppDnsProvider.SYSTEM) {
                     throw selectedFailure
@@ -166,12 +168,50 @@ object OkHttpProvider {
 
                 try {
                     val fallback = systemDns.lookup(hostname)
-                    Log.w(TAG, "DNS provider=$provider failed for $hostname, using system DNS fallback")
+                    // Which of the two resolvers actually answered decides whether a
+                    // DNS-blocked domain is reachable, and until this logged the reason
+                    // a silent fallback was indistinguishable from working DoH. Both the
+                    // message and the cause matter: DnsOverHttps reports "private hosts
+                    // not resolved" when its public-suffix classification fails, and
+                    // wraps a timeout or an HTTP error as the cause otherwise.
+                    Log.w(
+                        TAG,
+                        "DNS provider=$provider failed for $hostname " +
+                            "(${selectedFailure.message}; cause=${selectedFailure.cause}), " +
+                            "using system DNS fallback"
+                    )
+                    logResolution(provider, hostname, fallback, viaFallback = true)
                     fallback
                 } catch (_: UnknownHostException) {
                     throw selectedFailure
                 }
             }
+        }
+    }
+
+    /**
+     * Diagnostic only — this deliberately does not change what gets returned.
+     *
+     * A resolver that answers with the any-local or loopback address is refusing the
+     * name rather than resolving it (ad- and malware-filtering resolvers block that
+     * way). OkHttp treats that as a successful lookup and connects anyway, and whatever
+     * answers on port 443 then fails the handshake with "Unable to parse TLS packet
+     * header" — which reads like a TLS fault and is really a blocked name.
+     */
+    private fun logResolution(
+        provider: AppDnsProvider,
+        hostname: String,
+        addresses: List<InetAddress>,
+        viaFallback: Boolean
+    ) {
+        val source = if (viaFallback) "system-fallback" else provider.name
+        val sinkholed = addresses.isNotEmpty() &&
+            addresses.all { it.isAnyLocalAddress || it.isLoopbackAddress }
+        val shown = addresses.take(3).joinToString { it.hostAddress ?: it.toString() }
+        if (sinkholed) {
+            Log.w(TAG, "DNS $source resolved $hostname to a blocked address: $shown")
+        } else {
+            Log.i(TAG, "DNS $source resolved $hostname -> $shown (${addresses.size} total)")
         }
     }
 

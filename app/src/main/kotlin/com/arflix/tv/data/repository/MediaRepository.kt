@@ -119,6 +119,10 @@ class MediaRepository @Inject constructor(
     var contentLanguage: String = "en-US"
         set(value) {
             field = value.ifBlank { "en-US" }.replace("iw", "he").replace('_', '-')
+            // Mirror it out for callers that cannot depend on this repository — the
+            // sideload plugin path reads ContentLanguage.tag when it builds the search
+            // titles for CloudStream providers.
+            com.arflix.tv.util.ContentLanguage.tag = field
         }
 
     // === IN-MEMORY CACHE FOR PERFORMANCE ===

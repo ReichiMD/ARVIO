@@ -5,6 +5,7 @@ on:
     branches:
       - claude/cloudstream-plugin-fixes-cftmod
       - claude/cloudstream-plugin-c6-c8-fg25jb
+      - claude/cloudstream-dns-search-lang-tlfjyb
   workflow_dispatch:
 
 jobs:
