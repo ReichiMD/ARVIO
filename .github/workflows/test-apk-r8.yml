@@ -70,42 +70,62 @@ jobs:
       # v4.8.0 -> BuildersKt.runBlockingK$default, added in coroutines 1.11.0, bundled
       # 1.7.3). R8 cannot fix that, -dontwarn kotlinx.coroutines.** hides it at build time,
       # and it only surfaces as a device crash once the code path runs. This resolves that
-      # class of mismatch statically, before any device test. Logic validated offline
-      # against both a known-good pair (ktor 2.x vs coroutines 1.7.3 -> 0 findings) and the
-      # known-bad C8 pair (runBlockingK vs 1.7.3 -> 1 finding).
+      # class of mismatch statically, before any device test.
+      #
+      # Artifact paths come from Gradle itself, not from guessing at the cache layout:
+      # the pre-existing NiceHttp diagnostic above greps ~/.gradle for "*nicehttp*.jar"
+      # and silently finds nothing, because these are Android libraries cached as .aar.
       - name: DIAGNOSTIC - cloudstream/NiceHttp coroutines references vs bundled coroutines
         run: |
           set +e
-          echo "--- resolved cloudstream / coroutines versions ---"
-          ./gradlew :app:dependencies --configuration sideloadReleaseRuntimeClasspath --no-daemon 2>&1 \
-            | grep -iE "cloudstream|kotlinx-coroutines" | sort -u
+          cat > /tmp/c8-artifacts.gradle <<'GRADLE'
+          allprojects {
+              tasks.register("printC8Artifacts") {
+                  doLast {
+                      def cfg = configurations.findByName("sideloadReleaseRuntimeClasspath")
+                      if (cfg == null) { println "C8ART-NOCONFIG"; return }
+                      cfg.resolvedConfiguration.lenientConfiguration.artifacts.each { a ->
+                          println "C8ART\t${a.moduleVersion.id}\t${a.file}"
+                      }
+                  }
+              }
+          }
+          GRADLE
+          ./gradlew :app:printC8Artifacts --init-script /tmp/c8-artifacts.gradle --no-daemon -q 2>/dev/null \
+            | grep -a '^C8ART' > /tmp/c8_all_artifacts.txt
+          echo "--- resolved cloudstream / coroutines / ktor artifacts ---"
+          grep -iE "cloudstream|nicehttp|kotlinx-coroutines|io\.ktor" /tmp/c8_all_artifacts.txt | sed 's/^/    /'
           WORK=/tmp/c8check; rm -rf "$WORK"; mkdir -p "$WORK/callers" "$WORK/coroutines"
-          echo "--- unpacking caller artifacts (cloudstream library-android, NiceHttp) ---"
-          for art in $(find ~/.gradle /root/.gradle \( -iname "*library-android*.aar" -o -iname "*library-android*.jar" -o -iname "*nicehttp*.jar" \) 2>/dev/null); do
-            echo "    $art"
-            case "$art" in
-              *.aar) unzip -o -q "$art" classes.jar -d "$WORK" 2>/dev/null && unzip -o -q "$WORK/classes.jar" '*.class' -d "$WORK/callers" ;;
-              *.jar) unzip -o -q "$art" '*.class' -d "$WORK/callers" ;;
+          unpack() {  # $1 = file, $2 = destination
+            case "$1" in
+              *.aar) unzip -o -q "$1" classes.jar -d "$WORK/tmpaar" 2>/dev/null \
+                       && unzip -o -q "$WORK/tmpaar/classes.jar" '*.class' -d "$2" 2>/dev/null ;;
+              *.jar) unzip -o -q "$1" '*.class' -d "$2" 2>/dev/null ;;
             esac
+          }
+          echo "--- unpacking caller artifacts (cloudstream, NiceHttp) ---"
+          grep -iE "cloudstream|nicehttp" /tmp/c8_all_artifacts.txt | cut -f3 | while read -r f; do
+            echo "    $f"; unpack "$f" "$WORK/callers"
           done
           echo "--- unpacking bundled kotlinx-coroutines ---"
-          for cj in $(find ~/.gradle /root/.gradle -iname "kotlinx-coroutines-core-jvm-*.jar" 2>/dev/null); do
-            echo "    $cj"; unzip -o -q "$cj" '*.class' -d "$WORK/coroutines"
+          grep -i "kotlinx-coroutines" /tmp/c8_all_artifacts.txt | cut -f3 | while read -r f; do
+            echo "    $f"; unpack "$f" "$WORK/coroutines"
           done
-          if [ -z "$(find "$WORK/callers" -name '*.class' 2>/dev/null | head -1)" ] \
-             || [ -z "$(find "$WORK/coroutines" -name '*.class' 2>/dev/null | head -1)" ]; then
-            echo "!! nothing unpacked - adjust the find paths above; skipping check"
+          NC=$(find "$WORK/callers" -name '*.class' 2>/dev/null | wc -l)
+          NK=$(find "$WORK/coroutines" -name '*.class' 2>/dev/null | wc -l)
+          echo "    unpacked: $NC caller classes, $NK coroutines classes"
+          if [ "$NC" -eq 0 ] || [ "$NK" -eq 0 ]; then
+            echo "!! CHECK DID NOT RUN - nothing unpacked (see the artifact list above)"
             set -e; exit 0
           fi
-          # Index of every method name the bundled coroutines actually defines. Inline-class
-          # mangling suffixes (foo-Ab1Cd2) are stripped on both sides so they cannot cause
-          # false positives. NOTE: the grep pattern must stay single-quoted - "$-" would be
-          # expanded by the shell and silently break the index.
+          # Index of every method name the bundled coroutines defines. Inline-class mangling
+          # suffixes (foo-Ab1Cd2) are stripped on both sides so they cannot cause false
+          # positives. NOTE: the grep pattern must stay single-quoted - "$-" would be
+          # expanded by the shell and would silently corrupt the index.
           find "$WORK/coroutines" -name '*.class' | xargs -n 200 javap -p 2>/dev/null \
             | grep -oE '[A-Za-z_$][A-Za-z0-9_$]*(-[A-Za-z0-9_]+)?\(' | tr -d '(' \
             | sed 's/-.*//' | sort -u > /tmp/c8_index.txt
-          echo "    bundled coroutines defines $(wc -l < /tmp/c8_index.txt) distinct method names"
-          echo "--- extracting kotlinx.coroutines references from caller bytecode ---"
+          echo "    bundled coroutines define $(wc -l < /tmp/c8_index.txt) distinct method names"
           (cd "$WORK/callers" && find . -name '*.class' | xargs -n 200 javap -p -c 2>/dev/null) \
             | grep -oE '// (Method|InterfaceMethod) kotlinx/coroutines/[^ :]+:' \
             | sed -E 's|// [A-Za-z]+ ||; s|:$||' | sort -u > /tmp/c8_refs.txt
@@ -115,15 +135,15 @@ jobs:
             cls="${ref%.*}"; meth="${ref##*.}"; meth="${meth//\"/}"; meth="${meth%%-*}"
             [ "$meth" = "<init>" ] && continue
             if [ ! -f "$WORK/coroutines/${cls}.class" ]; then
-              echo "    MISSING CLASS : $cls  (ref: $ref)"; MISSING=$((MISSING+1)); continue
+              echo "    MISSING CLASS  $cls  (referenced as $ref)"; MISSING=$((MISSING+1)); continue
             fi
-            grep -qxF "$meth" /tmp/c8_index.txt || { echo "    MISSING METHOD: $ref"; MISSING=$((MISSING+1)); }
+            grep -qxF "$meth" /tmp/c8_index.txt || { echo "    MISSING METHOD  $ref"; MISSING=$((MISSING+1)); }
           done < /tmp/c8_refs.txt
           if [ "$MISSING" -eq 0 ]; then
-            echo "OK - every coroutines method the plugin libraries call exists in the bundled version"
+            echo "RESULT: OK - every coroutines method the plugin libraries call exists in the bundled version"
           else
-            echo "!! $MISSING unresolvable reference(s) - this is the C8 failure mode; expect a device"
-            echo "   NoSuchMethodError/NoClassDefFoundError on the code path that uses them."
+            echo "RESULT: $MISSING unresolvable reference(s) - this is the C8 failure mode; expect a device"
+            echo "        NoSuchMethodError/NoClassDefFoundError on whichever code path uses them."
           fi
           set -e
 
