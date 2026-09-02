@@ -12,11 +12,16 @@ import com.lagradost.nicehttp.ignoreAllSSLErrors
 import okhttp3.Cache
 import okhttp3.Cookie
 import okhttp3.CookieJar
+import okhttp3.Dispatcher
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import org.conscrypt.Conscrypt
 import java.io.File
 import java.security.Security
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 object PluginRuntimeHooks {
     @Volatile private var application: Application? = null
@@ -62,6 +67,8 @@ object PluginRuntimeHooks {
                     // in PlayerScreen.kt) — the plugin client just never got the same
                     // treatment. In-memory only: nothing is persisted across app restarts.
                     .cookieJar(PluginCookieJar)
+                    // Keep a broken plugin from taking the whole app down with it.
+                    .dispatcher(pluginDispatcher())
                     // Use the app-wide resolver, which honours the user's DNS setting
                     // (system or one of the DNS-over-HTTPS providers). Every other ARVIO
                     // client already does this — HomeScreen, TvScreen, LiveTvScreen and
@@ -94,6 +101,57 @@ object PluginRuntimeHooks {
 
             isCloudstreamInitialized = true
         }
+    }
+
+    private val pluginHttpThreadCount = AtomicInteger(0)
+
+    /**
+     * The plugin client's own dispatcher, whose threads swallow a plugin's fatal errors.
+     *
+     * Externally loaded .cs3 plugins are compiled against the full CloudStream app, not
+     * the library ARVIO embeds, so they can reference classes that do not exist here. The
+     * 02.09.2026 device run hit one from the Phisher repository:
+     *
+     *   FATAL EXCEPTION: OkHttp Dispatcher
+     *   java.lang.NoClassDefFoundError: Lcom/lagradost/cloudstream3/CloudStreamApp;
+     *     at com.anidb.AniDbPlugin$Companion.getCfUserAgent(AniDbPlugin.kt:31)
+     *     at com.anidb.AniDbCFBypassInterceptor.intercept(AniDb.kt:53)
+     *
+     * CloudStreamApp lives in CloudStream's app module — verified absent from the library
+     * in both v4.7.0 and master — so no version bump can supply it, and ExternalExtension-
+     * Runner's try/catch could not help: the failure happens inside an OkHttp interceptor,
+     * on a dispatcher thread, not on the coroutine that called search().
+     *
+     * OkHttp already reports such a Throwable to the caller as an IOException and then
+     * rethrows it (RealCall.AsyncCall.run, okhttp 4.12 RealCall.kt:534). The rethrow is
+     * what reaches the default uncaught handler and kills the process — the search itself
+     * has already been failed cleanly by then. Giving these threads a handler of their own
+     * therefore costs nothing and turns an app-wide crash into one dead provider.
+     *
+     * The pool mirrors OkHttp's own dispatcher pool; only the thread factory differs.
+     */
+    private fun pluginDispatcher(): Dispatcher {
+        val executor = ThreadPoolExecutor(
+            0,
+            Int.MAX_VALUE,
+            60L,
+            TimeUnit.SECONDS,
+            SynchronousQueue()
+        ) { runnable ->
+            Thread(runnable, "arvio-plugin-http-${pluginHttpThreadCount.incrementAndGet()}").apply {
+                isDaemon = false
+                setUncaughtExceptionHandler { thread, error ->
+                    Log.e(
+                        "PluginRuntimeHooks",
+                        "Plugin HTTP call died on ${thread.name}: " +
+                            "${error.javaClass.simpleName}: ${error.message}. " +
+                            "The provider is skipped; the app keeps running.",
+                        error
+                    )
+                }
+            }
+        }
+        return Dispatcher(executor)
     }
 
     fun onActivityCreate(activity: Activity) {

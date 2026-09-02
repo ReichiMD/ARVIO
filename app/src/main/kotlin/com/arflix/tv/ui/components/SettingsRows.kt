@@ -27,12 +27,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import coil.compose.AsyncImage
 import com.arflix.tv.R
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
@@ -173,6 +175,62 @@ fun SettingsRow(
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
+/**
+ * Leading icon for a settings row: the artwork at [iconUrl] when the entry brings its own
+ * — plugin repositories and scrapers carry an iconUrl in their manifest — and the supplied
+ * vector otherwise. Coil leaves the fallback in place while loading and when the URL is
+ * unreachable, so a provider with a dead icon host still shows something.
+ */
+@Composable
+private fun SettingsRowLeadingIcon(
+    iconUrl: String?,
+    icon: ImageVector?,
+    @DrawableRes iconRes: Int?,
+    iconTint: Color
+) {
+    val fallback: (@Composable () -> Unit)? = when {
+        iconRes != null -> {
+            {
+                Icon(
+                    painter = painterResource(id = iconRes),
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        icon != null -> {
+            {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        else -> null
+    }
+
+    if (!iconUrl.isNullOrBlank()) {
+        AsyncImage(
+            model = iconUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .size(24.dp)
+                .clip(RoundedCornerShape(5.dp))
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        return
+    }
+
+    if (fallback != null) {
+        fallback()
+        Spacer(modifier = Modifier.width(16.dp))
+    }
+}
+
 @Composable
 fun SettingsToggleRow(
     title: String,
@@ -180,7 +238,8 @@ fun SettingsToggleRow(
     isEnabled: Boolean,
     isFocused: Boolean,
     onToggle: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    iconUrl: String? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focusRingColor = resolveAccentColor(fallback = Pink)
@@ -205,22 +264,33 @@ fun SettingsToggleRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = ArflixTypography.cardTitle.copy(fontSize = 16.sp),
-                color = TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            SettingsRowLeadingIcon(
+                iconUrl = iconUrl,
+                icon = null,
+                iconRes = null,
+                iconTint = TextSecondary
             )
-            if (subtitle.isNotEmpty()) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = subtitle,
-                    style = ArflixTypography.caption.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                    color = TextSecondary,
-                    maxLines = 3,
+                    text = title,
+                    style = ArflixTypography.cardTitle.copy(fontSize = 16.sp),
+                    color = TextPrimary,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        text = subtitle,
+                        style = ArflixTypography.caption.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                        color = TextSecondary,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
@@ -276,6 +346,7 @@ fun MobileSettingsCategory(
 fun MobileSettingsRow(
     icon: ImageVector? = null,
     @DrawableRes iconRes: Int? = null,
+    iconUrl: String? = null,
     iconTint: Color = TextSecondary,
     title: String,
     subtitle: String = "",
@@ -302,23 +373,12 @@ fun MobileSettingsRow(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                when {
-                    iconRes != null -> Icon(
-                        painter = painterResource(id = iconRes),
-                        contentDescription = null,
-                        tint = iconTint,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    icon != null -> Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = iconTint,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                if (iconRes != null || icon != null) {
-                    Spacer(modifier = Modifier.width(16.dp))
-                }
+                SettingsRowLeadingIcon(
+                    iconUrl = iconUrl,
+                    icon = icon,
+                    iconRes = iconRes,
+                    iconTint = iconTint
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = title,

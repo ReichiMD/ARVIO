@@ -164,6 +164,7 @@ fun PluginScreen(
                     repositories.forEachIndexed { idx, repo ->
                         MobileSettingsRow(
                             icon = Icons.Default.Extension,
+                            iconUrl = repositoryIconUrl(repo, scrapers),
                             title = repo.name,
                             subtitle = repositorySubtitle(repo, scrapers),
                             value = stringResource(R.string.delete),
@@ -189,6 +190,7 @@ fun PluginScreen(
                     scrapers.forEachIndexed { idx, scraper ->
                         MobileSettingsRow(
                             icon = Icons.Default.Extension,
+                            iconUrl = scraper.logo,
                             title = scraper.name,
                             subtitle = scraperSubtitle(scraper),
                             value = if (scraper.enabled) "On" else "Off",
@@ -324,6 +326,7 @@ fun PluginScreen(
                         focusedIndex = focusedIndex,
                         title = scraper.name,
                         subtitle = scraperSubtitle(scraper),
+                        iconUrl = scraper.logo,
                         isEnabled = scraper.enabled,
                         onToggle = { enabled -> viewModel.onEvent(PluginUiEvent.ToggleScraper(scraper.id, enabled)) }
                     )
@@ -461,11 +464,13 @@ fun FocusableSettingsToggleRow(
     subtitle: String = "",
     isEnabled: Boolean,
     onToggle: (Boolean) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    iconUrl: String? = null
 ) {
     SettingsToggleRow(
         title = title,
         subtitle = subtitle,
+        iconUrl = iconUrl,
         isEnabled = isEnabled,
         isFocused = (focusedIndex == index),
         onToggle = onToggle,
@@ -802,3 +807,15 @@ private fun shortRepoSource(url: String): String? {
         host.ifBlank { null }
     }
 }
+
+/**
+ * A repository has no icon of its own in ARVIO's model, but every provider it installed
+ * carries one from the manifest — so the first of those stands in for the repository and
+ * the row gets real artwork instead of a grey puzzle piece.
+ */
+private fun repositoryIconUrl(
+    repo: PluginRepository,
+    scrapers: List<ScraperInfo>
+): String? = scrapers
+    .firstOrNull { it.repositoryId == repo.id && !it.logo.isNullOrBlank() }
+    ?.logo
