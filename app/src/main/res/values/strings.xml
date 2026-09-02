@@ -813,6 +813,7 @@
     <string name="plugin_screen_title">Plugins (Testing)</string>
     <string name="plugin_screen_add_repo">Add Repository</string>
     <string name="plugin_screen_installed_repos">Installed Repositories</string>
+    <string name="plugin_repo_active_count">%1$d/%2$d active</string>
     <string name="plugin_screen_installed_scrapers">Installed Scrapers</string>
     <string name="plugin_screen_no_scrapers">No scrapers installed.</string>
     <string name="plugin_screen_add_repo_dialog_title">Add Plugin Repository</string>

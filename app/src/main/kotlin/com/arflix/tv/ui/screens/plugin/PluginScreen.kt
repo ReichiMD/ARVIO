@@ -165,7 +165,7 @@ fun PluginScreen(
                         MobileSettingsRow(
                             icon = Icons.Default.Extension,
                             title = repo.name,
-                            subtitle = repo.url,
+                            subtitle = repositorySubtitle(repo, scrapers),
                             value = stringResource(R.string.delete),
                             isFocused = false,
                             showDivider = idx < repositories.lastIndex,
@@ -291,7 +291,7 @@ fun PluginScreen(
                         focusedIndex = focusedIndex,
                         icon = Icons.Default.Delete,
                         title = repo.name,
-                        subtitle = repo.url,
+                        subtitle = repositorySubtitle(repo, scrapers),
                         value = stringResource(R.string.delete),
                         onClick = { viewModel.onEvent(PluginUiEvent.RemoveRepository(repo.id)) }
                     )
@@ -746,4 +746,59 @@ private fun scraperSubtitle(scraper: ScraperInfo): String {
         typeLabel,
         scraper.version.takeIf { it.isNotBlank() && it != "0" }?.let { "v$it" }
     ).joinToString(" \u00B7 ")
+}
+
+/**
+ * The repository row's second line. It used to be the raw manifest URL, which on a phone
+ * wraps over two lines of "https://raw.githubusercontent.com/..." and says nothing about
+ * what the repository actually gives you.
+ *
+ * What it says now: which languages its providers cover, how many of them are switched on,
+ * and where it comes from in a form a person can read.
+ *
+ *   before  https://raw.githubusercontent.com/Bnyro/GermanProviders/refs/heads/master/repo.json
+ *   after   🇩🇪 DE · 18/21 active · Bnyro/GermanProviders
+ */
+@Composable
+private fun repositorySubtitle(
+    repo: PluginRepository,
+    scrapers: List<ScraperInfo>
+): String {
+    val own = scrapers.filter { it.repositoryId == repo.id }
+    val flags = own
+        .flatMap { it.contentLanguage }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .mapNotNull(::languageBadgeText)
+        .distinct()
+    // Two flags fit; beyond that the row would wrap, so the rest becomes a count.
+    val languageLabel = when {
+        flags.isEmpty() -> null
+        flags.size <= 2 -> flags.joinToString(" ")
+        else -> flags.take(2).joinToString(" ") + " +${flags.size - 2}"
+    }
+    val total = if (own.isNotEmpty()) own.size else repo.scraperCount
+    val countLabel = if (own.isNotEmpty()) {
+        stringResource(R.string.plugin_repo_active_count, own.count { it.enabled }, total)
+    } else {
+        null
+    }
+    return listOfNotNull(languageLabel, countLabel, shortRepoSource(repo.url))
+        .joinToString(" \u00B7 ")
+        .ifBlank { repo.url }
+}
+
+/** "https://raw.githubusercontent.com/Bnyro/GermanProviders/refs/heads/master/repo.json" -> "Bnyro/GermanProviders". */
+private fun shortRepoSource(url: String): String? {
+    val withoutScheme = url.substringAfter("://", url).trim()
+    if (withoutScheme.isBlank()) return null
+    val host = withoutScheme.substringBefore('/').removePrefix("www.")
+    val segments = withoutScheme.substringAfter('/', "").split('/').filter { it.isNotBlank() }
+    return if (
+        (host == "raw.githubusercontent.com" || host == "github.com") && segments.size >= 2
+    ) {
+        "${segments[0]}/${segments[1]}"
+    } else {
+        host.ifBlank { null }
+    }
 }
