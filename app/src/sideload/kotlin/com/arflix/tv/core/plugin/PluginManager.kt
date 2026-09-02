@@ -91,12 +91,23 @@ class PluginManager @Inject constructor(
         return sb.toString()
     }
 
+    private val whitespaceRegex = Regex("\\s+")
+
     /**
      * Normalize custom protocol schemes to https://.
      * External repos often use schemes like "cloudstreamrepo://" or "stremio://".
      */
     private fun sanitizeScheme(url: String): String {
-        val trimmed = url.trim()
+        val raw = url.trim()
+        // A pasted URL routinely carries more than the URL: a line break and a
+        // sentence from the chat message or page it was copied out of. No URL
+        // contains whitespace, so everything from the first whitespace character
+        // on is not part of it — requesting it anyway turns a working repository
+        // into a 403/404 that looks like the repository is broken.
+        val trimmed = raw.split(whitespaceRegex).firstOrNull { it.isNotBlank() }.orEmpty()
+        if (trimmed != raw) {
+            Log.w(TAG, "Dropped ${raw.length - trimmed.length} characters pasted after the URL; using: $trimmed")
+        }
         // Replace any non-http(s) scheme with https://
         val schemeEnd = trimmed.indexOf("://")
         if (schemeEnd > 0) {
