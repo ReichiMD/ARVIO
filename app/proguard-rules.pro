@@ -174,6 +174,19 @@
 -dontwarn com.sun.jna.**
 -dontwarn edu.umd.cs.findbugs.annotations.**
 -dontwarn javax.script.**
+# Rhino (org.mozilla.javascript): the JS engine CloudStream extractors use to unpack
+# obfuscated player scripts. Only -dontwarn was here, never a -keep — same gap as
+# kotlin.** (C1), okhttp3.** (C4), kotlinx.serialization.** (C6) and kotlinx.coroutines.**.
+# Rhino resolves its VMBridge implementation BY NAME via reflection, so R8 renaming the
+# class breaks it even though nothing was stripped. Confirmed on device (02.09.2026):
+#   IllegalStateException: Failed to create VMBridge instance
+#     at org.mozilla.javascript.e0.<clinit>        <- note the obfuscated name
+#   Suppressed: NoClassDefFoundError: org.mozilla.javascript.e0
+# The visible cost is silent: KinoKing matched the film, reached loadLinks, and returned
+# "false/null, 0 links" immediately after this error — extractors that need to unpack a
+# script cannot produce a single link.
+-keep class org.mozilla.javascript.** { *; }
+-keep interface org.mozilla.javascript.** { *; }
 -dontwarn org.mozilla.javascript.**
 
 # CloudStream API & Dependencies (External plugins are compiled against these)

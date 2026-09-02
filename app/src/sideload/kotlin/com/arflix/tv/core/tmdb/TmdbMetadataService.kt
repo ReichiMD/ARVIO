@@ -84,7 +84,7 @@ class TmdbMetadataService @Inject constructor(
             runCatchingTitle { tmdbApi.getMovieDetails(id, Constants.TMDB_API_KEY, language = tag).title }
         }
         val alternatives = runCatchingTitles {
-            tmdbApi.getMovieAlternativeTitles(id, Constants.TMDB_API_KEY).titles.map { it.title }
+            tmdbApi.getMovieAlternativeTitles(id, Constants.TMDB_API_KEY).titles.forCurrentCountry()
         }
         return mergeTitles(primary, localized, alternatives)
     }
@@ -94,9 +94,23 @@ class TmdbMetadataService @Inject constructor(
             runCatchingTitle { tmdbApi.getTvDetails(id, Constants.TMDB_API_KEY, language = tag).name }
         }
         val alternatives = runCatchingTitles {
-            tmdbApi.getTvAlternativeTitles(id, Constants.TMDB_API_KEY).results.map { it.title }
+            tmdbApi.getTvAlternativeTitles(id, Constants.TMDB_API_KEY).results.forCurrentCountry()
         }
         return mergeTitles(primary, localized, alternatives)
+    }
+
+    /**
+     * Keep only titles released in the user's own country. TMDB returns every country's
+     * variant — for one film that was 8 candidates including Azerbaijani, Catalan and
+     * Croatian ones. Since each candidate costs one search request PER PROVIDER, and they
+     * are issued in parallel, the untrimmed list made Welt answer HTTP 429 on the
+     * 02.09.2026 device run. A Croatian title cannot help a German provider anyway, so
+     * this is both lighter and more accurate.
+     */
+    private fun List<com.arflix.tv.data.api.TmdbAlternativeTitle>.forCurrentCountry(): List<String> {
+        val country = java.util.Locale.getDefault().country.uppercase()
+        if (country.isBlank()) return emptyList()
+        return filter { it.country?.uppercase() == country }.map { it.title }
     }
 
     // Localized title first: it is the one a regional provider is most likely to index.
