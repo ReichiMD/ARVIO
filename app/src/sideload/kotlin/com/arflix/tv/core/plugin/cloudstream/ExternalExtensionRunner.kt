@@ -509,7 +509,7 @@ class ExternalExtensionRunner @Inject constructor(
                 .forEach(::add)
         }
 
-        Log.d(TAG, "SearchBased ${api.name}: searching for \"$title\" (${candidateTitles.size} candidates)")
+        Log.i(TAG, "SearchBased ${api.name}: searching for \"$title\" (${candidateTitles.size} candidates: ${candidateTitles.joinToString(" | ")})")
 
         var outcome = trySearch(api, title)
         var searchResults = outcome.items

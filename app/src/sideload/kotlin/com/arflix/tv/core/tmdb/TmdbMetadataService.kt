@@ -9,10 +9,25 @@ import javax.inject.Singleton
 
 private const val TAG = "TmdbMetadataService"
 
-// Fixed to English: candidate-title matching in ExternalExtensionRunner already falls
-// back through originalTitle, and most CloudStream providers' own search indexes are
-// keyed off English/original titles rather than the user's display-language preference.
+// Primary lookup stays English: most CloudStream providers index by English/original
+// title, so that is the best single first guess.
 private const val LANGUAGE = "en-US"
+
+/**
+ * The device's language tag in TMDB form ("de-DE"), or null when it adds nothing over
+ * the English primary. Regional providers list a film under its local release title —
+ * a German site has no "The Super Mario Bros. Movie", only "Der Super Mario Bros. Film"
+ * — so the localized title has to be among the candidates or those providers can never
+ * match. Device locale rather than a hardcoded language: the same gap exists for every
+ * non-English provider set, not just the German one.
+ */
+private fun localeLanguageTag(): String? {
+    val locale = java.util.Locale.getDefault()
+    val language = locale.language.lowercase()
+    if (language.isBlank() || language == "en") return null
+    val country = locale.country.uppercase()
+    return if (country.isBlank()) language else "$language-$country"
+}
 
 data class TmdbEnrichment(
     val localizedTitle: String?,
@@ -38,7 +53,7 @@ class TmdbMetadataService @Inject constructor(
                     localizedTitle = details.title.ifBlank { null },
                     releaseInfo = details.releaseDate,
                     originalTitle = details.originalTitle,
-                    alternativeTitles = emptyList()
+                    alternativeTitles = movieAlternativeTitles(id, details.title)
                 )
             } else {
                 val details = tmdbApi.getTvDetails(id, Constants.TMDB_API_KEY, language = LANGUAGE)
@@ -46,7 +61,7 @@ class TmdbMetadataService @Inject constructor(
                     localizedTitle = details.name.ifBlank { null },
                     releaseInfo = details.firstAirDate,
                     originalTitle = details.originalName,
-                    alternativeTitles = emptyList()
+                    alternativeTitles = tvAlternativeTitles(id, details.name)
                 )
             }
         } catch (e: retrofit2.HttpException) {
@@ -56,5 +71,58 @@ class TmdbMetadataService @Inject constructor(
             Log.w(TAG, "fetchEnrichment($tmdbId, $contentType): ${e.message}")
             null
         }
+    }
+
+    /**
+     * Localized release title plus TMDB's alternative titles, deduplicated against the
+     * English primary. Each lookup is optional: a failure here must not cost the caller
+     * its enrichment, since the English title alone still works for most providers.
+     * ExternalExtensionRunner does the Latin-script filtering and capping.
+     */
+    private suspend fun movieAlternativeTitles(id: Int, primary: String): List<String> {
+        val localized = localeLanguageTag()?.let { tag ->
+            runCatchingTitle { tmdbApi.getMovieDetails(id, Constants.TMDB_API_KEY, language = tag).title }
+        }
+        val alternatives = runCatchingTitles {
+            tmdbApi.getMovieAlternativeTitles(id, Constants.TMDB_API_KEY).titles.map { it.title }
+        }
+        return mergeTitles(primary, localized, alternatives)
+    }
+
+    private suspend fun tvAlternativeTitles(id: Int, primary: String): List<String> {
+        val localized = localeLanguageTag()?.let { tag ->
+            runCatchingTitle { tmdbApi.getTvDetails(id, Constants.TMDB_API_KEY, language = tag).name }
+        }
+        val alternatives = runCatchingTitles {
+            tmdbApi.getTvAlternativeTitles(id, Constants.TMDB_API_KEY).results.map { it.title }
+        }
+        return mergeTitles(primary, localized, alternatives)
+    }
+
+    // Localized title first: it is the one a regional provider is most likely to index.
+    private fun mergeTitles(primary: String, localized: String?, alternatives: List<String>): List<String> =
+        (listOfNotNull(localized) + alternatives)
+            .map(String::trim)
+            .filter { it.isNotBlank() && !it.equals(primary.trim(), ignoreCase = true) }
+            .distinctBy { it.lowercase() }
+
+    private suspend fun runCatchingTitle(block: suspend () -> String): String? = try {
+        block().ifBlank { null }
+    } catch (e: retrofit2.HttpException) {
+        Log.w(TAG, "localized title lookup failed: HTTP ${e.code()}")
+        null
+    } catch (e: java.io.IOException) {
+        Log.w(TAG, "localized title lookup failed: ${e.message}")
+        null
+    }
+
+    private suspend fun runCatchingTitles(block: suspend () -> List<String>): List<String> = try {
+        block()
+    } catch (e: retrofit2.HttpException) {
+        Log.w(TAG, "alternative titles lookup failed: HTTP ${e.code()}")
+        emptyList()
+    } catch (e: java.io.IOException) {
+        Log.w(TAG, "alternative titles lookup failed: ${e.message}")
+        emptyList()
     }
 }

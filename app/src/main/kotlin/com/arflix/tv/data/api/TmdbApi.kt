@@ -74,6 +74,21 @@ interface TmdbApi {
         @Query("language") language: String? = null
     ): TmdbTvDetails
 
+    // Localized/alternative titles, used to search title-based CloudStream plugins in a
+    // language their site actually indexes. A German provider has no entry for "The Super
+    // Mario Bros. Movie" — there it is "Der Super Mario Bros. Film".
+    @GET("movie/{movie_id}/alternative_titles")
+    suspend fun getMovieAlternativeTitles(
+        @Path("movie_id") movieId: Int,
+        @Query("api_key") apiKey: String
+    ): TmdbMovieAlternativeTitles
+
+    @GET("tv/{tv_id}/alternative_titles")
+    suspend fun getTvAlternativeTitles(
+        @Path("tv_id") tvId: Int,
+        @Query("api_key") apiKey: String
+    ): TmdbTvAlternativeTitles
+
     @GET("tv/{tv_id}/season/{season_number}")
     suspend fun getTvSeason(
         @Path("tv_id") tvId: Int,
@@ -351,4 +366,24 @@ data class TmdbTvSeason(
     val overview: String? = null,
     @SerializedName("poster_path") val posterPath: String? = null,
     @SerializedName("air_date") val airDate: String? = null
+)
+
+/**
+ * TMDB alternative-title payloads. Movies return them under "titles", TV under
+ * "results"; both carry an ISO-3166-1 country code per entry.
+ */
+data class TmdbAlternativeTitle(
+    @SerializedName("iso_3166_1") val country: String? = null,
+    val title: String = "",
+    val type: String? = null
+)
+
+data class TmdbMovieAlternativeTitles(
+    val id: Int = 0,
+    val titles: List<TmdbAlternativeTitle> = emptyList()
+)
+
+data class TmdbTvAlternativeTitles(
+    val id: Int = 0,
+    val results: List<TmdbAlternativeTitle> = emptyList()
 )
