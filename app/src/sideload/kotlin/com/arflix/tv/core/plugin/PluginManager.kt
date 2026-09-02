@@ -435,11 +435,29 @@ class PluginManager @Inject constructor(
         )
 
         dataStore.addRepository(repo)
-        downloadDexExtensions(repo.id, parseResult.plugins)
+        val installed = downloadDexExtensions(repo.id, parseResult.plugins)
 
-        Log.w(TAG, "External repository added: ${repo.name} with ${parseResult.plugins.size} extensions")
-        triggerRemoteSync("repo added: ${repo.name}")
-        return Result.success(repo)
+        // A repository whose plugin files are all gone (the Kekik repo lists 41
+        // extensions whose .cs3 URLs every one return 404) would otherwise be stored
+        // as "41 providers" with an empty provider list. Say so instead of pretending.
+        if (installed == 0 && parseResult.plugins.isNotEmpty()) {
+            Log.e(TAG, "No extension of ${parseResult.plugins.size} could be downloaded — dropping repo ${repo.name}")
+            dataStore.removeRepository(repo.id)
+            return Result.failure(
+                Exception("None of the ${parseResult.plugins.size} extensions could be downloaded")
+            )
+        }
+
+        // The row must show what is installed, not what the list promised.
+        val storedRepo = if (installed != parseResult.plugins.size) {
+            repo.copy(scraperCount = installed).also { dataStore.updateRepository(it) }
+        } else {
+            repo
+        }
+
+        Log.w(TAG, "External repository added: ${storedRepo.name} with $installed of ${parseResult.plugins.size} extensions")
+        triggerRemoteSync("repo added: ${storedRepo.name}")
+        return Result.success(storedRepo)
     }
 
     /**
@@ -583,14 +601,13 @@ class PluginManager @Inject constructor(
         val oldScrapers = dataStore.scrapers.first().filter { it.repositoryId == repo.id }
         oldScrapers.forEach { externalExtensionLoader.evictCache(it.id) }
 
+        val installed = downloadDexExtensions(repo.id, parseResult.plugins)
         val updatedRepo = repo.copy(
             name = parseResult.name,
             lastUpdated = System.currentTimeMillis(),
-            scraperCount = parseResult.plugins.size
+            scraperCount = installed
         )
         dataStore.updateRepository(updatedRepo)
-
-        downloadDexExtensions(repo.id, parseResult.plugins)
 
         return Result.success(Unit)
     }
@@ -1081,10 +1098,11 @@ class PluginManager @Inject constructor(
      * Uses a semaphore to limit concurrent downloads and avoid overwhelming
      * the network. Scrapers are saved incrementally in batches.
      */
+    /** @return how many extensions were actually downloaded and installed. */
     private suspend fun downloadDexExtensions(
         repoId: String,
         plugins: List<ExternalPluginEntry>
-    ) = withContext(Dispatchers.IO) {
+    ): Int = withContext(Dispatchers.IO) {
         val existingScrapers = dataStore.scrapers.first().toMutableList()
         val downloadSemaphore = Semaphore(MAX_PARALLEL_DOWNLOADS)
         val newScrapers = java.util.Collections.synchronizedList(mutableListOf<ScraperInfo>())
@@ -1146,6 +1164,7 @@ class PluginManager @Inject constructor(
         dataStore.saveScrapers(existingScrapers)
 
         Log.w(TAG, "Downloaded ${newScrapers.size}/${plugins.size} extensions for repo $repoId")
+        newScrapers.size
     }
 
     suspend fun clearAllPlugins() {

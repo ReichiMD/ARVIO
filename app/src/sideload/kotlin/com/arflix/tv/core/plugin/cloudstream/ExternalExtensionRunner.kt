@@ -566,14 +566,18 @@ class ExternalExtensionRunner @Inject constructor(
 
         val bestMatch = findBestMatch(searchResults, candidateTitles, year, mediaType)
         if (bestMatch == null) {
-            Log.d(TAG, "No suitable match in ${api.name} results for: $title ($year) [candidates=${candidateTitles.size}]")
+            // A provider that answers the search but whose results are all rejected
+            // looks identical to one that found nothing at all — and both end as
+            // "0 results" in the run summary. Name the rejected titles and their
+            // similarity so the difference is visible on a release build.
+            Log.w(TAG, "No suitable match in ${api.name} results for: $title ($year) [candidates=${candidateTitles.size}]")
             searchResults.take(5).forEachIndexed { i, r ->
                 val sim = candidateTitles.maxOf { calculateSimilarity(r.name, it) }
-                Log.d(TAG, "  [$i] \"${r.name}\" (sim=${String.format("%.2f", sim)}, type=${r.type})")
+                Log.w(TAG, "  [$i] \"${r.name}\" (sim=${String.format("%.2f", sim)}, type=${r.type})")
             }
             return emptyList()
         }
-        Log.d(TAG, "Best match from ${api.name}: ${bestMatch.name} (${bestMatch.url})")
+        Log.w(TAG, "Best match from ${api.name}: ${bestMatch.name} (${bestMatch.url})")
 
         val loadResponse = try {
             api.load(bestMatch.url)
@@ -593,7 +597,7 @@ class ExternalExtensionRunner @Inject constructor(
 
         val data = extractData(loadResponse, mediaType, season, episode)
         if (data == null) {
-            Log.d(TAG, "No data extracted from ${api.name} for S${season}E${episode}")
+            Log.w(TAG, "No data extracted from ${api.name} for S${season}E${episode} (loaded ${loadResponse.javaClass.simpleName})")
             return emptyList()
         }
 
