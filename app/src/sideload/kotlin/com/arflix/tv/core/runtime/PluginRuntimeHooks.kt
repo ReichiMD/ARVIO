@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.os.Build
 import android.util.Log
+import com.arflix.tv.network.OkHttpProvider
 import com.lagradost.cloudstream3.AcraApplication
 import com.lagradost.cloudstream3.app
 import com.lagradost.nicehttp.ignoreAllSSLErrors
@@ -61,6 +62,24 @@ object PluginRuntimeHooks {
                     // in PlayerScreen.kt) — the plugin client just never got the same
                     // treatment. In-memory only: nothing is persisted across app restarts.
                     .cookieJar(PluginCookieJar)
+                    // Use the app-wide resolver, which honours the user's DNS setting
+                    // (system or one of the DNS-over-HTTPS providers). Every other ARVIO
+                    // client already does this — HomeScreen, TvScreen, LiveTvScreen and
+                    // OkHttpProvider's own clients all pass OkHttpProvider.dns. The
+                    // cloudstream plugin client was the one that silently stayed on the
+                    // platform resolver, so a DoH setting the user had turned on simply
+                    // did not apply to plugin traffic.
+                    //
+                    // This is not cosmetic. The 02.09.2026 device logcat shows four
+                    // providers — Filmpalast, HDFilme, Megakino, Serienstream — failing
+                    // during the TLS handshake itself:
+                    //   SSLException: Unable to parse TLS packet header
+                    //     at ConscryptEngineSocket.startHandshake
+                    //     at okhttp3...ConnectPlan.connectTls
+                    // i.e. whatever answered on 443 did not speak TLS, which is what a
+                    // resolver pointed at the wrong address looks like. Those same sites
+                    // work in CloudStream, which offers a DoH setting of its own.
+                    .dns(OkHttpProvider.dns)
                     .followRedirects(true)
                     .followSslRedirects(true)
                     .ignoreAllSSLErrors()
