@@ -46,6 +46,9 @@ jobs:
               }' app/build.gradle.kts
           sed -i "s/versionCode = [0-9]*/versionCode = $((310 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
 
+      - name: Run unit tests
+        run: ./gradlew testSideloadDebugUnitTest --no-daemon
+
       - name: Build sideload debug APK
         run: ./gradlew assembleSideloadDebug --no-daemon
 
