@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -171,18 +173,40 @@ fun EpgGrid(
     val hScroll = rememberScrollState()
     // A single LazyListState handles vertical scrolling for both channels and EPG.
     val channelListState = rememberLazyListState()
-    var didPositionInitialSelection by remember(channels) { mutableStateOf(false) }
-    var activeChannelFocusId by remember(channels) { mutableStateOf(selectedChannelId) }
-    var pendingChannelFocusId by remember(channels) { mutableStateOf<String?>(null) }
+    // Keyed on the guide scope, never on `channels`: the loaded window grows and
+    // slides while the user pages down, so keying the selector on the channel
+    // list threw it away in the middle of ordinary navigation.
+    var didPositionInitialSelection by remember(scrollResetKey) { mutableStateOf(false) }
+    var activeChannelFocusId by remember(scrollResetKey) { mutableStateOf(selectedChannelId) }
+    var pendingChannelFocusId by remember(scrollResetKey) { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(scrollResetKey, channelWindowIdentity) {
-        if (channels.isEmpty()) return@LaunchedEffect
+    // Only a real scope change (another category or provider) sends the guide back
+    // to the top. This also keyed on the window identity, so every window
+    // expansion — which fires ten rows before the end, i.e. exactly while the user
+    // is holding "down" — scrolled the list back to row 0 and reset the selector
+    // to the playing channel. Once that channel was outside the window, every
+    // further key press was swallowed and only Back still worked.
+    LaunchedEffect(scrollResetKey) {
+        activeChannelFocusId = null
+        pendingChannelFocusId = null
+        if (channels.isEmpty()) {
+            // The rows for a freshly picked category arrive a frame or two later;
+            // leave the positioning to the seeding effect below until they do.
+            didPositionInitialSelection = false
+            return@LaunchedEffect
+        }
         channelListState.scrollToItem(0)
+        didPositionInitialSelection = true
+    }
+
+    // Seeds the selector once there are rows to sit on. It only ever fills an empty
+    // anchor — an anchor the user moved is never overwritten, which is what made the
+    // guide snap back to the playing channel in the middle of navigating.
+    LaunchedEffect(channelWindowIdentity, selectedChannelId) {
+        if (channels.isEmpty() || activeChannelFocusId != null) return@LaunchedEffect
         activeChannelFocusId = selectedChannelId
             ?.takeIf { it in channelIndexById }
             ?: channels.firstOrNull()?.id
-        pendingChannelFocusId = null
-        didPositionInitialSelection = true
     }
 
     val scope = rememberCoroutineScope()
@@ -192,7 +216,7 @@ fun EpgGrid(
         if (requesters.isEmpty()) return false
         val safeTargetIdx = targetIdx.coerceIn(0, requesters.lastIndex)
         scope.launch {
-            channelListState.scrollToItem(rowIdx)
+            channelListState.revealRow(rowIdx)
             runCatching { requesters[safeTargetIdx].requestFocus() }
         }
         return true
@@ -225,7 +249,7 @@ fun EpgGrid(
             }
         }
         scope.launch {
-            channelListState.scrollToItem(rowIdx)
+            channelListState.revealRow(rowIdx)
             delay(16L)
             repeat(4) { attempt ->
                 val requester = channelFocusRequesters[channel.id] ?: when {
@@ -246,18 +270,17 @@ fun EpgGrid(
         val anchorId = activeChannelFocusId ?: selectedChannelId
         val anchorIdx = anchorId?.let(channelIndexById::get)
             ?: selectedChannelId?.let(channelIndexById::get)
-            ?: return true
-        val targetIdx = anchorIdx + delta
-        return when {
-            targetIdx < 0 -> {
+        return when (val step = LiveGuideNavigation.channelStep(anchorIdx, delta, channels.size)) {
+            is LiveGuideNavigation.ChannelStep.Focus -> keepChannelFocus(step.index)
+            LiveGuideNavigation.ChannelStep.LoadPrevious -> {
                 onRequestPreviousChannels()
                 true
             }
-            targetIdx >= channels.size -> {
+            LiveGuideNavigation.ChannelStep.LoadNext -> {
                 onRequestNextChannels()
                 true
             }
-            else -> keepChannelFocus(targetIdx)
+            LiveGuideNavigation.ChannelStep.Ignore -> true
         }
     }
 
@@ -983,3 +1006,41 @@ private fun addPlaceholderPlacement(
     )
 }
 
+/**
+ * Scrolls the channel list just far enough for row [index] to be fully visible.
+ *
+ * `scrollToItem(index)` parks the row at the very top of the viewport, so a single
+ * step past the bottom edge threw the whole guide up by a page — reported as "it
+ * moves in pages and drops to the next one instead of scrolling up and down".
+ * Moving by the overlap scrolls exactly the one row that was missing, and a row
+ * that is already visible is not scrolled at all.
+ */
+private suspend fun LazyListState.revealRow(index: Int) {
+    val info = layoutInfo
+    val visible = info.visibleItemsInfo
+    if (visible.isEmpty()) {
+        scrollToItem(index.coerceAtLeast(0))
+        return
+    }
+    val item = visible.firstOrNull { it.index == index }
+    if (item == null) {
+        val fullyVisibleRows = visible.count {
+            it.offset >= info.viewportStartOffset && it.offset + it.size <= info.viewportEndOffset
+        }
+        scrollToItem(
+            LiveGuideNavigation.offscreenScrollIndex(
+                target = index,
+                firstVisible = visible.first().index,
+                fullyVisibleRows = fullyVisibleRows,
+            )
+        )
+        return
+    }
+    val delta = LiveGuideNavigation.scrollDeltaToRevealRow(
+        rowTop = item.offset,
+        rowBottom = item.offset + item.size,
+        viewportStart = info.viewportStartOffset,
+        viewportEnd = info.viewportEndOffset,
+    )
+    if (delta != 0) scrollBy(delta.toFloat())
+}

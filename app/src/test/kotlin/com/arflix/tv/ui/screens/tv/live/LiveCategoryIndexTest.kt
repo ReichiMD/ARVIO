@@ -244,6 +244,32 @@ class LiveCategoryIndexTest {
             .containsExactly("stalker:stalker2:10")
     }
 
+    @Test
+    fun favouritesKeepTheirOwnOrderWhateverTheConfiguredSortIs() {
+        // The favourites order IS what the channel menu's "move up"/"move down"
+        // edits. Running the name sort over it made a reorder save correctly and
+        // then look like it had done nothing.
+        val channels = listOf(
+            channel("list:z", "Zulu", "General"),
+            channel("list:a", "Alpha", "General"),
+        ).mapIndexed { index, channel -> channel.enrich(index + 1) }
+
+        assertThat(sortChannelsForCategory(channels, "fav", "name")).isSameInstanceAs(channels)
+        assertThat(sortChannelsForCategory(channels, "recent", "number")).isSameInstanceAs(channels)
+    }
+
+    @Test
+    fun ordinaryCategoriesStillFollowTheConfiguredSort() {
+        val channels = listOf(
+            channel("list:z", "Zulu", "General"),
+            channel("list:a", "Alpha", "General"),
+        ).mapIndexed { index, channel -> channel.enrich(index + 1) }
+
+        assertThat(sortChannelsForCategory(channels, "all", "name").map { it.id })
+            .containsExactly("list:a", "list:z")
+            .inOrder()
+    }
+
     private fun channel(id: String, name: String, group: String): IptvChannel =
         IptvChannel(
             id = id,

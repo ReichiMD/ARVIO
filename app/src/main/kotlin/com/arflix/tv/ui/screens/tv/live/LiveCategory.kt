@@ -316,6 +316,25 @@ data class LiveCategory(
     val isGroup: Boolean get() = children.isNotEmpty()
 }
 
+/** Categories whose order IS user data and must survive the configured sort. */
+private val UserOrderedCategoryIds = setOf("fav", "recent")
+
+/**
+ * Applies the configured channel sort, except where the order is the user's own.
+ *
+ * "Favorites" is ordered by the favourites list itself — exactly what the channel
+ * long-press menu's "move up"/"move down" edits — and "Recently Watched" is ordered
+ * by recency. Running the name/number comparator over them threw both orders away,
+ * so reordering a favourite saved correctly and then looked like it had done nothing.
+ */
+internal fun sortChannelsForCategory(
+    channels: List<EnrichedChannel>,
+    categoryId: String,
+    sortOrder: String,
+): List<EnrichedChannel> =
+    if (categoryId in UserOrderedCategoryIds) channels
+    else sortChannelsByConfiguredOrder(channels, sortOrder)
+
 internal fun sortChannelsByConfiguredOrder(
     channels: List<EnrichedChannel>,
     sortOrder: String,
@@ -429,7 +448,7 @@ fun isRestrictedPlaylistGroup(channel: IptvChannel, restrictedGroups: Set<String
     return playlistGroupKey(playlistId, channel.group) in restrictedGroups
 }
 
-private fun isHiddenPlaylistGroup(channel: IptvChannel, hiddenGroups: Set<String>): Boolean {
+fun isHiddenPlaylistGroup(channel: IptvChannel, hiddenGroups: Set<String>): Boolean {
     if (hiddenGroups.isEmpty()) return false
     val playlistId = channelPlaylistId(channel.id)
     return playlistGroupKey(playlistId, channel.group) in hiddenGroups

@@ -229,12 +229,13 @@ private fun loadPagedChannelWindow(
     /** Ordered — this is the favourites rail's display order, so a Set would lose it. */
     favorites: List<String>,
     recents: List<String>,
+    hiddenGroups: Set<String>,
     startupAnchorId: String?,
 ): List<IptvChannel> {
     val favoriteChannels = if (categoryId == "fav") {
         val favoriteRank = favorites.withIndex().associate { (index, id) -> id to index }
         repository.pagedChannelsByIds(favorites)
-            .filterNot { isAdultGroup(it.group, it.name) }
+            .filterNot { isAdultGroup(it.group, it.name) || isHiddenPlaylistGroup(it, hiddenGroups) }
             // pagedChannelsByIds returns SQLite row order, which has nothing to do with the
             // user's favourites order — restore it so "move up/down" is actually visible.
             .sortedBy { favoriteRank[it.id] ?: Int.MAX_VALUE }
@@ -242,7 +243,8 @@ private fun loadPagedChannelWindow(
         emptyList()
     }
     val recentChannels = if (categoryId == "recent") {
-        repository.pagedChannelsByIds(recents).filterNot { isAdultGroup(it.group, it.name) }
+        repository.pagedChannelsByIds(recents)
+            .filterNot { isAdultGroup(it.group, it.name) || isHiddenPlaylistGroup(it, hiddenGroups) }
     } else {
         emptyList()
     }
@@ -314,9 +316,19 @@ private fun loadPagedChannelWindow(
             if (byGroup.isEmpty()) scanCategoryWindow(groupTitle) else byGroup
         }
     }
+    // "All channels" must not show channels from a group the user hid. The
+    // non-paged path filters them (buildInitialCategoryChannels); this one never
+    // did, so on playlists above the paging threshold hidden groups kept coming
+    // back. A "grp:" category is deliberately left alone — opening a hidden group
+    // from the sidebar's HIDDEN section is how a user looks inside it.
+    val visibleProviderWindow = if (categoryId == "all") {
+        providerWindow.filterNot { isHiddenPlaylistGroup(it, hiddenGroups) }
+    } else {
+        providerWindow
+    }
     return selectPagedChannelsInProviderOrder(
         categoryId = categoryId,
-        providerWindow = providerWindow,
+        providerWindow = visibleProviderWindow,
         favoriteChannels = favoriteChannels,
         recentChannels = recentChannels,
         limit = pageLimit,
@@ -728,6 +740,7 @@ fun LiveTvScreen(
                     tree = enrichedState.value.tree,
                     favorites = favoriteOrderIds,
                     recents = recents.value.toList().asReversed(),
+                    hiddenGroups = hiddenGroupSet,
                     startupAnchorId = startupAnchorId,
                 )
             }
@@ -961,6 +974,7 @@ fun LiveTvScreen(
                     tree = tree,
                     favorites = favoriteOrderIds,
                     recents = recents.value.toList().asReversed(),
+                    hiddenGroups = hiddenGroupSet,
                     startupAnchorId = state.tvSession.lastChannelId
                         .takeIf { state.tvSession.lastOpenedAt > 0L && it.isNotBlank() },
                 )
@@ -987,7 +1001,7 @@ fun LiveTvScreen(
             return@LaunchedEffect
         }
         filteredChannelsCategoryKey = selectedCategoryId
-        filteredChannelsState.value = sortChannelsByConfiguredOrder(result, state.snapshot.sortOrder)
+        filteredChannelsState.value = sortChannelsForCategory(result, selectedCategoryId, state.snapshot.sortOrder)
     }
     val visibleChannels = visibleEnrichedState.value.all
     val accessibleVisibleChannels = remember(visibleChannels, restrictedGroupSet) {
@@ -3093,7 +3107,10 @@ fun LiveTvScreen(
                         } else {
                             EpgGridFocusMode.ChannelList
                         },
-                        scrollResetKey = "$selectedProviderId|$selectedCategoryId|$filteredChannelsWindowKey|$normalizedGuideStart",
+                        // Guide scope only. It used to carry the loaded-window key and the window
+                        // start too, which changed on every paging step, so the grid reset its
+                        // scroll position and its selector while the user was navigating.
+                        scrollResetKey = "$selectedProviderId|$selectedCategoryId",
                         compact = true,
                         gridFocused = focusZone == LiveTvFocusZone.EPG,
                         onChannelSelect = { channel ->
@@ -3230,7 +3247,10 @@ fun LiveTvScreen(
                         } else {
                             EpgGridFocusMode.ChannelList
                         },
-                        scrollResetKey = "$selectedProviderId|$selectedCategoryId|$filteredChannelsWindowKey|$normalizedGuideStart",
+                        // Guide scope only. It used to carry the loaded-window key and the window
+                        // start too, which changed on every paging step, so the grid reset its
+                        // scroll position and its selector while the user was navigating.
+                        scrollResetKey = "$selectedProviderId|$selectedCategoryId",
                         compact = compactTouchLayout,
                         gridFocused = focusZone == LiveTvFocusZone.CHANNEL_LIST || focusZone == LiveTvFocusZone.EPG,
                         onChannelSelect = { channel ->
