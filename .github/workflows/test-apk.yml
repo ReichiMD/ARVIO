@@ -52,6 +52,18 @@ jobs:
           sed -i 's/applicationIdSuffix = ".beta"/applicationIdSuffix = ".guidetest"/' app/build.gradle.kts
           sed -i 's/versionNameSuffix = "-beta"/versionNameSuffix = "-guidetest"/' app/build.gradle.kts
           sed -i "s/versionCode = [0-9]*/versionCode = $((400 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          # `staging` inherits from `release`, so it also inherits the gate that
+          # refuses to build without real Supabase and Trakt credentials. Those are
+          # upstream release secrets and this fork does not have them; the gate is
+          # there to stop such a build being *shipped*, which is not what this is.
+          # Cloud login and sync are therefore not usable in this APK — everything
+          # local, IPTV included, is.
+          sed -i 's|dependsOn(validateReleaseCloudSecrets)|// CI test build only: cloud-secret gate disabled|' app/build.gradle.kts
+          # Every edit above is checked. A sed that silently matches nothing is how
+          # this kind of workflow wastes a build cycle (docs/12 learned it the hard way).
+          grep -q 'applicationIdSuffix = ".guidetest"' app/build.gradle.kts || { echo "::error::suffix patch did not apply"; exit 1; }
+          grep -q 'cloud-secret gate disabled' app/build.gradle.kts || { echo "::error::cloud-secret gate patch did not apply"; exit 1; }
+          grep -q "versionCode = $((400 + GITHUB_RUN_NUMBER))" app/build.gradle.kts || { echo "::error::versionCode patch did not apply"; exit 1; }
           cat >> app/build.gradle.kts <<'KTS'
 
           // CI only: the staging build type falls back to the signing config named
