@@ -143,6 +143,10 @@ fun CategorySidebar(
     var expandedCountry by rememberSaveable { mutableStateOf<String?>(null) }
     var expandedAll by rememberSaveable { mutableStateOf(false) }
     var expandedPlaylistIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    // Hidden groups start folded away. Listing them all inline made "hidden" look
+    // like it had done nothing — on a playlist with a dozen hidden groups the
+    // section was longer than everything the user actually wanted to see.
+    var hiddenSectionOpen by rememberSaveable { mutableStateOf(false) }
     var activeMenu by remember { mutableStateOf<CategoryMenuState?>(null) }
     var menuSelectArmed by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
@@ -228,6 +232,9 @@ fun CategorySidebar(
         if (!expanded) {
             activeMenu = null
             menuSelectArmed = false
+            // Fold the hidden groups away again with the drawer, so the list is back to
+            // its short form the next time it opens.
+            hiddenSectionOpen = false
         }
     }
 
@@ -583,25 +590,47 @@ fun CategorySidebar(
                 }
             }
             if (tree.hidden.categories.isNotEmpty()) {
-                item { SectionHeader(liveSectionLabel(tree.hidden.label), expanded) }
-                itemsIndexed(tree.hidden.categories, key = { index, cat -> "hidden:${cat.id}:$index" }) { _, cat ->
+                // One folded row instead of the full list. Hiding a group used to move it
+                // into an always-open section right under the playlists, so the groups a
+                // user had just hidden stayed in plain sight — the most visible thing on
+                // the screen on a playlist with a dozen of them. Unhiding still has to be
+                // reachable, so this behaves like the playlist rows above it: press OK to
+                // open it, press OK on a group to bring it back. Reuses the existing
+                // section label, so no new string.
+                item(key = "hidden-section") {
                     SidebarRow(
-                        label = liveCategoryLabel(cat.label),
-                        count = cat.count,
+                        label = liveSectionLabel(tree.hidden.label),
+                        count = tree.hidden.categories.sumOf { it.count },
                         icon = Icons.Filled.VisibilityOff,
                         active = false,
                         expanded = expanded,
-                        focusRequester = if (selectedId == cat.id) selectedCategoryFocusRequester else null,
+                        hasChildren = true,
+                        isOpenGroup = hiddenSectionOpen,
                         onFocused = { onCategoryFocused() },
-                        locked = isCategoryLocked(cat),
-                        onLongClick = {
-                            openCategoryMenu(cat, hidden = true)
-                        },
-                        onClick = {
-                            val groupName = cat.playlistGroupName ?: return@SidebarRow
-                            onUnhideCategory(cat.playlistId, groupName)
-                        },
+                        onClick = { hiddenSectionOpen = !hiddenSectionOpen },
                     )
+                }
+                if (expanded && hiddenSectionOpen) {
+                    itemsIndexed(tree.hidden.categories, key = { index, cat -> "hidden:${cat.id}:$index" }) { _, cat ->
+                        SidebarRow(
+                            label = liveCategoryLabel(cat.label),
+                            count = cat.count,
+                            icon = Icons.Filled.VisibilityOff,
+                            active = false,
+                            expanded = true,
+                            indent = 28.dp,
+                            focusRequester = if (selectedId == cat.id) selectedCategoryFocusRequester else null,
+                            onFocused = { onCategoryFocused() },
+                            locked = isCategoryLocked(cat),
+                            onLongClick = {
+                                openCategoryMenu(cat, hidden = true)
+                            },
+                            onClick = {
+                                val groupName = cat.playlistGroupName ?: return@SidebarRow
+                                onUnhideCategory(cat.playlistId, groupName)
+                            },
+                        )
+                    }
                 }
             }
             if (tree.countries.categories.isNotEmpty()) {
