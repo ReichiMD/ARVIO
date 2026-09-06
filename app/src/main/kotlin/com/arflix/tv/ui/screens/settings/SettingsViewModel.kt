@@ -2831,7 +2831,7 @@ class SettingsViewModel @Inject constructor(
                     toastType = if (showToast) ToastType.SUCCESS else _uiState.value.toastType
                 )
                 launch {
-                    runCatching { iptvRepository.warmXtreamVodCachesIfPossible() }
+                    runCatching { iptvRepository.warmVodCachesIfPossible() }
                 }
             }.onFailure { error ->
                 if (error is CancellationException) {
