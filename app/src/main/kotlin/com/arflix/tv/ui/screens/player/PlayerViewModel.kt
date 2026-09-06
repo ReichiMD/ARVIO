@@ -17,6 +17,7 @@ import com.arflix.tv.data.model.MediaType
 import com.arflix.tv.data.model.EpisodeIdentity
 import com.arflix.tv.data.model.SportsAddonCapabilities
 import com.arflix.tv.data.model.IptvVodSourceIds
+import com.arflix.tv.data.model.isDirectStreamUrl
 import com.arflix.tv.data.model.StreamSource
 import com.arflix.tv.data.model.Subtitle
 import com.arflix.tv.data.repository.MediaRepository
@@ -1985,7 +1986,7 @@ class PlayerViewModel @Inject constructor(
         if (text.contains("x264") || text.contains("h264")) score += 20
         if (stream.behaviorHints?.cached == true || text.contains(" rd+")) score += 500
         if (stream.behaviorHints?.notWebReady == true) score -= 150
-        if (!stream.url.isNullOrBlank() && stream.url.startsWith("http", ignoreCase = true)) score += 100
+        if (isDirectStreamUrl(stream.url)) score += 100
         if (stream.url?.startsWith("magnet:", ignoreCase = true) == true) score -= 800
         score += streamRepository.getAddonHealthBias(stream.addonId)
 

@@ -1,7 +1,10 @@
 package com.arflix.tv.data.repository
 
 import com.arflix.tv.data.api.StalkerApi
+import com.arflix.tv.data.model.StalkerVodLink
+import com.arflix.tv.data.model.isDirectStreamUrl
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -207,5 +210,16 @@ class IptvRepositoryStalkerVodTest {
         assertNull(StalkerVodLink.parseMarker("stalker_vod://stalker1/"))
         assertNull(StalkerVodLink.buildMarker("stalker1", "   "))
         assertNull(StalkerVodLink.buildMarker("  ", "/media/a.mpg"))
+    }
+
+    @Test
+    fun `a placeholder counts as a direct source url`() {
+        val marker = StalkerVodLink.buildMarker("stalker1", "/media/1.mpg")!!
+
+        assertTrue(isDirectStreamUrl(marker))
+        assertTrue(isDirectStreamUrl("https://example.com/a.mp4"))
+        assertFalse(isDirectStreamUrl("magnet:?xt=urn:btih:abc"))
+        assertFalse(isDirectStreamUrl(null))
+        assertFalse(isDirectStreamUrl("   "))
     }
 }

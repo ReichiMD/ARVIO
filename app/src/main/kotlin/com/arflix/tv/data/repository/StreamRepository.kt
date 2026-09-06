@@ -24,6 +24,7 @@ import com.arflix.tv.data.telegram.TelegramSourceResolver
 import com.arflix.tv.data.model.ProxyHeaders as ModelProxyHeaders
 import com.arflix.tv.data.model.StreamBehaviorHints as ModelStreamBehaviorHints
 import com.arflix.tv.data.model.IptvVodSourceIds
+import com.arflix.tv.data.model.StalkerVodLink
 import com.arflix.tv.data.model.StreamSource
 import com.arflix.tv.data.model.Subtitle
 import com.arflix.tv.network.OkHttpProvider

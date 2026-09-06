@@ -12,6 +12,7 @@ import com.arflix.tv.data.model.DrmInfo
 import com.arflix.tv.data.model.IptvNowNext
 import com.arflix.tv.data.model.IptvProgram
 import com.arflix.tv.data.model.IptvSnapshot
+import com.arflix.tv.data.model.StalkerVodLink
 import com.arflix.tv.data.model.StreamSource
 import com.arflix.tv.R
 import com.arflix.tv.util.IPTV_VOD_SEARCH_ENABLED_KEY
@@ -5518,10 +5519,42 @@ class IptvRepository @Inject constructor(
             source = sourceName,
             addonName = "IPTV VOD",
             addonId = IptvVodSourceIds.STALKER,
-            quality = inferQuality(sourceName),
+            quality = stalkerVodQuality(sourceName, hd),
             size = "",
-            url = marker
+            url = marker,
+            description = stalkerVodDescription(portal, time, ratingImdb)
         )
+    }
+
+    /**
+     * Stalker knows no resolution field - the portal only flags `hd` - so the
+     * title is still the better source when it names one. Falling back to the
+     * flag at least separates HD entries from the rest.
+     */
+    private fun stalkerVodQuality(sourceName: String, hdFlag: String?): String {
+        val inferred = inferQuality(sourceName)
+        if (inferred != "VOD") return inferred
+        return if (hdFlag?.trim() == "1") "HD" else "VOD"
+    }
+
+    /**
+     * The little the portal knows beyond the title, which is what makes two
+     * entries of the same movie tellable apart: which portal it came from, how
+     * long it runs, and its IMDb rating.
+     */
+    private fun stalkerVodDescription(
+        portal: StalkerPortalEntry,
+        runtime: String?,
+        ratingImdb: String?
+    ): String? {
+        val parts = mutableListOf<String>()
+        portal.name.trim().takeIf { it.isNotBlank() }?.let(parts::add)
+        runtime?.trim()?.takeIf { it.isNotBlank() }?.let { value ->
+            val minutes = value.toIntOrNull()
+            parts += if (minutes != null && minutes > 0) "$minutes min" else value
+        }
+        ratingImdb?.trim()?.toDoubleOrNull()?.takeIf { it > 0.0 }?.let { parts += "IMDb $it" }
+        return parts.joinToString(" \u00b7 ").ifBlank { null }
     }
 
     /**

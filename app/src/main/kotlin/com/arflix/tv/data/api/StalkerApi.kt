@@ -593,6 +593,10 @@ open class StalkerApi(
         val name: String? = null,
         val cmd: String? = null,
         val year: String? = null,
+        /** Runtime in minutes on most builds; a few send "hh:mm:ss" instead. */
+        val time: String? = null,
+        /** 1 when the portal flags the entry as HD. Not an actual resolution. */
+        val hd: String? = null,
         @SerializedName("screenshot_uri") val screenshotUri: String? = null,
         @SerializedName("rating_imdb") val ratingImdb: String? = null,
         @SerializedName(value = "tmdb_id", alternate = ["tmdb", "tmdbid"]) val tmdbId: String? = null,
