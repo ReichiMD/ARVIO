@@ -670,6 +670,9 @@ class StalkerApiTest {
         )
         assertNull(StalkerApi.sanitizePlaybackCommand(""))
         assertNull(StalkerApi.sanitizePlaybackCommand(null))
-        assertNull(StalkerApi.sanitizePlaybackCommand("ffmpeg   "))
+        assertNull(StalkerApi.sanitizePlaybackCommand("   "))
+        // A lone token carries no hint to strip and is returned unchanged; the
+        // caller drops it because it is not an http(s) URL.
+        assertEquals("ffmpeg", StalkerApi.sanitizePlaybackCommand("ffmpeg   "))
     }
 }
