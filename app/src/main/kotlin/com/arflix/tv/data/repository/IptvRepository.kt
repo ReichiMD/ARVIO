@@ -5533,6 +5533,14 @@ class IptvRepository @Inject constructor(
         inputYear = inputYear
     ) { StalkerCatalogFields(it.name, it.cmd, it.year, it.tmdbId) }
 
+    /** The four fields both Stalker catalog endpoints answer with. */
+    private data class StalkerCatalogFields(
+        val name: String?,
+        val cmd: String?,
+        val year: String?,
+        val tmdbId: String?
+    )
+
     /**
      * Scores portal entries against a wanted title, shared by the movie and the
      * series search because both endpoints answer with the same fields.
@@ -5543,14 +5551,6 @@ class IptvRepository @Inject constructor(
      * [findMovieCandidatesIndexed] applies. Entries without a `cmd` are dropped
      * either way - there would be nothing to play.
      */
-    /** The four fields both Stalker catalog endpoints answer with. */
-    private data class StalkerCatalogFields(
-        val name: String?,
-        val cmd: String?,
-        val year: String?,
-        val tmdbId: String?
-    )
-
     private fun <T> matchStalkerCatalogEntries(
         items: List<T>,
         normalizedTitle: String,
