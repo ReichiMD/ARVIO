@@ -470,11 +470,12 @@ open class StalkerApi(
                 val totalItems = parsed.js?.totalItems ?: 0
                 val maxPageItems = (parsed.js?.maxPageItems ?: data.size).coerceAtLeast(1)
                 // Some portals ignore `p` and answer every page with the same
-                // result set - stop as soon as a page adds nothing new, as well
-                // as when the reported total is covered.
+                // result set - stop as soon as a page adds nothing new. A
+                // portal that reports no total at all keeps paging until then
+                // or until [maxPages].
                 if (newEntries == 0) break
-                if (data.size >= totalItems) break
-                if (page * maxPageItems >= totalItems) break
+                if (totalItems > 0 && data.size >= totalItems) break
+                if (totalItems > 0 && page * maxPageItems >= totalItems) break
                 page++
             }
         } catch (e: Exception) {

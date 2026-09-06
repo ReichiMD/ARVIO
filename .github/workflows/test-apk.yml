@@ -1,0 +1,99 @@
+name: Test APK (Stalker VOD)
+
+# Test-branch only. This workflow and the committed keystore must never reach a
+# pull request against upstream - they exist so a Claude Code session can hand
+# the user an installable build. `workflow_dispatch` returns 403 from such a
+# session (the app token has no `actions: write`), so a push to this branch is
+# the trigger.
+
+on:
+  push:
+    branches:
+      - claude/stalker-vod-arvio-yg3z8r
+  workflow_dispatch:
+
+jobs:
+  build-test-apk:
+    name: Build sideload debug test APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # This feature is only reachable through TMDB browsing, so a placeholder
+      # key would leave the tester with an empty app and nothing to test.
+      - name: Prepare runtime configuration
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          cp secrets.defaults.properties secrets.properties
+          if [ -n "$TMDB_API_KEY" ]; then
+            sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+            echo "TMDB key injected"
+          else
+            echo "::error::TMDB_API_KEY secret is empty - this feature cannot be tested without it"
+            exit 1
+          fi
+
+      - name: Compile and run unit tests
+        run: ./gradlew testSideloadDebugUnitTest --no-daemon
+
+      - name: Give the debug build its own package and a fixed signature
+        run: |
+          sed -i 's/        debug {/        debug {\n            applicationIdSuffix = ".test"/' app/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          # A sed that silently matches nothing is how this kind of workflow
+          # wastes a build cycle - check every edit.
+          grep -q 'applicationIdSuffix = ".test"' app/build.gradle.kts || { echo "::error::suffix patch did not apply"; exit 1; }
+          grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts || { echo "::error::versionCode patch did not apply"; exit 1; }
+          cat >> app/build.gradle.kts <<'KTS'
+
+          // CI only: on a runner the signing config named "debug" points at a
+          // freshly generated ~/.android/debug.keystore, so every build would
+          // carry a different signature and the tester could not install one
+          // test APK over the previous one. Pin it to the committed keystore.
+          android {
+              signingConfigs {
+                  getByName("debug") {
+                      storeFile = rootProject.file(".github/test-signing/debug.keystore")
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+          }
+          KTS
+
+      - name: Build sideload debug APK
+        run: ./gradlew assembleSideloadDebug --no-daemon
+
+      - name: Verify APK signature against the committed keystore
+        run: |
+          EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
+            -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          APK=$(ls app/build/outputs/apk/sideload/debug/*.apk | head -1)
+          ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          echo "APK:      $APK"
+          echo "expected: $EXPECTED"
+          echo "actual:   $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Signature mismatch - Gradle did not use the committed keystore."
+            exit 1
+          fi
+          echo "Signature verified against the committed keystore."
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arvio-stalker-vod-test-apk
+          path: app/build/outputs/apk/sideload/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

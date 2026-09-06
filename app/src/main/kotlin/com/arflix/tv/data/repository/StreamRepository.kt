@@ -3665,8 +3665,10 @@ class StreamRepository @Inject constructor(
         // the source list is built. A null result marks the source unresolvable
         // and the caller fails over to the next one.
         if (StalkerVodLink.isMarker(url)) {
-            val direct = iptvRepository.resolveStalkerVodStreamUrl(url)
-            if (direct.isNullOrBlank()) return null
+            val direct = iptvRepository.resolveStalkerVodStreamUrl(url)?.trim().orEmpty()
+            val playable = direct.startsWith("http://", ignoreCase = true) ||
+                direct.startsWith("https://", ignoreCase = true)
+            if (!playable) return null
             return stream.copy(url = direct)
         }
 
