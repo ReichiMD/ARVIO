@@ -329,7 +329,15 @@ data class StalkerPortalEntry(
     val name: String,
     val portalUrl: String,
     val macAddress: String,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    // Nullable on purpose, exactly as in [IptvPlaylistEntry]: portals are stored
+    // as Gson JSON, and this class has parameters without defaults, so Kotlin
+    // generates no no-arg constructor and Gson skips the default values. A
+    // non-null `Boolean = true` would therefore come back as `false` for every
+    // portal saved before these fields existed - silently switching off VOD for
+    // existing users. Always read them as `importVod ?: true`.
+    val importVod: Boolean? = true,
+    val importSeries: Boolean? = true
 )
 
 data class IptvLoadProgress(
@@ -5372,6 +5380,17 @@ class IptvRepository @Inject constructor(
     internal fun activeSeriesPlaylists(config: IptvConfig): List<IptvPlaylistEntry> =
         activePlaylists(config).filter { it.importSeries ?: true }
 
+    /**
+     * The Stalker counterparts of [activeVodPlaylists] / [activeSeriesPlaylists]:
+     * portals the user left switched on for movies resp. series. Missing flags
+     * mean "on" - see [StalkerPortalEntry] for why they are nullable.
+     */
+    internal fun activeStalkerVodPortals(config: IptvConfig): List<StalkerPortalEntry> =
+        activeStalkerPortals(config).filter { it.importVod ?: true }
+
+    internal fun activeStalkerSeriesPortals(config: IptvConfig): List<StalkerPortalEntry> =
+        activeStalkerPortals(config).filter { it.importSeries ?: true }
+
     private fun xtreamCredentialsForVodImport(config: IptvConfig): List<XtreamCredentials> =
         activeVodPlaylists(config)
             .mapNotNull(::resolveXtreamCredentials)
@@ -5421,7 +5440,7 @@ class IptvRepository @Inject constructor(
                 }
             // Additive second provider: each Stalker portal is searched on its
             // own, and a failing portal never removes Xtream results.
-            val stalkerSources = activeStalkerPortals(config)
+            val stalkerSources = activeStalkerVodPortals(config)
                 .flatMap { portal ->
                     runCatching {
                         findStalkerMovieVodSources(
@@ -6079,7 +6098,7 @@ class IptvRepository @Inject constructor(
             // Additive second provider, exactly as on the movie path: each
             // Stalker portal is searched on its own, and a failing portal never
             // removes Xtream results.
-            val stalkerSources = activeStalkerPortals(config)
+            val stalkerSources = activeStalkerSeriesPortals(config)
                 .flatMap { portal ->
                     runCatching {
                         findStalkerEpisodeVodSources(
@@ -6341,9 +6360,11 @@ class IptvRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             if (!isVodSearchEnabled()) return@withContext
             val config = observeConfig().first()
-            activeStalkerPortals(config).forEach { portal ->
-                runCatching { getOrCreateStalkerApi(portal) }
-            }
+            (activeStalkerVodPortals(config) + activeStalkerSeriesPortals(config))
+                .distinctBy { it.id }
+                .forEach { portal ->
+                    runCatching { getOrCreateStalkerApi(portal) }
+                }
             xtreamCredentialsForVodImport(config).forEach { creds ->
                 runCatching {
                     loadXtreamVodStreams(creds)
@@ -6390,7 +6411,7 @@ class IptvRepository @Inject constructor(
             // Same work the real lookup does, run early so the source list is
             // already cached when the user presses play. Discarding the result
             // is the point: what is kept is the cache it filled.
-            activeStalkerPortals(config).forEach { portal ->
+            activeStalkerSeriesPortals(config).forEach { portal ->
                 runCatching {
                     findStalkerEpisodeVodSources(
                         portal = portal,
@@ -6428,7 +6449,7 @@ class IptvRepository @Inject constructor(
                     )
                 }
             }
-            activeStalkerPortals(config).forEach { portal ->
+            activeStalkerSeriesPortals(config).forEach { portal ->
                 runCatching { warmStalkerSeriesBinding(portal, title, tmdbId) }
             }
         }
