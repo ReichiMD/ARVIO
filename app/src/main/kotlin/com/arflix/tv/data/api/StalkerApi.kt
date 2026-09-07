@@ -461,7 +461,7 @@ open class StalkerApi(
     suspend fun searchVod(
         query: String,
         maxPages: Int = DEFAULT_VOD_SEARCH_PAGES
-    ): List<StalkerVodItem> {
+    ): List<StalkerVodItem>? {
         require(maxPages > 0) { "maxPages must be positive" }
         val term = query.trim()
         if (term.isBlank()) return emptyList()
@@ -504,6 +504,10 @@ open class StalkerApi(
             if (e is kotlinx.coroutines.CancellationException) throw e
 
             System.err.println("[Stalker] VOD search failed: ${e.message}")
+            // null, not the partial list: the caller caches what it gets back,
+            // and a failed request must never be stored as "this portal has
+            // nothing" - see the null contract on the return type.
+            return null
         }
         return results
     }
@@ -511,6 +515,10 @@ open class StalkerApi(
     /**
      * Ask the portal for shows matching [query], the series counterpart of
      * [searchVod].
+     *
+     * Returns null when the request itself failed and an empty list when the
+     * portal answered but knows no such show - callers cache the two very
+     * differently.
      *
      * Same reasoning as there: `get_ordered_list` only ever answers in small
      * pages, so the portal's own `search` does the narrowing instead of a local
@@ -520,7 +528,7 @@ open class StalkerApi(
     suspend fun searchSeries(
         query: String,
         maxPages: Int = DEFAULT_VOD_SEARCH_PAGES
-    ): List<StalkerSeriesItem> {
+    ): List<StalkerSeriesItem>? {
         require(maxPages > 0) { "maxPages must be positive" }
         val term = query.trim()
         if (term.isBlank()) return emptyList()
@@ -545,7 +553,7 @@ open class StalkerApi(
     suspend fun getSeasons(
         seriesId: String,
         maxPages: Int = DEFAULT_SEASON_PAGES
-    ): List<StalkerSeriesItem> {
+    ): List<StalkerSeriesItem>? {
         require(maxPages > 0) { "maxPages must be positive" }
         val id = seriesId.trim()
         if (id.isBlank()) return emptyList()
@@ -572,7 +580,7 @@ open class StalkerApi(
         baseUrl: String,
         maxPages: Int,
         failureLabel: String
-    ): List<StalkerSeriesItem> {
+    ): List<StalkerSeriesItem>? {
         val results = mutableListOf<StalkerSeriesItem>()
         val seenKeys = HashSet<String>()
         try {
@@ -605,6 +613,8 @@ open class StalkerApi(
             if (e is kotlinx.coroutines.CancellationException) throw e
 
             System.err.println("[Stalker] $failureLabel failed: ${e.message}")
+            // See searchVod: a failure is null, never an empty result set.
+            return null
         }
         return results
     }
