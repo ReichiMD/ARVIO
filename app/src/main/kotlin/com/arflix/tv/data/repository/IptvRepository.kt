@@ -5608,13 +5608,22 @@ class IptvRepository @Inject constructor(
         val inputYear = year ?: parseYear(title)
 
         var matches: List<com.arflix.tv.data.api.StalkerApi.StalkerVodItem> = emptyList()
+        // Counted separately from the matches: portals that ignore `search` answer
+        // every query with the head of their whole catalogue, so a high offered
+        // count next to zero matches names the portal as the cause, whereas both
+        // at zero points at the request or the portal's catalogue.
+        var offered = 0
         for (query in stalkerVodSearchQueries(title)) {
             val items = stalkerVodSearch(portal, fingerprint, api, query)
+            offered += items.size
             if (items.isEmpty()) continue
             matches = matchStalkerVodItems(items, normalizedTitle, normalizedTmdb, inputYear)
             if (matches.isNotEmpty()) break
         }
-        System.err.println("[Stalker-VOD] portal=${portal.id} title='$title' matches=${matches.size}")
+        System.err.println(
+            "[Stalker-VOD] portal=${portal.id} title='$title' " +
+                "offered=$offered matches=${matches.size}"
+        )
         if (matches.isEmpty()) return emptyList()
 
         val sources = sortVodSources(
@@ -5883,14 +5892,21 @@ class IptvRepository @Inject constructor(
         val inputYear = parseYear(title)
 
         var shows: List<com.arflix.tv.data.api.StalkerApi.StalkerSeriesItem> = emptyList()
+        // See the movie path: the offered count separates "the portal sent
+        // nothing" from "the portal sent a catalogue page that matched nothing".
+        var offered = 0
         for (query in stalkerVodSearchQueries(title)) {
             val items = stalkerSeriesSearch(portal, fingerprint, api, query)
+            offered += items.size
             if (items.isEmpty()) continue
             shows = matchStalkerSeriesItems(items, normalizedTitle, normalizedTmdb, inputYear)
             if (shows.isNotEmpty()) break
         }
         if (shows.isEmpty()) {
-            System.err.println("[Stalker-VOD] portal=${portal.id} series='$title' shows=0")
+            System.err.println(
+                "[Stalker-VOD] portal=${portal.id} series='$title' " +
+                    "offered=$offered shows=0"
+            )
             return emptyList()
         }
 
