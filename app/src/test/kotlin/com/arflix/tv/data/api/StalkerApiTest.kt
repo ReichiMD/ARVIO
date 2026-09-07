@@ -538,7 +538,7 @@ class StalkerApiTest {
             }
         }
 
-        val items = api.searchVod("Dune")
+        val items = api.searchVod("Dune")!!
 
         assertEquals(1, items.size)
         assertEquals("Dune (2021)", items.first().name)
@@ -571,7 +571,7 @@ class StalkerApiTest {
             }
         }
 
-        val items = api.searchVod("Alien")
+        val items = api.searchVod("Alien")!!
 
         assertEquals(listOf("Alien", "Aliens", "Alien 3"), items.map { it.name })
         assertEquals(2, requests.size)
@@ -592,7 +592,7 @@ class StalkerApiTest {
             }
         }
 
-        val items = api.searchVod("Heat")
+        val items = api.searchVod("Heat")!!
 
         assertEquals(1, items.size)
         // Page 2 repeats page 1 - no new ids means stop, not 999 requests.
@@ -600,11 +600,13 @@ class StalkerApiTest {
     }
 
     @Test
-    fun `searchVod treats an HTML 200 answer as unsupported`() = runTest {
+    fun `searchVod reports an HTML 200 answer as a failure, not as no results`() = runTest {
         val requests = mutableListOf<String>()
         val api = stubApi(requests = requests) { "<html><body>Not found</body></html>" }
 
-        assertTrue(api.searchVod("Dune").isEmpty())
+        // null, not emptyList: the caller caches answers, and a broken reply
+        // cached as "no such film" hides the title until the entry expires.
+        assertNull(api.searchVod("Dune"))
     }
 
     @Test
@@ -618,7 +620,7 @@ class StalkerApiTest {
             """.trimIndent()
         }
 
-        assertEquals(listOf("Playable"), api.searchVod("x").map { it.name })
+        assertEquals(listOf("Playable"), api.searchVod("x")!!.map { it.name })
     }
 
     @Test
@@ -626,7 +628,7 @@ class StalkerApiTest {
         val requests = mutableListOf<String>()
         val api = stubApi(requests = requests) { null }
 
-        assertTrue(api.searchVod("   ").isEmpty())
+        assertTrue(api.searchVod("   ")!!.isEmpty())
         assertTrue(requests.isEmpty())
     }
 
@@ -692,7 +694,7 @@ class StalkerApiTest {
             }
         }
 
-        val items = api.searchSeries("Breaking Bad")
+        val items = api.searchSeries("Breaking Bad")!!
 
         assertEquals(1, items.size)
         assertEquals("Breaking Bad", items.first().name)
@@ -706,10 +708,28 @@ class StalkerApiTest {
     }
 
     @Test
-    fun `searchSeries treats an HTML 200 answer as unsupported`() = runTest {
+    fun `searchSeries reports an HTML 200 answer as a failure, not as no results`() = runTest {
         val api = stubApi(requests = mutableListOf()) { "<html>not a portal api</html>" }
 
-        assertTrue(api.searchSeries("Breaking Bad").isEmpty())
+        assertNull(api.searchSeries("Breaking Bad"))
+    }
+
+    @Test
+    fun `searchSeries reports an empty result set as an empty list, not as a failure`() = runTest {
+        val api = stubApi(requests = mutableListOf()) {
+            """{"js":{"total_items":0,"max_page_items":14,"data":[]}}"""
+        }
+
+        // The portal answered and knows no such show. That is an answer, and it
+        // has to stay distinguishable from a request that never got through.
+        assertEquals(emptyList<StalkerApi.StalkerSeriesItem>(), api.searchSeries("Silo"))
+    }
+
+    @Test
+    fun `getSeasons reports a failure as null rather than an empty season list`() = runTest {
+        val api = stubApi(requests = mutableListOf()) { "<html>gateway timeout</html>" }
+
+        assertNull(api.getSeasons("7"))
     }
 
     @Test
@@ -717,7 +737,7 @@ class StalkerApiTest {
         val requests = mutableListOf<String>()
         val api = stubApi(requests = requests) { error("must not be called") }
 
-        assertTrue(api.searchSeries("   ").isEmpty())
+        assertTrue(api.searchSeries("   ")!!.isEmpty())
         assertTrue(requests.isEmpty())
     }
 
@@ -736,7 +756,7 @@ class StalkerApiTest {
             }
         }
 
-        val seasons = api.getSeasons("7")
+        val seasons = api.getSeasons("7")!!
 
         assertEquals(listOf("Season 1", "Season 2"), seasons.map { it.name })
         assertEquals(listOf(1, 2, 3), StalkerApi.episodeNumbers(seasons.first().series))
@@ -754,7 +774,7 @@ class StalkerApiTest {
             """{"js":{"data":[{"id":"71","name":"Season 1","cmd":"/media/s1","series":[1]}]}}"""
         }
 
-        val seasons = api.getSeasons("7")
+        val seasons = api.getSeasons("7")!!
 
         assertEquals(1, seasons.size)
         assertEquals(2, requests.size)
@@ -765,7 +785,7 @@ class StalkerApiTest {
         val requests = mutableListOf<String>()
         val api = stubApi(requests = requests) { error("must not be called") }
 
-        assertTrue(api.getSeasons("  ").isEmpty())
+        assertTrue(api.getSeasons("  ")!!.isEmpty())
         assertTrue(requests.isEmpty())
     }
 
