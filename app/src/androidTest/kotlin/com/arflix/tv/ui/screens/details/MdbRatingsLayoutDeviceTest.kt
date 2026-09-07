@@ -40,7 +40,9 @@ class MdbRatingsLayoutDeviceTest(private val device: DeviceType, private val wid
         }
         val parent = compose.onNodeWithTag("ratings").getUnclippedBoundsInRoot()
         labels.forEach { label ->
-            val node = compose.onNodeWithText(label)
+            // Sources with a bundled logo draw it instead of the written-out
+            // name, and keep the name as the logo's content description.
+            val node = compose.onNode(hasText(label) or hasContentDescription(label))
             node.assertIsDisplayed()
             val bounds = node.getUnclippedBoundsInRoot()
             assertTrue("$label extends past the right edge", bounds.right <= parent.right)

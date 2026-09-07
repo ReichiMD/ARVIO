@@ -168,6 +168,7 @@ import com.arflix.tv.ui.components.DetailsTvHeroLayout
 import com.arflix.tv.ui.components.MediaCard
 import com.arflix.tv.ui.components.PersonModal
 import com.arflix.tv.ui.components.PosterCard
+import com.arflix.tv.ui.components.ratingSourceLogo
 import com.arflix.tv.ui.components.resolveDetailsBackdropHeightDp
 import com.arflix.tv.ui.components.rememberCatalogueRowLayoutMode
 import com.arflix.tv.ui.components.SidebarItem
@@ -3632,6 +3633,8 @@ internal fun MdbExternalRatingsRow(
     centered: Boolean,
     textShadow: Shadow
 ) {
+    val context = LocalContext.current
+    val logoImageLoader = context.imageLoader
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(
             6.dp,
@@ -3641,6 +3644,7 @@ internal fun MdbExternalRatingsRow(
         modifier = Modifier.fillMaxWidth()
     ) {
         ratings.forEach { rating ->
+            val logo = ratingSourceLogo(rating.source)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -3650,16 +3654,39 @@ internal fun MdbExternalRatingsRow(
                     .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(4.dp))
                     .padding(horizontal = 7.dp, vertical = 4.dp)
             ) {
-                Text(
-                    text = rating.label,
-                    style = ArflixTypography.caption.copy(
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        shadow = textShadow
-                    ),
-                    color = Color.White.copy(alpha = 0.7f),
-                    maxLines = 1
-                )
+                if (logo == null) {
+                    // No bundled logo for this source (Roger Ebert, Metacritic,
+                    // Rotten Tomatoes, Letterboxd, MyAnimeList) - keep the name.
+                    Text(
+                        text = rating.label,
+                        style = ArflixTypography.caption.copy(
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            shadow = textShadow
+                        ),
+                        color = Color.White.copy(alpha = 0.7f),
+                        maxLines = 1
+                    )
+                } else {
+                    val logoRequest = remember(context, logo.model) {
+                        ImageRequest.Builder(context)
+                            .data(logo.model)
+                            .bitmapConfig(Bitmap.Config.ARGB_8888)
+                            .allowRgb565(false)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = logoRequest,
+                        imageLoader = logoImageLoader,
+                        // Carries the source name for screen readers, which the
+                        // logo replaces visually.
+                        contentDescription = rating.label,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .height(logo.height)
+                            .aspectRatio(logo.aspectRatio)
+                    )
+                }
                 Text(
                     text = rating.value,
                     style = ArflixTypography.caption.copy(
