@@ -47,6 +47,8 @@ private object TvViewModelRegexes {
 }
 
 internal const val FAVORITES_GROUP_NAME = "My Favorites"
+/** How long a create_link address stays reusable before it is fetched again. */
+private const val StalkerStreamCacheTtlMs = 60_000L
 private const val EpgLoadingStateLimit = 800
 private const val EpgAttemptedStateLimit = 2_400
 private const val LargeIptvListChannelCount = 10_000
@@ -162,7 +164,13 @@ class TvViewModel @Inject constructor(
     private var deferredCompleteEpgBackfillJob: Job? = null
     private var preparedContentJob: Job? = null
     private var preparedContentRevision: Long = 0L
-    private val resolvedStalkerStreamCache = LinkedHashMap<String, String>()
+    // create_link hands out a *temporary* address (the portals that need it announce
+    // `use_http_tmp_link` and sign the link with `nginx_secure_link`). Caching one
+    // without an expiry meant returning to a channel replayed an address the portal had
+    // long since retired, which surfaced as a channel that had just worked refusing to
+    // start. Keep the cache — it still spares a round trip when a channel is re-entered
+    // right away — but only for as long as such a link can be expected to live.
+    private val resolvedStalkerStreamCache = LinkedHashMap<String, CachedStalkerStream>()
     private val iptvPlaybackUrlResolver by lazy {
         IptvPlaybackUrlResolver(
             OkHttpProvider.playbackClient.newBuilder()
@@ -178,6 +186,11 @@ class TvViewModel @Inject constructor(
     private val epgNetworkRefreshLock = Any()
     private val epgNetworkRefreshInFlight = LinkedHashSet<String>()
     private val epgNetworkAttemptAt = LinkedHashMap<String, Long>()
+
+    private data class CachedStalkerStream(
+        val url: String,
+        val resolvedAtMs: Long,
+    )
 
     private data class VisibleEpgDrain(
         val ids: List<String>,
@@ -2112,9 +2125,12 @@ class TvViewModel @Inject constructor(
         if (!isStalkerChannel) return trimmed
         val cacheKey = StalkerPortalSupport.streamCacheKey(channelId, trimmed)
 
+        val now = System.currentTimeMillis()
         if (!forceRefresh) {
             synchronized(resolvedStalkerStreamCache) {
-                resolvedStalkerStreamCache[cacheKey]?.let { return it }
+                resolvedStalkerStreamCache[cacheKey]
+                    ?.takeIf { now - it.resolvedAtMs <= StalkerStreamCacheTtlMs }
+                    ?.let { return it.url }
             }
         }
 
@@ -2134,7 +2150,7 @@ class TvViewModel @Inject constructor(
             throw IllegalStateException("Stalker portal returned no playable link")
         }
         synchronized(resolvedStalkerStreamCache) {
-            resolvedStalkerStreamCache[cacheKey] = playable
+            resolvedStalkerStreamCache[cacheKey] = CachedStalkerStream(playable, now)
             while (resolvedStalkerStreamCache.size > 200) {
                 val firstKey = resolvedStalkerStreamCache.keys.firstOrNull() ?: break
                 resolvedStalkerStreamCache.remove(firstKey)
