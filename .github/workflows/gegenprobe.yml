@@ -1,0 +1,41 @@
+name: Counter-check (tests without the fix)
+
+# Test-branch only. Proves the new 407 tests fail on the unchanged production
+# code; this workflow never reaches a pull request against upstream.
+
+on:
+  push:
+    branches:
+      - claude/beautiful-faraday-n4cjxi-gegenprobe
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: Run unit tests without the fix
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Prepare placeholder build configuration
+        run: cp secrets.defaults.properties secrets.properties
+
+      - name: Compile and run unit tests
+        run: ./gradlew testSideloadDebugUnitTest --no-daemon
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: counter-check-test-results
+          path: app/build/test-results/testSideloadDebugUnitTest/*.xml
+          if-no-files-found: error
+          retention-days: 7

@@ -14,9 +14,6 @@ import java.time.format.DateTimeFormatter
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Matches the resolver's own window for a stream address that just failed. */
-private const val refusedStreamCooldownMs = 60_000L
-
 /** For IPTV metadata and preflight clients only. Never throttle video segments. */
 internal class IptvProviderRequestGuard(
     private val clock: () -> Long = System::currentTimeMillis,
@@ -40,23 +37,15 @@ internal class IptvProviderRequestGuard(
 
     private fun recordResponse(provider: Provider, response: Response, playback: Boolean = false) {
         val cooldown = iptvProviderCooldownMs(response.code, response.header("Retry-After"), clock())
-        // A provider answering 407 refuses this one stream while it keeps serving the
-        // rest, so it earns no provider cooldown. It still has to be remembered here:
-        // OkHttp turns 407 on a direct connection into a protocol error, so no caller
-        // above ever sees the status and every retry layer treats it as a nameless
-        // failure worth repeating.
-        val streamCooldown = if (response.code == 407) refusedStreamCooldownMs else 0L
-        if (cooldown <= 0L && streamCooldown <= 0L) return
-        synchronized(provider) {
-            val now = clock()
-            if (cooldown > 0L) provider.blockedUntil = maxOf(provider.blockedUntil, now + cooldown)
-            if (playback || streamCooldown > 0L) {
-                provider.playbackFailures[response.request.url.toString()] = now + maxOf(cooldown, streamCooldown)
+        if (cooldown > 0L) synchronized(provider) {
+            provider.blockedUntil = maxOf(provider.blockedUntil, clock() + cooldown)
+            if (playback) {
+                provider.playbackFailures[response.request.url.toString()] = clock() + cooldown
                 while (provider.playbackFailures.size > 256) {
                     provider.playbackFailures.remove(provider.playbackFailures.keys.first())
                 }
                 if (response.code in setOf(429, 503, 513)) {
-                    provider.playbackBlockedUntil = maxOf(provider.playbackBlockedUntil, now + cooldown)
+                    provider.playbackBlockedUntil = maxOf(provider.playbackBlockedUntil, clock() + cooldown)
                 }
             }
         }
@@ -144,9 +133,7 @@ internal class IptvProviderRequestGuard(
             val response = chain.proceed(chain.request())
             recordResponse(provider, response)
             val body = response.body
-            // OkHttp rejects a 407 on a direct connection without closing the response,
-            // so a slot held across its body would never be handed back.
-            if (body == null || response.code == 407) {
+            if (body == null) {
                 release()
                 return response
             }
