@@ -40,7 +40,7 @@ class LiveTvRetryPolicyTest {
     }
 
     @Test fun terminalResponsesStillStopImmediately() {
-        for (status in listOf(401, 403, 429, 444, 451, 513)) {
+        for (status in listOf(401, 403, 407, 429, 444, 451, 513)) {
             assertFalse(shouldRetryLiveTvPlayback(status, 1, 3, isCatchup = false))
             assertFalse(shouldRetryLiveTvPlayback(status, 1, 2, isCatchup = true))
         }

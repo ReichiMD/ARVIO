@@ -1,6 +1,8 @@
 package com.arflix.tv.ui.screens.tv.live
 
-private val terminalPlaybackHttpCodes = setOf(401, 403, 429, 444, 451, 513)
+// 407 belongs here even though it names a proxy: the app configures no proxy
+// authenticator, so a repeated request is byte for byte the one just refused.
+private val terminalPlaybackHttpCodes = setOf(401, 403, 407, 429, 444, 451, 513)
 
 internal fun isMissingPlaybackResource(httpCode: Int?): Boolean = httpCode == 404 || httpCode == 410
 

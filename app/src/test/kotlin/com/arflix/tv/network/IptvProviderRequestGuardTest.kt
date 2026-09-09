@@ -6,6 +6,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.io.IOException
 import java.net.InetAddress
+import java.net.ProtocolException
 import java.net.ServerSocket
 import kotlin.concurrent.thread
 import java.util.concurrent.atomic.AtomicInteger
@@ -153,6 +154,50 @@ class IptvProviderRequestGuardTest {
                 .execute().close()
             assertEquals(2, f.hits.get())
             assertThrows(IptvProviderRequestDeferredException::class.java) { f.call("xmltv.php") }
+        }
+    }
+
+    @Test fun aRefusedStreamIsNotAskedAgainWhileTheProviderKeepsServing() {
+        Fixture(407).use { f ->
+            val playback = f.client.newBuilder().apply { interceptors().clear(); networkInterceptors().clear() }
+                .addInterceptor(f.guard.preflightInterceptor(playback = true))
+                .addNetworkInterceptor(f.guard.playbackInterceptor()).build()
+            fun channel(id: Int) = playback.newCall(Request.Builder()
+                .url("http://127.0.0.1:${f.server.localPort}/live/$id.ts").build()).execute()
+            // OkHttp reports 407 on a direct connection as a protocol error, so the
+            // player is told nothing but "it failed" and would ask again.
+            assertThrows(ProtocolException::class.java) { channel(1) }
+            assertThrows(IptvProviderRequestDeferredException::class.java) { channel(1) }
+            f.status = 200
+            channel(2).close()
+            f.call("xmltv.php").close()
+            assertEquals(3, f.hits.get())
+            // A refusal of one stream is deliberately not a provider cooldown.
+            assertEquals(0L, iptvProviderCooldownMs(407, "600", f.clock.get()))
+        }
+    }
+
+    @Test fun aStreamRefusedWhileResolvingIsNeitherPlayedNorLeftHoldingASlot() {
+        Fixture(407).use { f ->
+            // Playback addresses are probed through the metadata client before they
+            // reach the player.
+            listOf(1, 2).forEach { id ->
+                assertThrows(ProtocolException::class.java) {
+                    f.client.newCall(Request.Builder()
+                        .url("http://127.0.0.1:${f.server.localPort}/live/$id.ts").head().build()).execute()
+                }
+            }
+            val playback = f.client.newBuilder().apply { interceptors().clear(); networkInterceptors().clear() }
+                .addInterceptor(f.guard.preflightInterceptor(playback = true))
+                .addNetworkInterceptor(f.guard.playbackInterceptor()).build()
+            assertThrows(IptvProviderRequestDeferredException::class.java) {
+                playback.newCall(Request.Builder()
+                    .url("http://127.0.0.1:${f.server.localPort}/live/1.ts").build()).execute()
+            }
+            f.status = 200
+            f.call("get.php").close()
+            f.call("xmltv.php").close()
+            assertEquals(4, f.hits.get())
         }
     }
 
