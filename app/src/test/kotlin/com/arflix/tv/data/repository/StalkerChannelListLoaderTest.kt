@@ -122,17 +122,19 @@ class StalkerChannelListLoaderTest {
     }
 
     @Test
-    fun aForcedReloadSkipsTheStoredListButJoinsTheRunningDownload() = runTest {
+    fun twoForcedCallersAtOnceShareOneDownload() = runTest {
         // Measured on device: two entry points reacted to one added playlist and
-        // pulled the full channel list twice in the same second. Forcing must
-        // mean "not the old list", not "a second portal session".
+        // pulled the full channel list twice in the same second. Asking for
+        // fresh data must mean "not the old list", not "a second portal
+        // session".
         val scope = downloadScope()
         val loader = loader(scope)
         var downloads = 0
         val fetch: suspend () -> String = { downloads++; delay(2_000); "channels" }
 
-        val first = async { loader.load("portal-a", forceReload = true, fetch = fetch) }
-        val second = async { loader.load("portal-a", forceReload = true, fetch = fetch) }
+        clock = 5_000
+        val first = async { loader.load("portal-a", freshSinceMs = 5_000, fetch = fetch) }
+        val second = async { loader.load("portal-a", freshSinceMs = 5_000, fetch = fetch) }
         advanceUntilIdle()
 
         assertThat(first.await()).isEqualTo("channels")
@@ -142,7 +144,31 @@ class StalkerChannelListLoaderTest {
     }
 
     @Test
-    fun aForcedReloadDoesNotServeTheStoredList() = runTest {
+    fun aForcedCallerTakesTheListThatArrivedWhileItWaitedItsTurn() = runTest {
+        // ⭐ The bug measured on 09.09.: a playlist toggle wakes two entry
+        // points, the repository lock serializes them, so the second never
+        // meets a *running* download — it meets one that just finished. Both
+        // asked at 5_000, so a list downloaded at 5_400 is newer than the
+        // request and answers it. Skipping every remembered list instead cost a
+        // second full 27.67 MB download.
+        val scope = downloadScope()
+        val loader = loader(scope, freshnessWindowMs = 300_000L)
+        var downloads = 0
+        val fetch: suspend () -> String = { downloads++; clock = 5_400; "channels" }
+
+        clock = 5_000
+        val askedAtMs = clock
+        assertThat(loader.load("portal-a", freshSinceMs = askedAtMs, fetch = fetch)).isEqualTo("channels")
+        assertThat(loader.load("portal-a", freshSinceMs = askedAtMs, fetch = fetch)).isEqualTo("channels")
+
+        assertThat(downloads).isEqualTo(1)
+        scope.cancel()
+    }
+
+    @Test
+    fun aForcedCallerDoesNotTakeAListFromBeforeItAsked() = runTest {
+        // The counterpart: pressing "Refresh IPTV" must reach the portal even
+        // though the stored list is still well inside the freshness window.
         val scope = downloadScope()
         val loader = loader(scope)
         var downloads = 0
@@ -150,31 +176,55 @@ class StalkerChannelListLoaderTest {
 
         assertThat(loader.load("portal-a", fetch = fetch)).isEqualTo("channels-1")
         assertThat(loader.load("portal-a", fetch = fetch)).isEqualTo("channels-1")
-        assertThat(loader.load("portal-a", forceReload = true, fetch = fetch)).isEqualTo("channels-2")
+        clock = 500
+        assertThat(loader.load("portal-a", freshSinceMs = 500, fetch = fetch)).isEqualTo("channels-2")
 
         assertThat(downloads).isEqualTo(2)
         scope.cancel()
     }
 
     @Test
-    fun invalidateForcesTheNextCallerToDownloadAgain() = runTest {
+    fun aChangedPortalSetMakesTheNextCallerDownloadAgain() = runTest {
+        // A changed key is the only thing that discards a stored list — nothing
+        // else may, because everything else the app calls "invalidate" for
+        // (a playlist, an EPG URL, a profile) leaves the portals alone.
         val scope = downloadScope()
         val loader = loader(scope)
         var downloads = 0
         val fetch: suspend () -> String = { downloads++; "channels" }
 
         loader.load("portal-a", fetch = fetch)
-        loader.invalidate()
+        loader.load("portal-a-and-b", fetch = fetch)
         loader.load("portal-a", fetch = fetch)
 
+        assertThat(downloads).isEqualTo(3)
+        scope.cancel()
+    }
+
+    @Test
+    fun retainOnlyReleasesTheListOfAPortalThatIsGone() = runTest {
+        // Removing the last portal means nobody calls load() again, so the
+        // stored list would be held for the rest of the app run.
+        val scope = downloadScope()
+        val loader = loader(scope)
+        var downloads = 0
+        val fetch: suspend () -> String = { downloads++; "channels" }
+
+        loader.load("portal-a", fetch = fetch)
+        loader.retainOnly("portal-a")
+        loader.load("portal-a", fetch = fetch)
+        assertThat(downloads).isEqualTo(1)
+
+        loader.retainOnly("")
+        loader.load("portal-a", fetch = fetch)
         assertThat(downloads).isEqualTo(2)
         scope.cancel()
     }
 
     @Test
     fun aDetachedDownloadCannotOverwriteTheOneThatReplacedIt() = runTest {
-        // The user hits refresh while the startup download is still running.
-        // The detached download finishes last here — its result must not land.
+        // The portal set changes while a download is still running. The
+        // detached download finishes last here — its result must not land.
         val scope = downloadScope()
         val loader = loader(scope)
         var downloads = 0
@@ -187,13 +237,12 @@ class StalkerChannelListLoaderTest {
 
         val detached = async { loader.load("portal-a", fetch = fetch) }
         advanceTimeBy(500)
-        loader.invalidate()
-        val replacement = async { loader.load("portal-a", fetch = fetch) }
+        val replacement = async { loader.load("portal-b", fetch = fetch) }
         advanceUntilIdle()
 
         assertThat(detached.await()).isEqualTo("channels-1")
         assertThat(replacement.await()).isEqualTo("channels-2")
-        assertThat(loader.load("portal-a", fetch = fetch)).isEqualTo("channels-2")
+        assertThat(loader.load("portal-b", fetch = fetch)).isEqualTo("channels-2")
         assertThat(downloads).isEqualTo(2)
         scope.cancel()
     }

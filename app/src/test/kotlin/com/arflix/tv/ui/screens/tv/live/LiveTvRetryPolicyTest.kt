@@ -5,6 +5,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LiveTvRetryPolicyTest {
+    @Test fun healthyHlsAddressSurvivesPlaylistResetWithoutAnotherProbe() {
+        assertTrue(shouldReusePreparedLiveHls(true, false, false, null))
+    }
+
+    @Test fun expiredHlsAddressMustBeResolvedAgain() {
+        for (status in listOf(404, 410)) {
+            assertFalse(shouldReusePreparedLiveHls(true, false, false, status))
+        }
+    }
+
+    @Test fun catchupAndContainerRecoveryStillResolveTheirTargets() {
+        assertFalse(shouldReusePreparedLiveHls(true, true, false, null))
+        assertFalse(shouldReusePreparedLiveHls(true, false, true, null))
+        assertFalse(shouldReusePreparedLiveHls(false, false, false, null))
+    }
+
     @Test fun missingLiveResourceGetsOneFreshResolution() {
         for (status in listOf(404, 410)) {
             assertTrue(shouldRetryLiveTvPlayback(status, 1, 3, isCatchup = false))

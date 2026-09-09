@@ -4,6 +4,13 @@ private val terminalPlaybackHttpCodes = setOf(401, 403, 429, 444, 451, 513)
 
 internal fun isMissingPlaybackResource(httpCode: Int?): Boolean = httpCode == 404 || httpCode == 410
 
+internal fun shouldReusePreparedLiveHls(
+    preparedIsHls: Boolean,
+    isCatchup: Boolean,
+    unsupportedContainer: Boolean,
+    httpCode: Int?,
+): Boolean = preparedIsHls && !isCatchup && !unsupportedContainer && !isMissingPlaybackResource(httpCode)
+
 internal fun shouldRetryLiveTvPlayback(
     httpCode: Int?,
     nextAttempt: Int,

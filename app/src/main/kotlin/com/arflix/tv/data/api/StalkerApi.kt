@@ -1,6 +1,7 @@
 package com.arflix.tv.data.api
 
 import com.arflix.tv.data.model.IptvChannel
+import com.arflix.tv.network.withIptvProviderRequestGuard
 import com.arflix.tv.data.repository.StalkerPortalSupport
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -25,6 +26,7 @@ open class StalkerApi(
     private var apiBaseResolved = false
 
     private val client = OkHttpClient.Builder()
+        .withIptvProviderRequestGuard()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
@@ -99,6 +101,7 @@ open class StalkerApi(
                     return
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 // continue to next candidate
             }
         }
@@ -179,6 +182,8 @@ open class StalkerApi(
             if (e is kotlinx.coroutines.CancellationException) throw e
 
             System.err.println("[Stalker] Get channels failed: ${e.message}")
+            // Never publish a partial page set as the complete provider catalog.
+            throw e
         }
         return channels
     }

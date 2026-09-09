@@ -54,6 +54,22 @@ class StalkerApiTest {
     }
 
     @Test
+    fun `failed catalog page never returns a partial successful channel list`() = runTest {
+        val requests = mutableListOf<String>()
+        val api = stubApi(requests = requests) { url ->
+            when {
+                url.contains("action=get_genres") -> """{"js":[]}"""
+                url.contains("action=get_all_channels&p=1&") ->
+                    """{"js":{"total_items":2,"max_page_items":1,"data":[{"id":1,"name":"One","cmd":"http://provider.test/1"}]}}"""
+                else -> throw com.arflix.tv.network.IptvProviderRequestDeferredException()
+            }
+        }
+        var rejected = false
+        try { api.getChannels() } catch (_: com.arflix.tv.network.IptvProviderRequestDeferredException) { rejected = true }
+        assertTrue("An incomplete catalog must be reported as a failure", rejected)
+    }
+
+    @Test
     fun `handshake skips HTML responses and falls through to stalker_portal`() = runTest {
         val requests = mutableListOf<String>()
         val api = stubApi(requests = requests) { url ->

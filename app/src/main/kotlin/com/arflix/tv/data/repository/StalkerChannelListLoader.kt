@@ -26,12 +26,19 @@ internal const val STALKER_CHANNEL_LIST_FRESHNESS_MS = 5 * 60_000L
  *  - a caller arriving within [freshnessWindowMs] of a usable download reuses
  *    its result instead of starting another one.
  *
- * A caller that wants genuinely fresh data passes `forceReload` — that skips
- * the remembered result but still joins a download that is already running.
- * A running download is never older than the remembered result (a new one only
- * starts when none is in flight), so joining it is what "fresh" means here.
- * Only [invalidate] discards a running download, and only the configuration it
- * was made for changing justifies that.
+ * A caller that wants genuinely fresh data passes `freshSinceMs` — the moment
+ * it decided it needed fresh data. A remembered list downloaded after that
+ * moment already answers the request; an older one does not and is skipped.
+ * That timestamp is what keeps one configuration change from costing two
+ * downloads: the second entry point reacting to it asked before the first
+ * one's download finished, so that download is fresh enough for it too.
+ * A download that is already running is joined either way — a running download
+ * is never older than the remembered result (a new one only starts when none
+ * is in flight), so joining it is what "fresh" means here.
+ *
+ * Nothing discards a running download except a changed [load] key: the key
+ * carries the configured portals, and a configuration change that leaves them
+ * alone has nothing to do with the Stalker channel list.
  *
  * The download runs in [scope] rather than in the calling coroutine, so a
  * caller that gives up (its own timeout, a screen the user left) does not
@@ -61,22 +68,27 @@ internal class StalkerChannelListLoader<T : Any>(
 
     /**
      * Counts the downloads that were started. A download only stores its result
-     * while it is still the current one, so a download detached by
-     * [invalidate] cannot overwrite the result of the download that replaced
-     * it — whichever of the two finishes last.
+     * while it is still the current one, so a download detached by a changed
+     * [load] key cannot overwrite the result of the download that replaced it —
+     * whichever of the two finishes last.
      */
     private var generation: Long = 0L
 
     /**
      * Returns the channel list for [key], running [fetch] at most once per
      * freshness window. [key] identifies the configured portals — a different
-     * portal set never reuses another one's list.
+     * portal set never reuses another one's list, and switching to one detaches
+     * the download the previous set had started.
      *
-     * @param forceReload ignore the remembered result. A download that is
-     *   already running is still shared: forcing is about not serving an old
-     *   list, not about opening a second portal session next to the first.
+     * @param freshSinceMs the moment the caller decided it needed fresh data.
+     *   A remembered list downloaded before that moment is skipped; one
+     *   downloaded after it already answers the request. Pass `0` to accept any
+     *   list inside the freshness window. A download that is already running is
+     *   shared in either case: asking for fresh data is about not being served
+     *   an old list, not about opening a second portal session next to the
+     *   first.
      */
-    suspend fun load(key: String, forceReload: Boolean = false, fetch: suspend () -> T): T {
+    suspend fun load(key: String, freshSinceMs: Long = 0L, fetch: suspend () -> T): T {
         val pending = synchronized(lock) {
             if (key != cacheKey) {
                 forgetLocked()
@@ -84,7 +96,8 @@ internal class StalkerChannelListLoader<T : Any>(
             }
             val previous = remembered
             if (previous != null) {
-                if (!forceReload && nowMs() - rememberedAtMs < freshnessWindowMs) return previous
+                val insideWindow = nowMs() - rememberedAtMs < freshnessWindowMs
+                if (insideWindow && rememberedAtMs >= freshSinceMs) return previous
                 remembered = null
                 rememberedAtMs = 0L
             }
@@ -94,19 +107,15 @@ internal class StalkerChannelListLoader<T : Any>(
     }
 
     /**
-     * Drops the remembered list and detaches a running download, so the next
-     * [load] starts over. Reserved for a changed configuration — the running
-     * download was made for the old one. A plain refresh must use
-     * `forceReload` instead: measured, two entry points reacting to one
-     * configuration change invalidated each other's download and pulled the
-     * full channel list twice within the same second.
-     *
-     * A running download is detached, not cancelled: callers may be waiting on
-     * it, and cancelling would fail their load. Its result is discarded rather
-     * than stored, even if it finishes after the download that replaced it.
+     * Drops whatever is stored unless it belongs to [key]. [load] does this on
+     * its own, so this exists for the one case that never calls it: the last
+     * portal was removed, so nothing asks for a channel list any more and the
+     * one from the removed portal would otherwise be held until the app dies.
      */
-    fun invalidate() {
-        synchronized(lock) { forgetLocked() }
+    fun retainOnly(key: String) {
+        synchronized(lock) {
+            if (cacheKey != null && cacheKey != key) forgetLocked()
+        }
     }
 
     private fun startLocked(fetch: suspend () -> T): Deferred<T> {
