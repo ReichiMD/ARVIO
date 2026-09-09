@@ -43,6 +43,13 @@ jobs:
             exit 1
           fi
 
+      # This step is also the build proof, so it stays. Be aware of one known
+      # flake before reading a red run as your own doing:
+      # EpgRefreshRequestsTest > archiveWaitsForShortGuideWithoutStartingConcurrentRequests,
+      # failing with kotlinx.coroutines.test.UncaughtExceptionsBeforeTest. It is a
+      # coroutine another test left on the main dispatcher, it predates this
+      # branch, and it has taken down APK runs before. Re-running is the remedy -
+      # never quarantining the test. Anything else that is red is real.
       - name: Compile and run unit tests
         run: ./gradlew testSideloadDebugUnitTest --no-daemon
 
