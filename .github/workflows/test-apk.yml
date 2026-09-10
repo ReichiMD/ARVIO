@@ -14,7 +14,7 @@ on:
 
 jobs:
   build-test-apk:
-    name: Build sideload staging test APK
+    name: Build sideload debug test APK
     runs-on: ubuntu-latest
 
     steps:
@@ -46,39 +46,40 @@ jobs:
       - name: Compile and run unit tests
         run: ./gradlew testSideloadDebugUnitTest --no-daemon
 
-      # `staging` is `release` with R8 and shrinking — the same optimisation
-      # level real users run, so the retry timing this build is meant to show
-      # is the timing they would actually get.
+      # docs/10 "DER TEST-APK-STANDARD": this is a SCHNELL-APK
+      # (`assembleSideloadDebug`). The test question is how often the channel
+      # list is downloaded and whether a portal that failed is asked again —
+      # logic and network traffic, not smoothness. A staging build with R8 would
+      # cost ten more minutes and answer nothing extra.
       #
-      # Suffix `.test` is the house standard from docs/10 and deliberately not
-      # B23's `.zaptest`: that test app is still on the devices waiting for
-      # Prodigy's answer and must not be overwritten by this build.
-      - name: Give the staging build its own package and a fixed signature
+      # Kennung `senderliste`: it drives the package suffix, the launcher name
+      # and the artifact name together, so this build cannot overwrite the
+      # `vodsuche` or `zap` test apps on the same device. The price is that it
+      # installs as a separate app and starts empty — portal and MAC have to be
+      # entered once.
+      - name: Give the debug build its own package, name and a fixed signature
         run: |
-          sed -i 's/applicationIdSuffix = ".beta"/applicationIdSuffix = ".test"/' app/build.gradle.kts
-          sed -i 's/versionNameSuffix = "-beta"/versionNameSuffix = "-test"/' app/build.gradle.kts
-          sed -i "s/versionCode = [0-9]*/versionCode = $((600 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
-          # `staging` inherits from `release`, so it also inherits the gate that
-          # refuses to build without real Supabase and Trakt credentials. Those
-          # are upstream release secrets this fork does not have; the gate exists
-          # to stop such a build being *shipped*, which is not what this is.
-          # Cloud login and sync are therefore not usable in this APK —
-          # everything local, IPTV included, is.
-          sed -i 's|dependsOn(validateReleaseCloudSecrets)|// CI test build only: cloud-secret gate disabled|' app/build.gradle.kts
+          # In the debug block the suffix line is commented out, so this inserts
+          # rather than replaces.
+          sed -i 's|// applicationIdSuffix = ".debug".*|applicationIdSuffix = ".senderliste"|' app/build.gradle.kts
+          sed -i 's/versionNameSuffix = "-debug"/versionNameSuffix = "-senderliste"/' app/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = $((960200 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Senderliste</string>|' \
+            app/src/main/res/values/strings.xml
           # Every edit above is checked. A sed that silently matches nothing is
           # how this kind of workflow wastes a build cycle (docs/12 learned it
           # the hard way).
-          grep -q 'applicationIdSuffix = ".test"' app/build.gradle.kts || { echo "::error::suffix patch did not apply"; exit 1; }
-          grep -q 'versionNameSuffix = "-test"' app/build.gradle.kts || { echo "::error::versionName patch did not apply"; exit 1; }
-          grep -q 'cloud-secret gate disabled' app/build.gradle.kts || { echo "::error::cloud-secret gate patch did not apply"; exit 1; }
-          grep -q "versionCode = $((600 + GITHUB_RUN_NUMBER))" app/build.gradle.kts || { echo "::error::versionCode patch did not apply"; exit 1; }
+          grep -q 'applicationIdSuffix = ".senderliste"' app/build.gradle.kts || { echo "::error::suffix patch did not apply"; exit 1; }
+          grep -q 'versionNameSuffix = "-senderliste"' app/build.gradle.kts || { echo "::error::versionName patch did not apply"; exit 1; }
+          grep -q "versionCode = $((960200 + GITHUB_RUN_NUMBER))" app/build.gradle.kts || { echo "::error::versionCode patch did not apply"; exit 1; }
+          grep -q '>Senderliste<' app/src/main/res/values/strings.xml || { echo "::error::app_name patch did not apply"; exit 1; }
           cat >> app/build.gradle.kts <<'KTS'
 
-          // CI only: the staging build type falls back to the signing config named
-          // "debug" when no release keystore is configured. On a runner that config
-          // points at a freshly generated ~/.android/debug.keystore, so every build
-          // would carry a different signature and testers could not install one test
-          // APK over the previous one. Pin it to the committed keystore instead.
+          // CI only: the debug build type uses the signing config named "debug".
+          // On a runner that config points at a freshly generated
+          // ~/.android/debug.keystore, so every build would carry a different
+          // signature and testers could not install one test APK over the
+          // previous one. Pin it to the committed keystore instead.
           android {
               signingConfigs {
                   getByName("debug") {
@@ -91,14 +92,14 @@ jobs:
           }
           KTS
 
-      - name: Build sideload staging APK
-        run: ./gradlew assembleSideloadStaging --no-daemon
+      - name: Build sideload debug APK
+        run: ./gradlew assembleSideloadDebug --no-daemon
 
       - name: Verify APK signature against the committed keystore
         run: |
           EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
             -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
-          APK=$(ls app/build/outputs/apk/sideload/staging/*.apk | head -1)
+          APK=$(ls app/build/outputs/apk/sideload/debug/*.apk | head -1)
           ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
           echo "APK:      $APK"
           echo "expected: $EXPECTED"
@@ -112,7 +113,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: arvio-stalker-protokoll-test-apk
-          path: app/build/outputs/apk/sideload/staging/*.apk
+          name: arvio-senderliste-apk
+          path: app/build/outputs/apk/sideload/debug/*.apk
           if-no-files-found: error
           retention-days: 14
