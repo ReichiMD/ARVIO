@@ -99,7 +99,7 @@ jobs:
         run: |
           EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
             -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
-          APK=$(ls app/build/outputs/apk/sideload/debug/*.apk | head -1)
+          APK=$(find app/build/outputs/apk/sideload/debug -name "*.apk" | head -1)
           ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
           echo "APK:      $APK"
           echo "expected: $EXPECTED"
