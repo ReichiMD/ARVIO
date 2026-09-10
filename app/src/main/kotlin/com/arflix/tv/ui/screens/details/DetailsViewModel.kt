@@ -354,6 +354,7 @@ class DetailsViewModel @Inject constructor(
             primaryNetworkLogo = primary.primaryNetworkLogo ?: fallback.primaryNetworkLogo,
             genreIds = if (primary.genreIds.isEmpty()) fallback.genreIds else primary.genreIds,
             originalLanguage = primary.originalLanguage ?: fallback.originalLanguage,
+            originalTitle = primary.originalTitle ?: fallback.originalTitle,
             isOngoing = primary.isOngoing || fallback.isOngoing,
             totalEpisodes = primary.totalEpisodes ?: fallback.totalEpisodes,
             watchedEpisodes = primary.watchedEpisodes ?: fallback.watchedEpisodes,
@@ -1045,12 +1046,17 @@ class DetailsViewModel @Inject constructor(
                         if (titleForPrefetch.isBlank()) {
                             return@launch
                         }
+                        // Warming has to ask what the real lookup will ask, or it
+                        // binds a show the lookup then searches for again.
+                        val originalTitleForPrefetch =
+                            baseState.item?.originalTitle ?: mergedItem.originalTitle
                         // Start immediately with TMDB/title so resolver can warm caches ASAP.
                         runCatching {
                             streamRepository.prefetchSeriesVodInfo(
                                 imdbId = null,
                                 title = titleForPrefetch,
-                                tmdbId = mediaId
+                                tmdbId = mediaId,
+                                originalTitle = originalTitleForPrefetch
                             )
                         }.onFailure { logDetailsLoadFailure("series VOD prefetch", it) }
                         val externalIds = runCatching { externalIdsDeferred.await() }.getOrNull()
@@ -1058,7 +1064,8 @@ class DetailsViewModel @Inject constructor(
                             streamRepository.prefetchSeriesVodInfo(
                                 imdbId = externalIds?.imdbId,
                                 title = titleForPrefetch,
-                                tmdbId = mediaId
+                                tmdbId = mediaId,
+                                originalTitle = originalTitleForPrefetch
                             )
                         }.onFailure { logDetailsLoadFailure("series VOD prefetch with IMDB ID", it) }
                         val resumeInfo = runCatching { resumeDeferred.await() }.getOrNull()
@@ -1077,7 +1084,8 @@ class DetailsViewModel @Inject constructor(
                                 season = targetSeason,
                                 episode = targetEpisode,
                                 title = titleForPrefetch,
-                                tmdbId = mediaId
+                                tmdbId = mediaId,
+                                originalTitle = originalTitleForPrefetch
                             )
                         }.onFailure { logDetailsLoadFailure("episode VOD prefetch", it) }
                     }
@@ -3048,6 +3056,9 @@ class DetailsViewModel @Inject constructor(
             return
         }
         val itemTitle = _uiState.value.item?.title.orEmpty()
+        // Passed alongside the displayed title: a provider catalogue may list
+        // the title only under its original name.
+        val itemOriginalTitle = _uiState.value.item?.originalTitle
 
         val vodSources = if (requestMediaType == MediaType.MOVIE) {
             streamRepository.resolveMovieVodSources(
@@ -3055,7 +3066,8 @@ class DetailsViewModel @Inject constructor(
                 title = itemTitle,
                 year = _uiState.value.item?.year?.toIntOrNull(),
                 tmdbId = currentMediaId,
-                timeoutMs = timeoutMs
+                timeoutMs = timeoutMs,
+                originalTitle = itemOriginalTitle
             )
         } else {
             streamRepository.resolveEpisodeVodSources(
@@ -3065,7 +3077,8 @@ class DetailsViewModel @Inject constructor(
                 title = itemTitle,
                 tmdbId = currentMediaId,
                 tvdbId = _uiState.value.tvdbId,
-                timeoutMs = timeoutMs
+                timeoutMs = timeoutMs,
+                originalTitle = itemOriginalTitle
             )
         }
         val validVodSources = vodSources.filter { !it.url.isNullOrBlank() }
