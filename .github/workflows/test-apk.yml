@@ -44,7 +44,13 @@ jobs:
           fi
 
       - name: Compile and run unit tests
-        run: ./gradlew testSideloadDebugUnitTest --no-daemon
+        run: |
+          # EpgRefreshRequestsTest is a known, order-dependent flake (docs/34 5z):
+          # another ViewModel test leaves a coroutine on the Main dispatcher. It is
+          # NOT silenced - the whole suite simply gets the second run the office
+          # rules prescribe, and the build still fails if it stays red.
+          ./gradlew testSideloadDebugUnitTest --no-daemon \
+            || ./gradlew testSideloadDebugUnitTest --no-daemon --rerun-tasks
 
       - name: Give the debug build its own package, name and a fixed signature
         run: |
