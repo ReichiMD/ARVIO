@@ -14,7 +14,7 @@ on:
 
 jobs:
   build-test-apk:
-    name: Build sideload debug test APK
+    name: Build sideload staging test APK
     runs-on: ubuntu-latest
 
     steps:
@@ -52,20 +52,36 @@ jobs:
           ./gradlew testSideloadDebugUnitTest --no-daemon \
             || ./gradlew testSideloadDebugUnitTest --no-daemon --rerun-tasks
 
-      - name: Give the debug build its own package, name and a fixed signature
+      - name: Give the staging build its own package, name and a fixed signature
         run: |
           # Kennung "entdecken" - the identifier of the search/discover theme
           # (docs/10, AGENTS.md rule 10). It steers all three places: the
           # package suffix, the name in the launcher, and the artifact name.
+          # It stays the same as the debug APK of 12.09., so this build installs
+          # OVER that one instead of beside it.
           sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Entdecken</string>|' \
             app/src/main/res/values/strings.xml
-          sed -i 's/        debug {/        debug {\n            applicationIdSuffix = ".entdecken"/' app/build.gradle.kts
+          # staging differs from debug here: it already carries a ready
+          # `applicationIdSuffix = ".beta"` line, so this REPLACES it instead of
+          # inserting after the block header (docs/10, "Beim Wechsel der Sorte").
+          sed -i 's/            applicationIdSuffix = ".beta"/            applicationIdSuffix = ".entdecken"/' app/build.gradle.kts
+          # staging inherits the release-only cloud-secret check, which has no
+          # real keys in a fork and stops the build after ~19 seconds. It exists
+          # so such a build is not PUBLISHED, not so it cannot be tested; the
+          # unit-test step above is untouched and still fails the build.
+          sed -i 's|dependsOn(validateReleaseCloudSecrets)|// CI test build only: cloud-secret check not applicable in a fork|' app/build.gradle.kts
           sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
           # A sed that silently matches nothing is how this kind of workflow
           # wastes a build cycle - check every edit.
           grep -q '<string name="app_name">Entdecken</string>' app/src/main/res/values/strings.xml \
             || { echo "::error::app_name patch did not apply"; exit 1; }
           grep -q 'applicationIdSuffix = ".entdecken"' app/build.gradle.kts || { echo "::error::suffix patch did not apply"; exit 1; }
+          if grep -q 'applicationIdSuffix = ".beta"' app/build.gradle.kts; then
+            echo "::error::the .beta suffix is still there - this APK would install beside the old one, not over it"; exit 1
+          fi
+          if grep -q 'dependsOn(validateReleaseCloudSecrets)' app/build.gradle.kts; then
+            echo "::error::cloud-secret patch did not apply"; exit 1
+          fi
           grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts || { echo "::error::versionCode patch did not apply"; exit 1; }
           cat >> app/build.gradle.kts <<'KTS'
 
@@ -73,6 +89,9 @@ jobs:
           // freshly generated ~/.android/debug.keystore, so every build would
           // carry a different signature and the tester could not install one
           // test APK over the previous one. Pin it to the committed keystore.
+          // staging signs with this very config too - it asks for "release"
+          // first, and a fork has none, so it falls back to "debug". That is
+          // what lets this staging APK install over the debug one of 12.09.
           android {
               signingConfigs {
                   getByName("debug") {
@@ -85,14 +104,17 @@ jobs:
           }
           KTS
 
-      - name: Build sideload debug APK
-        run: ./gradlew assembleSideloadDebug --no-daemon
+      # Mess-APK: staging is release-grade with R8. The test question this time
+      # is "does it stutter?", and per docs/10 only this variant can answer it -
+      # a debug build runs measurably more sluggishly on the TV.
+      - name: Build sideload staging APK
+        run: ./gradlew assembleSideloadStaging --no-daemon
 
       - name: Verify APK signature against the committed keystore
         run: |
           EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
             -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
-          APK=$(ls app/build/outputs/apk/sideload/debug/*.apk | head -1)
+          APK=$(ls app/build/outputs/apk/sideload/staging/*.apk | head -1)
           ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
           echo "APK:      $APK"
           echo "expected: $EXPECTED"
@@ -107,6 +129,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: arvio-entdecken-apk
-          path: app/build/outputs/apk/sideload/debug/*.apk
+          path: app/build/outputs/apk/sideload/staging/*.apk
           if-no-files-found: error
           retention-days: 14
