@@ -52,6 +52,21 @@ jobs:
           ./gradlew testSideloadDebugUnitTest --no-daemon \
             || ./gradlew testSideloadDebugUnitTest --no-daemon --rerun-tasks
 
+      # The office wants the test count as a measured number, not a guess: "1059 -> 1066".
+      # Gradle does not print one, so it is summed out of the JUnit XML the run just wrote.
+      - name: Count the unit tests
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          for f in glob.glob("app/build/test-results/testSideloadDebugUnitTest/*.xml"):
+              r = ET.parse(f).getroot()
+              tests += int(r.get("tests", 0)); failures += int(r.get("failures", 0))
+              errors += int(r.get("errors", 0)); skipped += int(r.get("skipped", 0))
+          print(f"unit tests: {tests} | failures: {failures} | errors: {errors} | skipped: {skipped}")
+          PY
+
       # The office rule is "detekt rule for rule unchanged", and the fork CI does
       # not run detekt at all - so the count is taken here, where the Android SDK
       # exists. It never fails the build: the comparison is the point, not a gate.
