@@ -1,0 +1,114 @@
+name: Test APK (untouched upstream, for comparison)
+
+# Test-branch only, and this one is special: the code here is UNTOUCHED upstream.
+# It exists to answer one question from the second device round - does the focus
+# get stuck in the search bar without any of our changes? Same build settings and
+# the same keystore as the discover APK, different package suffix, so both can sit
+# on the TV side by side and be compared. No tests and no detekt: this is upstream
+# code, covered by upstream's own CI.
+
+on:
+  push:
+    branches:
+      - claude/vergleich-test-apk
+  workflow_dispatch:
+
+jobs:
+  build-test-apk:
+    name: Build sideload debug test APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # The discover row is pure TMDB browsing, so a placeholder key would leave
+      # the tester with an empty app and nothing to test.
+      - name: Prepare runtime configuration
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          cp secrets.defaults.properties secrets.properties
+          if [ -n "$TMDB_API_KEY" ]; then
+            sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+            echo "TMDB key injected"
+          else
+            echo "::error::TMDB_API_KEY secret is empty - this feature cannot be tested without it"
+            exit 1
+          fi
+
+      - name: Give the debug build its own package, name and a fixed signature
+        run: |
+          # Kennung "entdecken" - the identifier of the search/discover theme
+          # (docs/10, AGENTS.md rule 10). It steers all three places: the package
+          # suffix, the name in the launcher, and the artifact name. It stays the
+          # same as the earlier discover APKs, so this build installs OVER the
+          # previous one instead of beside it.
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Vergleich</string>|' \
+            app/src/main/res/values/strings.xml
+          # debug differs from staging here: the `applicationIdSuffix` line is
+          # commented out, so this INSERTS one after the block header instead of
+          # replacing it (docs/10, "Beim Wechsel der Sorte mitdenken").
+          sed -i '0,/^        debug {$/s//        debug {\n            applicationIdSuffix = ".vergleich"/' app/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          # A sed that silently matches nothing is how this kind of workflow
+          # wastes a build cycle - check every edit.
+          grep -q '<string name="app_name">Vergleich</string>' app/src/main/res/values/strings.xml \
+            || { echo "::error::app_name patch did not apply"; exit 1; }
+          grep -q 'applicationIdSuffix = ".vergleich"' app/build.gradle.kts \
+            || { echo "::error::suffix patch did not apply"; exit 1; }
+          grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts \
+            || { echo "::error::versionCode patch did not apply"; exit 1; }
+          cat >> app/build.gradle.kts <<'KTS'
+
+          // CI only: on a runner the signing config named "debug" points at a
+          // freshly generated ~/.android/debug.keystore, so every build would
+          // carry a different signature and the tester could not install one
+          // test APK over the previous one. Pin it to the committed keystore.
+          android {
+              signingConfigs {
+                  getByName("debug") {
+                      storeFile = rootProject.file(".github/test-signing/debug.keystore")
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+          }
+          KTS
+
+      # Schnell-APK (docs/10): every question of this round is about CONTENT -
+      # do the seven chips work, do the panels open, are there seven columns -
+      # and for those the debug build is as valid as the slower staging one.
+      - name: Build sideload debug APK
+        run: ./gradlew assembleSideloadDebug --no-daemon
+
+      - name: Verify APK signature against the committed keystore
+        run: |
+          EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
+            -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          APK=$(ls app/build/outputs/apk/sideload/debug/*.apk | head -1)
+          ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          echo "APK:      $APK"
+          echo "expected: $EXPECTED"
+          echo "actual:   $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Signature mismatch - Gradle did not use the committed keystore."
+            exit 1
+          fi
+          echo "Signature verified against the committed keystore."
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arvio-vergleich-apk
+          path: app/build/outputs/apk/sideload/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
