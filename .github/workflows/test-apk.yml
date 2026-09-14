@@ -1,4 +1,4 @@
-name: Test APK (discover filter row)
+name: Test APK (discover filter row + TV preview)
 
 # Test-branch only. This workflow and the committed keystore must never reach a
 # pull request against upstream - they exist so a Claude Code session can hand
@@ -9,7 +9,7 @@ name: Test APK (discover filter row)
 on:
   push:
     branches:
-      - claude/entdecken-f4-test-apk
+      - claude/bold-dirac-5p5vq8
   workflow_dispatch:
 
 jobs:
@@ -42,6 +42,15 @@ jobs:
             echo "::error::TMDB_API_KEY secret is empty - this feature cannot be tested without it"
             exit 1
           fi
+
+      # Sanity check: the TV preview must be in this build, and it must be the
+      # kind that only fires when the user forces TV mode on a touch device.
+      - name: Verify the TV preview patch is present
+        run: |
+          grep -q 'TvPreviewLetterbox' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview letterbox missing"; exit 1; }
+          grep -q 'deviceModeOverride == "tv" && hasTouchScreen' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview guard missing or changed"; exit 1; }
 
       - name: Compile and run unit tests
         run: |
