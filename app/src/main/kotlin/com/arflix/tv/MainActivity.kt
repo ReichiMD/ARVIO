@@ -77,6 +77,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -353,14 +356,48 @@ class MainActivity : ComponentActivity() {
             // If no touchscreen, force TV mode regardless of override setting
             // (prevents tablet/phone UI on devices with only D-pad input)
             val effectiveDeviceType = if (!hasTouchScreen && deviceType != DeviceType.TV) DeviceType.TV else deviceType
+
+            // ---- TV-Vorschau: NUR fuer Test-APKs, nie in einen Upstream-PR ----
+            // Zweck: die TV-Ansicht auf einem Handy so sehen, wie sie auf einem
+            // 1080p-Fernseher aussieht. Ein Handy ist quer viel flacher als 16:9
+            // (Pixel 7 quer: 1200 x 540 dp statt 960 x 540 dp), also wuerde die
+            // TV-Ansicht zu breit gerechnet. Hier bekommt die App stattdessen ein
+            // echtes 960 x 540-dp-Bild und links/rechts schwarze Balken.
+            // Bedingung: der Nutzer hat den UI-Modus VON HAND auf "tv" gestellt,
+            // das Geraet hat einen Touchscreen und ist kein Android-TV-Geraet.
+            // Auf dem Fernseher passiert damit garantiert nichts.
+            val tvPreview = deviceModeOverride == "tv" && hasTouchScreen &&
+                !packageManager.hasSystemFeature(
+                    android.content.pm.PackageManager.FEATURE_LEANBACK) &&
+                !packageManager.hasSystemFeature(
+                    android.content.pm.PackageManager.FEATURE_TELEVISION)
+            // Der Massstab, bei dem 960 x 540 dp gerade noch ins Fenster passen.
+            // Faellt er kleiner aus (z. B. weil eine Systemleiste Platz kostet),
+            // schrumpft das Bild gleichmaessig - die Proportionen bleiben exakt.
+            val tvPreviewScale = remember(tvPreview) {
+                if (!tvPreview) 1f else {
+                    val m = this@MainActivity.resources.displayMetrics
+                    minOf(m.widthPixels / TV_PREVIEW_WIDTH_DP,
+                          m.heightPixels / TV_PREVIEW_HEIGHT_DP)
+                }
+            }
             // Wrap the Activity as a ContextWrapper that only overrides getResources() with
             // localized resources. Hilt traverses ContextWrapper chains to find the Activity,
             // so hiltViewModel() still works correctly.
-            val localizedContext = remember(appLanguage) {
+            val localizedContext = remember(appLanguage, tvPreview, tvPreviewScale) {
                 val locale = com.arflix.tv.util.appLocale(appLanguage)
                 java.util.Locale.setDefault(locale)
                 val config = Configuration(this@MainActivity.resources.configuration)
                 config.setLocale(locale)
+                if (tvPreview) {
+                    // Auch der Context muss die Fernseher-Masse melden: rund ein
+                    // Dutzend Stellen lesen die Bildgroesse nicht ueber Compose,
+                    // sondern ueber resources.configuration.
+                    config.densityDpi = (tvPreviewScale * 160f).toInt()
+                    config.screenWidthDp = TV_PREVIEW_WIDTH_DP.toInt()
+                    config.screenHeightDp = TV_PREVIEW_HEIGHT_DP.toInt()
+                    config.smallestScreenWidthDp = TV_PREVIEW_HEIGHT_DP.toInt()
+                }
                 val localizedRes = this@MainActivity.createConfigurationContext(config).resources
                 object : android.content.ContextWrapper(this@MainActivity) {
                     override fun getResources() = localizedRes
@@ -375,38 +412,45 @@ class MainActivity : ComponentActivity() {
                 LocalAppLanguage provides appLanguage,
                 LocalDeviceType provides effectiveDeviceType,
                 LocalHasTouchScreen provides hasTouchScreen,
+                LocalDensity provides
+                    if (tvPreview) Density(tvPreviewScale, 1f) else LocalDensity.current,
+                LocalConfiguration provides
+                    if (tvPreview) localizedContext.resources.configuration
+                    else LocalConfiguration.current,
                 androidx.compose.ui.platform.LocalLayoutDirection provides
                     if (isRtl) androidx.compose.ui.unit.LayoutDirection.Rtl
                     else androidx.compose.ui.unit.LayoutDirection.Ltr
             ) {
-                ArflixTvTheme(
-                    oledBlackBackground = oledBlackBackground,
-                    accentColorName = accentColorName
-                ) {
-                    val startupState by startupViewModel.state.collectAsStateWithLifecycle()
-                    ArflixApp(
-                        authRepository = authRepository.get(),
-                        profileRepository = profileRepository.get(),
-                        traktRepository = traktRepository.get(),
-                        profileManager = profileManager.get(),
-                        watchHistoryRepository = watchHistoryRepository.get(),
-                        watchlistRepository = watchlistRepository.get(),
-                        iptvRepository = iptvRepository.get(),
-                        launcherContinueWatchingRepository = launcherContinueWatchingRepository.get(),
+                TvPreviewLetterbox(tvPreview) {
+                    ArflixTvTheme(
                         oledBlackBackground = oledBlackBackground,
-                        skipProfileSelection = skipProfileSelection,
-                        pendingLauncherRequest = pendingLauncherRequest,
-                        onConsumeLauncherRequest = { pendingLauncherRequest = null },
-                        pendingInstallPackUrl = pendingInstallPackUrl,
-                        onConsumeInstallPackUrl = { pendingInstallPackUrl = null },
-                        pendingInstallAddonUrl = pendingInstallAddonUrl,
-                        onConsumeInstallAddonUrl = { pendingInstallAddonUrl = null },
-                        preloadedCategories = startupState.categories,
-                        preloadedHeroItem = startupState.heroItem,
-                        preloadedHeroLogoUrl = startupState.heroLogoUrl,
-                        preloadedLogoCache = startupState.logoCache,
-                        onExitApp = { finish() }
-                    )
+                        accentColorName = accentColorName
+                    ) {
+                        val startupState by startupViewModel.state.collectAsStateWithLifecycle()
+                        ArflixApp(
+                            authRepository = authRepository.get(),
+                            profileRepository = profileRepository.get(),
+                            traktRepository = traktRepository.get(),
+                            profileManager = profileManager.get(),
+                            watchHistoryRepository = watchHistoryRepository.get(),
+                            watchlistRepository = watchlistRepository.get(),
+                            iptvRepository = iptvRepository.get(),
+                            launcherContinueWatchingRepository = launcherContinueWatchingRepository.get(),
+                            oledBlackBackground = oledBlackBackground,
+                            skipProfileSelection = skipProfileSelection,
+                            pendingLauncherRequest = pendingLauncherRequest,
+                            onConsumeLauncherRequest = { pendingLauncherRequest = null },
+                            pendingInstallPackUrl = pendingInstallPackUrl,
+                            onConsumeInstallPackUrl = { pendingInstallPackUrl = null },
+                            pendingInstallAddonUrl = pendingInstallAddonUrl,
+                            onConsumeInstallAddonUrl = { pendingInstallAddonUrl = null },
+                            preloadedCategories = startupState.categories,
+                            preloadedHeroItem = startupState.heroItem,
+                            preloadedHeroLogoUrl = startupState.heroLogoUrl,
+                            preloadedLogoCache = startupState.logoCache,
+                            onExitApp = { finish() }
+                        )
+                    }
                 }
             }
         }
@@ -1047,4 +1091,31 @@ private fun enqueueFullTraktSync(context: android.content.Context) {
         ExistingWorkPolicy.REPLACE,
         request
     )
+}
+
+/** Die Bildgroesse eines 1080p-Fernsehers in dp - dafuer ist die TV-Ansicht gebaut. */
+private const val TV_PREVIEW_WIDTH_DP = 960f
+private const val TV_PREVIEW_HEIGHT_DP = 540f
+
+/**
+ * Malt die App in ein 960 x 540 dp grosses Feld in der Bildmitte und laesst
+ * links und rechts Schwarz stehen - so sieht die TV-Ansicht auf einem Handy
+ * genauso aus wie auf einem 1080p-Fernseher.
+ *
+ * NUR fuer Test-APKs. Ist [active] false, bleibt alles unveraendert.
+ */
+@Composable
+private fun TvPreviewLetterbox(active: Boolean, content: @Composable () -> Unit) {
+    if (!active) {
+        content()
+        return
+    }
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(Modifier.requiredSize(TV_PREVIEW_WIDTH_DP.dp, TV_PREVIEW_HEIGHT_DP.dp)) {
+            content()
+        }
+    }
 }
