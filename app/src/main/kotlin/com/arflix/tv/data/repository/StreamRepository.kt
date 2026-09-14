@@ -1334,18 +1334,23 @@ class StreamRepository @Inject constructor(
                 queryBase = queryBase
             )
             for (url in urls) {
-                val response = runCatching { streamApi.getAddonCatalog(url) }.getOrNull() ?: continue
+                val response = try {
+                    streamApi.getAddonCatalog(url)
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    continue
+                }
                 if (firstSuccessful == null) {
                     firstSuccessful = response
                 }
                 val hasItems = !response.metas.isNullOrEmpty() || !response.items.isNullOrEmpty()
-                if (hasItems) {
+                if (hasItems || skip > 0) {
                     return@withContext response
                 }
             }
         }
 
-        firstSuccessful ?: StremioCatalogResponse(metas = emptyList())
+        firstSuccessful ?: throw java.io.IOException("Catalogue request failed")
     }
 
     suspend fun getAddonMeta(
@@ -1378,39 +1383,6 @@ class StreamRepository @Inject constructor(
             "shows" -> listOf("shows", "show", "series", "tv")
             else -> listOf(rawType.trim())
         }.distinct()
-    }
-
-    private fun buildCatalogRequestUrls(
-        baseUrl: String,
-        catalogType: String,
-        catalogId: String,
-        skip: Int,
-        queryBase: String?
-    ): List<String> {
-        val encodedType = URLEncoder.encode(catalogType, "UTF-8")
-        val encodedCatalogId = URLEncoder.encode(catalogId, "UTF-8")
-
-        val withSkipQuery = mutableListOf<String>()
-        if (!queryBase.isNullOrBlank()) {
-            withSkipQuery += queryBase
-        }
-        if (skip > 0) {
-            withSkipQuery += "skip=$skip"
-        }
-
-        val defaultQuery = if (withSkipQuery.isEmpty()) "" else "?${withSkipQuery.joinToString("&")}"
-        val defaultUrl = "$baseUrl/catalog/$encodedType/$encodedCatalogId.json$defaultQuery"
-        if (skip <= 0) {
-            return listOf(defaultUrl)
-        }
-
-        val pathExtra = "skip=$skip"
-        val pathExtraUrl = if (queryBase.isNullOrBlank()) {
-            "$baseUrl/catalog/$encodedType/$encodedCatalogId/$pathExtra.json"
-        } else {
-            "$baseUrl/catalog/$encodedType/$encodedCatalogId/$pathExtra.json?$queryBase"
-        }
-        return listOf(defaultUrl, pathExtraUrl).distinct()
     }
 
     // ========== Stream Resolution ==========
@@ -2915,9 +2887,10 @@ class StreamRepository @Inject constructor(
         title: String = "",
         tmdbId: Int? = null,
         tvdbId: Int? = null,
-        timeoutMs: Long = 45_000L
+        timeoutMs: Long = 45_000L,
+        originalTitle: String? = null
     ): List<StreamSource> = withContext(Dispatchers.IO) {
-        withTimeoutOrNull(timeoutMs.coerceIn(500L, 90_000L)) {
+        withPartialVodResults(timeoutMs.coerceIn(500L, 90_000L)) { onSources ->
             runCatching {
                 iptvRepository.findEpisodeVodSources(
                     title = title,
@@ -2925,9 +2898,12 @@ class StreamRepository @Inject constructor(
                     episode = episode,
                     imdbId = imdbId,
                     tmdbId = tmdbId,
-                    allowNetwork = true
+                    allowNetwork = true,
+                    originalTitle = originalTitle,
+                    onSources = onSources
                 )
             }.onFailure { e ->
+                if (e is CancellationException) throw e
                 System.err.println("[VOD] resolveEpisodeVodSources failed: ${e.message}")
                 AppLogger.recordException(
                     throwable = e,
@@ -2938,8 +2914,8 @@ class StreamRepository @Inject constructor(
                         "episode_set" to (episode > 0).toString()
                     )
                 )
-            }.getOrDefault(emptyList())
-        }.orEmpty()
+            }.getOrThrow()
+        }
     }
 
     suspend fun prefetchEpisodeVod(
@@ -2947,7 +2923,8 @@ class StreamRepository @Inject constructor(
         season: Int,
         episode: Int,
         title: String = "",
-        tmdbId: Int? = null
+        tmdbId: Int? = null,
+        originalTitle: String? = null
     ) = withContext(Dispatchers.IO) {
         if (title.isBlank()) return@withContext
         try {
@@ -2956,7 +2933,8 @@ class StreamRepository @Inject constructor(
                 season = season,
                 episode = episode,
                 imdbId = imdbId,
-                tmdbId = tmdbId
+                tmdbId = tmdbId,
+                originalTitle = originalTitle
             )
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -2967,14 +2945,16 @@ class StreamRepository @Inject constructor(
     suspend fun prefetchSeriesVodInfo(
         imdbId: String?,
         title: String = "",
-        tmdbId: Int? = null
+        tmdbId: Int? = null,
+        originalTitle: String? = null
     ) = withContext(Dispatchers.IO) {
         if (title.isBlank()) return@withContext
         try {
             iptvRepository.prefetchSeriesInfoForShow(
                 title = title,
                 imdbId = imdbId,
-                tmdbId = tmdbId
+                tmdbId = tmdbId,
+                originalTitle = originalTitle
             )
         } catch (e: Exception) {
             if (e is CancellationException) throw e

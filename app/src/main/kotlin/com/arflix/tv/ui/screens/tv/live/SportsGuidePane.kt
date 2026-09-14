@@ -1,6 +1,7 @@
 package com.arflix.tv.ui.screens.tv.live
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,6 +9,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -51,6 +54,10 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.animation.core.tween
 
 internal const val SPORTS_GUIDE_CATEGORY = "sports-hub"
 
@@ -77,21 +84,24 @@ internal fun SportsGuidePane(
     sidebarOpen: Boolean = false,
     clockFormat: String? = null,
 ) {
-    var focusedRow by remember { mutableStateOf<String?>(null) }
-    var focusedOrder by remember { mutableStateOf(emptyList<String>()) }
+    // Only a schedule refresh consumes this order. Focus alone must not rebuild
+    // every catalogue and invalidate all visible lazy rows.
+    val focusedOrder = remember { arrayOfNulls<Pair<String, List<String>>>(1) }
     var artworkRetry by remember { mutableIntStateOf(0) }
     var failedArtwork by remember(artworkRetry) { mutableStateOf(emptySet<String>()) }
     var presentationRows by remember { mutableStateOf(emptyList<SportsGuideRow>()) }
-    LaunchedEffect(events, now, failedArtwork) {
+    LaunchedEffect(events, now) {
         presentationRows = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            sportsPresentationRows(events, now, failedArtwork)
+            // An image failure must not remove/reparent the focused lazy item.
+            sportsPresentationRows(events, now, emptySet())
         }
     }
-    val rows = remember(presentationRows, focusedRow, focusedOrder) {
+    val rows = remember(presentationRows) {
+        val focusSnapshot = focusedOrder[0]
+        val focusOrderRanks = focusSnapshot?.second.orEmpty().withIndex().associate { it.value to it.index }
         presentationRows.map { row ->
-            if (row.id == focusedRow) {
-                val rank = focusedOrder.withIndex().associate { it.value to it.index }
-                row.copy(events = row.events.sortedBy { rank[it.id] ?: Int.MAX_VALUE })
+            if (row.id == focusSnapshot?.first) {
+                row.copy(events = row.events.sortedBy { focusOrderRanks[it.id] ?: Int.MAX_VALUE })
             } else row
         }
     }
@@ -99,6 +109,65 @@ internal fun SportsGuidePane(
     var returnFocus by remember { mutableStateOf<FocusRequester?>(null) }
     var showScore by remember { mutableStateOf(false) }
     val firstFocus = remember { FocusRequester() }
+    val categoriesFocus = remember { FocusRequester() }
+    val listState = rememberLazyListState()
+    val rowStates = remember { mutableMapOf<String, LazyListState>() }
+    val cardFocus = remember { mutableMapOf<Pair<String, String>, FocusRequester>() }
+    val scope = rememberCoroutineScope()
+    var navigationJob by remember { mutableStateOf<Job?>(null) }
+    var navigationTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var handledFocusSignal by remember { mutableIntStateOf(0) }
+    fun leaveCards() {
+        navigationJob?.cancel()
+        navigationTarget = null
+        onOpenCategories()
+    }
+    val keysByRow = remember(rows) {
+        rows.associate { it.id to disambiguatedLazyKeys(it.events) { event -> event.id } }
+    }
+    fun moveTo(rowIndex: Int, columnIndex: Int) {
+        val row = rows.getOrNull(rowIndex) ?: return
+        val column = columnIndex.coerceIn(0, row.events.lastIndex)
+        val eventKey = keysByRow.getValue(row.id)[column]
+        navigationJob?.cancel()
+        navigationTarget = rowIndex to column
+        // Already attached targets react in this key event, not after a scroll animation.
+        val focusedImmediately = cardFocus[row.id to eventKey]?.let { runCatching { it.requestFocus() }.isSuccess } == true
+        navigationJob = scope.launch {
+            // Materialize the target before requesting focus. Compose 1.6's
+            // beyond-bounds focus search can inspect a recycled row's coordinates.
+            val verticalLayout = listState.layoutInfo
+            val visibleRow = verticalLayout.visibleItemsInfo.firstOrNull { it.index == rowIndex }
+            suspend fun reveal(state: LazyListState, index: Int) {
+                val layout = state.layoutInfo
+                val item = layout.visibleItemsInfo.firstOrNull { it.index == index }
+                if (item == null) state.scrollToItem(index)
+                else {
+                    val delta = when {
+                        item.offset < layout.viewportStartOffset -> item.offset - layout.viewportStartOffset
+                        item.offset + item.size > layout.viewportEndOffset -> item.offset + item.size - layout.viewportEndOffset
+                        else -> 0
+                    }
+                    if (delta != 0) state.animateScrollBy(delta.toFloat(), tween(100))
+                }
+            }
+            // Scrolling may continue after focus moves; new keys replace this job.
+            launch { reveal(listState, rowIndex) }
+            if (visibleRow == null) withFrameNanos { }
+            rowStates[row.id]?.let { horizontal ->
+                launch { reveal(horizontal, column) }
+            }
+            if (!focusedImmediately) repeat(8) {
+                withFrameNanos { }
+                val requester = cardFocus[row.id to eventKey]
+                if (requester != null && runCatching { requester.requestFocus() }.isSuccess) {
+                    navigationTarget = null
+                    return@launch
+                }
+            }
+            navigationTarget = null
+        }
+    }
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -111,6 +180,7 @@ internal fun SportsGuidePane(
     fun eventTime(event: SportsGuideEvent): String {
         if (event.isConfirmedLive(now) || (event.channelOnly && event.isOnAir(now))) return "LIVE"
         if (event.isOnAir(now)) return "ON AIR"
+        if (event.isScheduledNow(now)) return "SCHEDULED NOW"
         val date = Instant.ofEpochMilli(event.programme.startUtcMillis).atZone(ZoneId.systemDefault())
         val day = when (date.toLocalDate()) {
             today -> "Today"
@@ -120,11 +190,11 @@ internal fun SportsGuidePane(
         return "$day ${timeFormat.format(Date(event.programme.startUtcMillis))}"
     }
     LaunchedEffect(focusSignal, rows.isEmpty(), sidebarOpen) {
-        if (focusSignal > 0 && rows.isNotEmpty() && !sidebarOpen) {
+        if (focusSignal > handledFocusSignal && rows.isNotEmpty() && !sidebarOpen) {
             // Lazy cards are attached after the drawer starts its layout transition.
             withFrameNanos { }
             withFrameNanos { }
-            runCatching { firstFocus.requestFocus() }
+            if (focusSignal > handledFocusSignal) runCatching { firstFocus.requestFocus() }
         }
     }
     LaunchedEffect(selected) {
@@ -140,7 +210,12 @@ internal fun SportsGuidePane(
         Row(Modifier.height(32.dp).padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!sidebarOpen) Icon(Icons.Outlined.Menu, "Categories", tint = LiveColors.Fg,
-                modifier = Modifier.size(20.dp).clickable(onClick = onOpenCategories))
+                modifier = Modifier.size(20.dp).focusRequester(categoriesFocus)
+                    .onPreviewKeyEvent { key ->
+                        if (key.key == Key.DirectionDown && key.type == KeyEventType.KeyDown) {
+                            moveTo(0, 0); true
+                        } else false
+                    }.clickable(onClick = onOpenCategories))
             Text("Sports", color = LiveColors.Fg, fontSize = 21.sp, lineHeight = 25.sp, fontWeight = FontWeight.SemiBold)
         }
         if (rows.isEmpty()) {
@@ -157,39 +232,66 @@ internal fun SportsGuidePane(
                 Text("Categories", color = LiveColors.Fg, modifier = Modifier.focusRequester(firstFocus)
                     .clickable(onClick = onOpenCategories).padding(16.dp))
             }
-        } else LazyColumn(Modifier.fillMaxSize().testTag("sports-guide-list"), contentPadding = PaddingValues(bottom = 24.dp),
+        } else LazyColumn(Modifier.fillMaxSize().testTag("sports-guide-list"), state = listState, contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val rowKeys = disambiguatedLazyKeys(rows) { it.id }
             itemsIndexed(rows, key = { index, _ -> rowKeys[index] }) { rowIndex, row ->
+                val rowState = rememberLazyListState()
+                DisposableEffect(row.id, rowState) {
+                    rowStates[row.id] = rowState
+                    onDispose { rowStates.remove(row.id) }
+                }
                 Column {
                     Row(Modifier.fillMaxWidth().height(if (narrow) 44.dp else 20.dp).padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(row.title, color = LiveColors.Fg, fontWeight = FontWeight.Medium, fontSize = 15.sp, lineHeight = 18.sp,
                             modifier = Modifier.weight(1f))
                     }
-                    val eventKeys = remember(row.events) { disambiguatedLazyKeys(row.events) { it.id } }
-                    LazyRow(Modifier.padding(horizontal = 18.dp), contentPadding = PaddingValues(vertical = 1.dp),
+                    val eventKeys = keysByRow.getValue(row.id)
+                    LazyRow(Modifier.padding(horizontal = 18.dp), state = rowState, contentPadding = PaddingValues(vertical = 1.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         itemsIndexed(row.events, key = { index, _ -> eventKeys[index] }) { index, event ->
                             val scheduleOnly = row.id.endsWith("-schedule")
                             val itemRequester = remember { FocusRequester() }
                             val requester = if (index == 0 && rowIndex == 0) firstFocus else itemRequester
+                            DisposableEffect(row.id, eventKeys[index], requester) {
+                                val key = row.id to eventKeys[index]
+                                cardFocus[key] = requester
+                                onDispose { cardFocus.remove(key) }
+                            }
                             var focused by remember { mutableStateOf(false) }
                             Column(Modifier.width(cardWidth).testTag("sports-event-card")
                                 .focusRequester(requester)
                                 .onFocusChanged {
                                     focused = it.isFocused
                                     if (it.isFocused) {
+                                        handledFocusSignal = focusSignal
                                         onContentFocused()
-                                        if (focusedRow != row.id) { focusedRow = row.id; focusedOrder = row.events.map { it.id } }
+                                        if (focusedOrder[0]?.first != row.id) {
+                                            focusedOrder[0] = row.id to row.events.map { it.id }
+                                        }
                                     }
                                 }
                                 .onPreviewKeyEvent { key ->
-                                    if (index == 0 && key.type == KeyEventType.KeyDown &&
-                                        key.key.mirrorHorizontalForRtl(isRtl) == Key.DirectionLeft) {
-                                        onOpenCategories(); true
-                                    } else false
+                                    val direction = key.key.mirrorHorizontalForRtl(isRtl)
+                                    if (direction !in listOf(Key.DirectionUp, Key.DirectionDown, Key.DirectionLeft, Key.DirectionRight)) false
+                                    else {
+                                        if (key.type == KeyEventType.KeyDown) when (direction) {
+                                            Key.DirectionUp -> if ((navigationTarget?.first ?: rowIndex) > 0) moveTo((navigationTarget?.first ?: rowIndex) - 1, navigationTarget?.second ?: index)
+                                                else if (sidebarOpen) leaveCards() else {
+                                                    navigationJob?.cancel(); navigationTarget = null
+                                                    runCatching { categoriesFocus.requestFocus() }.let { }
+                                                }
+                                            Key.DirectionDown -> moveTo((navigationTarget?.first ?: rowIndex) + 1, navigationTarget?.second ?: index)
+                                            Key.DirectionLeft -> if ((navigationTarget?.second ?: index) == 0) leaveCards() else moveTo(navigationTarget?.first ?: rowIndex, (navigationTarget?.second ?: index) - 1)
+                                            Key.DirectionRight -> moveTo(navigationTarget?.first ?: rowIndex, (navigationTarget?.second ?: index) + 1)
+                                        }
+                                        true
+                                    }
                                 }
-                                .clickable { returnFocus = requester; showScore = false; selected = event }
+                                .clickable {
+                                    navigationJob?.cancel(); navigationTarget = null
+                                    returnFocus = requester; showScore = false; selected = event
+                                }
                                 .padding(2.dp)) {
                                 if (scheduleOnly) Row(Modifier.fillMaxWidth().height(36.dp)
                                     .border(2.dp, if (focused) Color.White else LiveColors.DividerStrong, RoundedCornerShape(4.dp))
@@ -210,7 +312,7 @@ internal fun SportsGuidePane(
                                         if (event.isOnAir(now)) Box(Modifier.padding(end = 4.dp).size(7.dp).background(LiveColors.LiveRed, RoundedCornerShape(50)))
                                         Text(eventTime(event), color = Color.White, fontSize = 10.sp, lineHeight = 12.sp)
                                     }
-                                    Box(Modifier.matchParentSize().border(2.dp, if (focused) Color.White else Color.Transparent, RoundedCornerShape(4.dp)))
+                                    Box(Modifier.matchParentSize().liveFocusOutline(focused, 4.dp))
                                 }
                                 Text(event.title, color = LiveColors.Fg, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium,
                                     minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -218,9 +320,12 @@ internal fun SportsGuidePane(
                                 Row(Modifier.fillMaxWidth().height(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(listOfNotNull(event.sport.title, event.competition).joinToString(" · "), color = LiveColors.FgDim, fontSize = 10.sp, lineHeight = 13.sp,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                    if (event.isOnAir(now)) {
+                                    val count = remember(event, now) {
+                                        ((if (event.isOnAir(now)) event.availableChannels(now) else event.channels) + event.possibleChannels).distinctBy { it.id }.size
+                                    }
+                                    if (count > 0) {
                                         Icon(Icons.Default.Tv, null, tint = LiveColors.FgDim, modifier = Modifier.size(13.dp))
-                                        Text(channelCount(event.availableChannels(now).size + event.possibleChannels.size), color = LiveColors.FgDim, fontSize = 9.sp, lineHeight = 12.sp,
+                                        Text(channelCount(count), color = LiveColors.FgDim, fontSize = 9.sp, lineHeight = 12.sp,
                                             modifier = Modifier.padding(start = 6.dp))
                                     }
                                 }
@@ -243,11 +348,12 @@ internal fun SportsGuidePane(
             window?.setDimAmount(.65f)
         }
         val onAir = event?.isOnAir(now) == true
+        val canOpenChannel = onAir || event?.isScheduledNow(now) == true
         val confirmedChannels = if (onAir) event?.availableChannels(now).orEmpty() else event?.channels.orEmpty()
         val possibleIds = event?.possibleChannels.orEmpty().mapTo(hashSetOf()) { it.id }
         val sourceChannels = (confirmedChannels + event?.possibleChannels.orEmpty()).distinctBy { it.id }
         val initialFocus = remember(event?.id) { FocusRequester() }
-        LaunchedEffect(event?.id, onAir, sourceChannels.isEmpty()) {
+        LaunchedEffect(event?.id, sourceChannels.isEmpty()) {
             // The native dialog window must own focus before Compose assigns its row.
             withFrameNanos { }
             withFrameNanos { }
@@ -266,9 +372,12 @@ internal fun SportsGuidePane(
                         overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold, color = LiveColors.Fg,
                         modifier = Modifier.padding(top = 7.dp))
                 }
+                var closeFocused by remember { mutableStateOf(false) }
                 Icon(Icons.Default.Close, "Close", tint = LiveColors.Fg,
                     modifier = Modifier.size(44.dp)
-                        .then(if (!onAir || sourceChannels.isEmpty()) Modifier.focusRequester(initialFocus) else Modifier)
+                        .then(if (sourceChannels.isEmpty()) Modifier.focusRequester(initialFocus) else Modifier)
+                        .onFocusChanged { closeFocused = it.isFocused }
+                        .liveFocusOutline(closeFocused, 4.dp)
                         .clickable(onClick = ::dismiss).padding(10.dp))
             }
             event?.fixture?.let { fixture ->
@@ -290,12 +399,15 @@ internal fun SportsGuidePane(
                 itemsIndexed(sourceChannels, key = { index, _ -> channelKeys[index] }) { index, channel ->
                     var focused by remember { mutableStateOf(false) }
                     Row(Modifier.fillMaxWidth().heightIn(min = if (narrow) 48.dp else 40.dp).clip(RoundedCornerShape(4.dp))
-                        .then(if (index == 0 && onAir) Modifier.focusRequester(initialFocus) else Modifier)
+                        .then(if (index == 0) Modifier.focusRequester(initialFocus) else Modifier)
                         .border(1.dp, if (focused) Color.White else Color.Transparent, RoundedCornerShape(4.dp))
                         .background(if (focused) LiveColors.FocusBg else Color.Transparent)
                         .onFocusChanged { focused = it.isFocused }
-                        .clickable(enabled = onAir) {
-                            if (event?.isOnAir(System.currentTimeMillis()) == true && (event.availableChannels(System.currentTimeMillis()).any { it.id == channel.id } || channel.id in possibleIds)) { dismiss(); onPlay(channel) }
+                        // Scheduled channels are browsable with a remote, but cannot play early.
+                        .focusable(enabled = !canOpenChannel)
+                        .clickable(enabled = canOpenChannel) {
+                            val time = System.currentTimeMillis()
+                            if (event != null && (event.isOnAir(time) || event.isScheduledNow(time)) && (event.availableChannels(time).any { it.id == channel.id } || channel.id in possibleIds)) { dismiss(); onPlay(channel) }
                         }.padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         val logoChannel = remember(channel) { channel.enrichForFastStartup(0) }
