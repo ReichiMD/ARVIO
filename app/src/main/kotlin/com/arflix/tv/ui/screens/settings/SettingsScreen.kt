@@ -126,7 +126,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material3.Icon
 import com.arflix.tv.ui.components.LoadingIndicator
 import com.arflix.tv.ui.components.dragReorderItem
-import com.arflix.tv.ui.components.dragReorderable
 import com.arflix.tv.ui.components.rememberDragReorderState
 import com.arflix.tv.ui.components.MobileSettingsCategory
 import com.arflix.tv.ui.components.MobileSettingsRow
@@ -4216,8 +4215,13 @@ private fun MobileSettingsLayout(
     onDisconnectCloud: () -> Unit = {},
     onDisconnectTrakt: () -> Unit = {}
 ) {
+    // Every phone sub-page is opened from the main list and goes back to it. The
+    // categories list is the one exception: it is opened from the TV sources page,
+    // so sending Back to the main list skips a level and loses the page the user
+    // was actually on.
+    val backTarget = if (page == "IPTV_CATEGORIES") "TV" else "MAIN"
     val backMotion = rememberArvioPredictiveBack(enabled = page != "MAIN") {
-        onNavigate("MAIN")
+        onNavigate(backTarget)
     }
 
     var lastSubPage by remember { mutableStateOf(if (page != "MAIN") page else "") }
@@ -4298,7 +4302,7 @@ private fun MobileSettingsLayout(
                         contentDescription = stringResource(R.string.back),
                         tint = TextPrimary,
                         modifier = Modifier
-                            .clickable { onNavigate("MAIN") }
+                            .clickable { onNavigate(backTarget) }
                             .padding(end = 16.dp)
                             .size(28.dp)
                     )
@@ -11881,12 +11885,15 @@ private fun MobileIptvCategoryReorderList(
         )
         LazyColumn(
             state = listState,
+            // While a row is held the list must not follow the finger as well: the
+            // gesture belongs to the row, and the only scrolling a move needs is the
+            // one the list does by itself at its edges.
+            userScrollEnabled = reorderState.draggedKey == null,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(BackgroundElevated)
-                .dragReorderable(reorderState)
         ) {
             itemsIndexed(
                 items = orderedGroups,
