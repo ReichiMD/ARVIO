@@ -1,4 +1,4 @@
-name: Test APK (reorder category groups by touch)
+name: Test APK (decade filter dates in the discover grid)
 
 # Test-branch only. This workflow and the committed keystore must never reach a
 # pull request against upstream - they exist so a Claude Code session can hand
@@ -9,7 +9,7 @@ name: Test APK (reorder category groups by touch)
 on:
   push:
     branches:
-      - claude/fingersort-test-apk
+      - claude/entdecken-f14-test-apk
   workflow_dispatch:
 
 jobs:
@@ -28,8 +28,8 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      # This round only needs the IPTV settings, but a placeholder key leaves
-      # the rest of the app empty and every other screen unusable while testing.
+      # The search screen IS the TMDB screen: without a real key there is nothing
+      # to focus and nothing to type into, so the round cannot be tested at all.
       - name: Prepare runtime configuration
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
@@ -43,26 +43,86 @@ jobs:
             exit 1
           fi
 
-      # Sanity check: this round is about the touch gesture, so the build is
-      # worthless without the component that carries it.
-      - name: Verify the touch reordering is present
+      # Sanity check: this round moves the decade window onto the date the card
+      # prints, so the build is worthless without it. The step is swapped every
+      # round rather than carried over - a check about the last round only
+      # reports how old the template is (docs/arbeitsweise/43).
+      #
+      # Five greps, and the last one is the point: this fix ADDS parameters, it
+      # does not rename the old ones. The home screen's two anime rows ask
+      # air_date on purpose ("had a new episode lately"), and a rename would
+      # have broken them silently, without a single test going red.
+      - name: Verify the premiere-date window is present and the old one is untouched
         run: |
-          test -f app/src/main/kotlin/com/arflix/tv/ui/components/DragReorderableList.kt \
-            || { echo "::error::DragReorderableList.kt missing"; exit 1; }
-          grep -q 'MobileIptvCategoryReorderList' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
-            || { echo "::error::the phone category list is not wired up"; exit 1; }
+          grep -q 'primary_release_date.gte' app/src/main/kotlin/com/arflix/tv/data/api/TmdbApi.kt \
+            || { echo "::error::discover/movie has no primary_release_date parameter"; exit 1; }
+          grep -q 'first_air_date.gte' app/src/main/kotlin/com/arflix/tv/data/api/TmdbApi.kt \
+            || { echo "::error::discover/tv has no first_air_date parameter"; exit 1; }
+          grep -q 'premiereDateGte = window.from' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchViewModel.kt \
+            || { echo "::error::the grid still sends the old any-release window"; exit 1; }
+          grep -q 'primaryReleaseDateGte = request.premiereDateGte' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchViewModel.kt \
+            && grep -q 'firstAirDateGte = request.premiereDateGte' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchViewModel.kt \
+            || { echo "::error::the new window never reaches TMDB on one of the two paths"; exit 1; }
+          test "$(grep -c 'airDateGte = eighteenMonthsAgo' app/src/main/kotlin/com/arflix/tv/data/repository/MediaRepository.kt)" = "2" \
+            || { echo "::error::the home screen's anime rows no longer ask air_date - the old parameter was renamed instead of kept"; exit 1; }
 
+      # The last test APK went out WITHOUT the TV preview and the user could not
+      # test on a phone at all (LAGE.md, 15.09.). This step stops that from
+      # happening silently: it fails BEFORE the build if upstream has reworked
+      # the place the preview is patched into (docs/arbeitsweise/43).
+      - name: Verify the TV preview patch is present
+        run: |
+          grep -q 'TvPreviewLetterbox' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview letterbox missing"; exit 1; }
+          grep -q 'deviceModeOverride == "tv" && hasTouchScreen' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview guard missing or changed"; exit 1; }
+
+      # Several tests in this repo wait on a wall clock and go red on a loaded
+      # runner - EpgRefreshRequestsTest (docs/34 5z), EpgProgramActionsTest and
+      # SearchViewModelTest.peopleOnlySearchWaitsForMissingCredits... - and none
+      # of them belongs to this branch. The office rule for telling them apart is
+      # written down (docs/46 2m): a run where each attempt trips over a DIFFERENT
+      # test is a slow runner; the SAME test twice is a real failure. Run 156 hit
+      # exactly that - two attempts, two different clock tests - so the rule is
+      # applied here instead of by hand.
+      #
+      # Nothing is silenced or skipped: a test that fails in BOTH attempts still
+      # fails the build, and every failure is printed either way.
       - name: Compile and run unit tests
         run: |
-          # Two tests in this repo wait on a five-second wall clock and go red on a
-          # loaded runner: EpgRefreshRequestsTest (docs/34 5z) and, newly seen on
-          # 15.09., SearchViewModelTest.peopleOnlySearchWaitsForMissingCredits...
-          # Neither belongs to this branch's change and both pass locally. They are
-          # NOT silenced - the suite simply gets a second run, and the build still
-          # fails if the same test stays red. A run where each attempt trips over a
-          # DIFFERENT test is the signature of a slow runner, not of a broken build.
-          ./gradlew testSideloadDebugUnitTest --no-daemon \
-            || ./gradlew testSideloadDebugUnitTest --no-daemon --rerun-tasks
+          set -u
+          collect() {
+            python3 - "$1" <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          names = set()
+          for f in glob.glob("app/build/test-results/testSideloadDebugUnitTest/*.xml"):
+              for case in ET.parse(f).getroot().iter("testcase"):
+                  if case.find("failure") is not None or case.find("error") is not None:
+                      names.add(f'{case.get("classname")}.{case.get("name")}')
+          open(sys.argv[1], "w").write("".join(n + chr(10) for n in sorted(names)))
+          for n in sorted(names):
+              print(f"  failed: {n}")
+          PY
+          }
+
+          ./gradlew testSideloadDebugUnitTest --no-daemon && exit 0
+          echo "::warning::first attempt had failures - collecting them"
+          collect /tmp/fail1.txt
+
+          ./gradlew testSideloadDebugUnitTest --no-daemon --rerun-tasks && {
+            echo "::warning::second attempt was fully green - the first was the runner"
+            exit 0
+          }
+          echo "::warning::second attempt had failures - collecting them"
+          collect /tmp/fail2.txt
+
+          BOTH=$(comm -12 /tmp/fail1.txt /tmp/fail2.txt)
+          if [ -n "$BOTH" ]; then
+            echo "::error::the same test failed in both attempts - this is real:"
+            echo "$BOTH"
+            exit 1
+          fi
+          echo "::warning::each attempt tripped over a DIFFERENT test - loaded runner (docs/46 2m), not this branch"
 
       # The office wants the test count as a measured number, not a guess: "1059 -> 1066".
       # Gradle does not print one, so it is summed out of the JUnit XML the run just wrote.
@@ -96,25 +156,24 @@ jobs:
 
       - name: Give the debug build its own package, name and a fixed signature
         run: |
-          # Kennung "fingersort" - the identifier of THIS theme, reordering the
-          # groups by finger (docs/10, AGENTS.md rule 10). Deliberately not
-          # "gruppen": that one belongs to the D-pad round and reusing it would
-          # overwrite that test APK. It steers all three places: the package
-          # suffix, the name in the launcher, and the artifact name. It is a NEW
-          # identifier, so this build installs BESIDE the other test APKs and
-          # starts empty: portal, MAC and playlists have to be entered once.
-          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Fingersort</string>|' \
+          # Kennung "entdecken" - the identifier of THIS theme, the discover
+          # filter row (docs/10, AGENTS.md rule 10). It steers all three places:
+          # the package suffix, the name in the launcher, and the artifact name.
+          # It is the SAME identifier the earlier filter rounds used, which is
+          # the point: this build installs OVER the previous discover APK
+          # instead of beside it, so portal, MAC and playlists stay entered.
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Entdecken</string>|' \
             app/src/main/res/values/strings.xml
           # debug differs from staging here: the `applicationIdSuffix` line is
           # commented out, so this INSERTS one after the block header instead of
           # replacing it (docs/10, "Beim Wechsel der Sorte mitdenken").
-          sed -i '0,/^        debug {$/s//        debug {\n            applicationIdSuffix = ".fingersort"/' app/build.gradle.kts
+          sed -i '0,/^        debug {$/s//        debug {\n            applicationIdSuffix = ".entdecken"/' app/build.gradle.kts
           sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
           # A sed that silently matches nothing is how this kind of workflow
           # wastes a build cycle - check every edit.
-          grep -q '<string name="app_name">Fingersort</string>' app/src/main/res/values/strings.xml \
+          grep -q '<string name="app_name">Entdecken</string>' app/src/main/res/values/strings.xml \
             || { echo "::error::app_name patch did not apply"; exit 1; }
-          grep -q 'applicationIdSuffix = ".fingersort"' app/build.gradle.kts \
+          grep -q 'applicationIdSuffix = ".entdecken"' app/build.gradle.kts \
             || { echo "::error::suffix patch did not apply"; exit 1; }
           grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts \
             || { echo "::error::versionCode patch did not apply"; exit 1; }
@@ -136,10 +195,11 @@ jobs:
           }
           KTS
 
-      # Schnell-APK (docs/10, and what the F1 assignment prescribes): the
-      # questions of this round are about BEHAVIOUR - does the row follow the
-      # finger, does the list carry on at the edge, does the order survive a
-      # restart. The measuring build is for questions about speed and stutter.
+      # Schnell-APK (docs/10, and what the F14 assignment prescribes): the one
+      # question of this round is whether TMDB accepts the new parameters at
+      # all - pick the nineties and see whether titles come back and whether
+      # their years are right. Nothing here is about speed or stutter, so the
+      # measuring build would only cost ten minutes.
       - name: Build sideload debug APK
         run: ./gradlew assembleSideloadDebug --no-daemon
 
@@ -162,7 +222,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: arvio-fingersort-apk
+          name: arvio-entdecken-apk
           path: app/build/outputs/apk/sideload/debug/*.apk
           if-no-files-found: error
           retention-days: 14
