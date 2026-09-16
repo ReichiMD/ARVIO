@@ -43,14 +43,20 @@ jobs:
             exit 1
           fi
 
-      # Sanity check: this round is about the entry guard, so the build is
-      # worthless without it.
-      - name: Verify the search entry guard is present
+      # Sanity check: this round is about the reset chip, so the build is
+      # worthless without it. The step this replaces belonged to the suchfokus
+      # round and grepped for `startSearchEditing()` - upstream has since given
+      # that call an argument (7d20d2a), so it now fails on a branch that is
+      # perfectly fine. A sanity check has to be about THIS round, or it only
+      # reports how old the template is.
+      - name: Verify the reset chip is present
         run: |
-          test -f app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchEditingEntry.kt \
-            || { echo "::error::SearchEditingEntry.kt missing"; exit 1; }
-          grep -q 'startSearchEditing()' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchScreen.kt \
-            || { echo "::error::the typing-mode doors are not wired to the guard"; exit 1; }
+          grep -q 'DiscoverFilterId.CLEAR' app/src/main/kotlin/com/arflix/tv/ui/screens/search/DiscoverFilterSpecs.kt \
+            || { echo "::error::the reset chip is not in the row"; exit 1; }
+          grep -q 'onClearFilters = viewModel::clearDiscoverFilters' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchScreen.kt \
+            || { echo "::error::the reset chip is not wired to the view model"; exit 1; }
+          grep -q 'focusAfterClearChip' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchScreen.kt \
+            || { echo "::error::the focus is not moved off the chip that deletes itself"; exit 1; }
 
       # The last test APK went out WITHOUT the TV preview and the user could not
       # test on a phone at all (LAGE.md, 15.09.). This step stops that from
