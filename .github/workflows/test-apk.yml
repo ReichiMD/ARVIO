@@ -1,4 +1,4 @@
-name: Test APK (reset button at the end of the discover filter row)
+name: Test APK (language filter in the discover row)
 
 # Test-branch only. This workflow and the committed keystore must never reach a
 # pull request against upstream - they exist so a Claude Code session can hand
@@ -9,7 +9,7 @@ name: Test APK (reset button at the end of the discover filter row)
 on:
   push:
     branches:
-      - claude/entdecken-f11-test-apk
+      - claude/entdecken-f13-test-apk
   workflow_dispatch:
 
 jobs:
@@ -43,20 +43,29 @@ jobs:
             exit 1
           fi
 
-      # Sanity check: this round is about the reset chip, so the build is
-      # worthless without it. The step this replaces belonged to the suchfokus
-      # round and grepped for `startSearchEditing()` - upstream has since given
-      # that call an argument (7d20d2a), so it now fails on a branch that is
-      # perfectly fine. A sanity check has to be about THIS round, or it only
-      # reports how old the template is.
-      - name: Verify the reset chip is present
+      # Sanity check: this round is about the language chip, so the build is
+      # worthless without it. The step is swapped every round rather than
+      # carried over - the one before it checked the reset chip, and the one
+      # before that grepped for a call upstream had since changed, so it went
+      # red on a branch that was perfectly fine (docs/arbeitsweise/43). A sanity
+      # check has to be about THIS round, or it only reports how old the
+      # template is.
+      #
+      # Four greps, because four things have to be true for the round to be
+      # testable at all: the chip is in the row, the panel is wired to the view
+      # model, the request carries the language, and the reset clears it - that
+      # last one is what broke the previous round's chip once already.
+      - name: Verify the language filter is present
         run: |
-          grep -q 'DiscoverFilterId.CLEAR' app/src/main/kotlin/com/arflix/tv/ui/screens/search/DiscoverFilterSpecs.kt \
-            || { echo "::error::the reset chip is not in the row"; exit 1; }
-          grep -q 'onClearFilters = viewModel::clearDiscoverFilters' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchScreen.kt \
-            || { echo "::error::the reset chip is not wired to the view model"; exit 1; }
-          grep -q 'focusAfterClearChip' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchScreen.kt \
-            || { echo "::error::the focus is not moved off the chip that deletes itself"; exit 1; }
+          grep -q 'DiscoverFilterId.LANGUAGE' app/src/main/kotlin/com/arflix/tv/ui/screens/search/DiscoverFilterSpecs.kt \
+            || { echo "::error::the language chip is not in the row"; exit 1; }
+          grep -q 'onSelectLanguage = viewModel::selectLanguage' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchScreen.kt \
+            || { echo "::error::the language panel is not wired to the view model"; exit 1; }
+          grep -q 'language = request.language' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchViewModel.kt \
+            || { echo "::error::the chosen language never reaches the TMDB request"; exit 1; }
+          grep -A 12 'fun clearDiscoverFilters' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchViewModel.kt \
+            | grep -q 'language = null' \
+            || { echo "::error::the reset does not clear the language - it would strand the screen on the grid"; exit 1; }
 
       # The last test APK went out WITHOUT the TV preview and the user could not
       # test on a phone at all (LAGE.md, 15.09.). This step stops that from
@@ -187,11 +196,11 @@ jobs:
           }
           KTS
 
-      # Schnell-APK (docs/10, and what the F11 assignment prescribes): the
-      # questions of this round are about BEHAVIOUR - does the eighth chip
-      # appear only with a filter set, does one press clear them all, and where
-      # does the focus ring sit once the chip has removed itself. The measuring
-      # build is for questions about speed and stutter.
+      # Schnell-APK (docs/10, and what the F13 assignment prescribes): the
+      # questions of this round are about BEHAVIOUR - does the language chip
+      # open its panel, does one language at a time reach the grid, and does the
+      # reset take it off again. The measuring build is for questions about
+      # speed and stutter.
       - name: Build sideload debug APK
         run: ./gradlew assembleSideloadDebug --no-daemon
 
