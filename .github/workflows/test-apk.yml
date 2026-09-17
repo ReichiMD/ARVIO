@@ -79,8 +79,10 @@ jobs:
             app/src/main/kotlin/com/arflix/tv/ui/components/YouTubeTrailerModal.kt \
             || { echo "::error::the controls parameter is no longer device-dependent"; exit 1; }
           # --- the TV strip below the video, and the attribution button in it ---
-          grep -q 'TvStripHeight' app/src/main/kotlin/com/arflix/tv/ui/components/YouTubeTrailerModal.kt \
+          grep -q 'private val tvStripHeight' app/src/main/kotlin/com/arflix/tv/ui/components/YouTubeTrailerModal.kt \
             || { echo "::error::the reserved TV strip is gone"; exit 1; }
+          grep -q '\.height(tvStripHeight)' app/src/main/kotlin/com/arflix/tv/ui/components/YouTubeTrailerModal.kt \
+            || { echo "::error::the TV strip height is declared but no longer applied"; exit 1; }
           grep -q 'YouTubeStripButton' app/src/main/kotlin/com/arflix/tv/ui/components/YouTubeTrailerModal.kt \
             || { echo "::error::the YouTube attribution button is gone"; exit 1; }
           # --- rotate-to-fullscreen on mobile ---
