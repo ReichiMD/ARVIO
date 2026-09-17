@@ -1,0 +1,191 @@
+name: Test APK (native YouTube trailer player - staging measurement build)
+
+# Test-branch only. This workflow and the committed keystore must never reach a
+# pull request against upstream - they exist so a Claude Code session can hand
+# the user an installable build. `workflow_dispatch` returns 403 from such a
+# session (the app token has no `actions: write`), so a push to this branch is
+# the trigger.
+
+on:
+  push:
+    branches:
+      - claude/gifted-tesla-rme4o2
+  workflow_dispatch:
+
+jobs:
+  build-test-apk:
+    name: Build sideload staging test APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # Trailers are TMDB metadata: without a real key the details screen has no
+      # trailer to open and the whole round would be untestable.
+      - name: Prepare runtime configuration
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          cp secrets.defaults.properties secrets.properties
+          if [ -n "$TMDB_API_KEY" ]; then
+            sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+            echo "TMDB key injected"
+          else
+            echo "::error::TMDB_API_KEY secret is empty - this feature cannot be tested without it"
+            exit 1
+          fi
+
+      # Sanity check: the TV preview must be in this build, and it must be the
+      # kind that only fires when the user forces TV mode on a touch device.
+      - name: Verify the TV preview patch is present
+        run: |
+          grep -q 'TvPreviewLetterbox' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview letterbox missing"; exit 1; }
+          grep -q 'deviceModeOverride == "tv" && hasTouchScreen' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview guard missing or changed"; exit 1; }
+
+      # The point of this round: PR #713 must actually be in the tree. A merge
+      # that silently lost a file would otherwise produce a perfectly green run
+      # of the wrong software.
+      - name: Verify the native YouTube trailer player of PR 713 is present
+        run: |
+          test -f app/src/main/kotlin/com/arflix/tv/ui/components/YouTubeTrailerModal.kt \
+            || { echo "::error::YouTubeTrailerModal.kt missing - PR 713 is not in this tree"; exit 1; }
+          test -f app/src/main/kotlin/com/arflix/tv/ui/components/BackgroundTrailerPlayer.kt \
+            || { echo "::error::BackgroundTrailerPlayer.kt missing - PR 713 is not in this tree"; exit 1; }
+          grep -q 'androidyoutubeplayer' app/build.gradle.kts \
+            || { echo "::error::the android-youtube-player dependency is missing"; exit 1; }
+          grep -q 'androidyoutubeplayer' app/proguard-rules.pro \
+            || { echo "::error::no R8 keep rules for the player - a staging build would strip it"; exit 1; }
+
+      - name: Compile and run unit tests
+        run: |
+          # EpgRefreshRequestsTest is a known, order-dependent flake (docs/34 5z):
+          # another ViewModel test leaves a coroutine on the Main dispatcher. It is
+          # NOT silenced - the whole suite simply gets the second run the office
+          # rules prescribe, and the build still fails if it stays red.
+          ./gradlew testSideloadDebugUnitTest --no-daemon \
+            || ./gradlew testSideloadDebugUnitTest --no-daemon --rerun-tasks
+
+      # The office wants the test count as a measured number, not a guess.
+      # Gradle does not print one, so it is summed out of the JUnit XML the run just wrote.
+      - name: Count the unit tests
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          for f in glob.glob("app/build/test-results/testSideloadDebugUnitTest/*.xml"):
+              r = ET.parse(f).getroot()
+              tests += int(r.get("tests", 0)); failures += int(r.get("failures", 0))
+              errors += int(r.get("errors", 0)); skipped += int(r.get("skipped", 0))
+          print(f"unit tests: {tests} | failures: {failures} | errors: {errors} | skipped: {skipped}")
+          PY
+
+      # The office rule is "detekt rule for rule unchanged", and the fork CI does
+      # not run detekt at all - so the count is taken here, where the Android SDK
+      # exists. It never fails the build: the comparison is the point, not a gate.
+      - name: Count detekt findings rule by rule
+        continue-on-error: true
+        run: |
+          ./gradlew detekt --no-daemon || true
+          for report in app/build/reports/detekt/*.xml; do
+            [ -f "$report" ] || continue
+            echo "== $report"
+            grep -o 'source="[^"]*"' "$report" | wc -l | sed 's/^/  findings: /'
+            grep -o '<error[^>]*source="[^"]*"' "$report" \
+              | sed -n 's/.*source="detekt\.\([^"]*\)".*/\1/p' | sort | uniq -c | sort -rn
+          done
+
+      - name: Give the staging build its own package, name and a fixed signature
+        run: |
+          # Kennung "youtube" - a NEW identifier (docs/10, AGENTS.md rule 10), so
+          # this build installs BESIDE every other test APK and starts empty:
+          # portal, MAC and playlists have to be entered once.
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">YouTube-Trailer</string>|' \
+            app/src/main/res/values/strings.xml
+          # staging differs from debug here: it already carries a ready
+          # `applicationIdSuffix = ".beta"` line, so this REPLACES it instead of
+          # inserting after the block header (docs/10, "Beim Wechsel der Sorte").
+          sed -i 's/            applicationIdSuffix = ".beta"/            applicationIdSuffix = ".youtube"/' app/build.gradle.kts
+          # staging inherits the release-only cloud-secret check, which has no
+          # real keys in a fork and stops the build after ~19 seconds. It exists
+          # so such a build is not PUBLISHED, not so it cannot be tested; the
+          # unit-test step above is untouched and still fails the build.
+          sed -i 's|dependsOn(validateReleaseCloudSecrets)|// CI test build only: cloud-secret check not applicable in a fork|' app/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          # A sed that silently matches nothing is how this kind of workflow
+          # wastes a build cycle - check every edit.
+          grep -q '<string name="app_name">YouTube-Trailer</string>' app/src/main/res/values/strings.xml \
+            || { echo "::error::app_name patch did not apply"; exit 1; }
+          grep -q 'applicationIdSuffix = ".youtube"' app/build.gradle.kts \
+            || { echo "::error::suffix patch did not apply"; exit 1; }
+          # The greps above only prove the NEW line is there. This one catches the
+          # expensive case: a replacement that did not replace, which would ship an
+          # APK called ".beta" that installs beside the intended one.
+          if grep -q 'applicationIdSuffix = ".beta"' app/build.gradle.kts; then
+            echo "::error::the .beta suffix is still there - this APK would carry the wrong package name"; exit 1
+          fi
+          if grep -q 'dependsOn(validateReleaseCloudSecrets)' app/build.gradle.kts; then
+            echo "::error::cloud-secret patch did not apply"; exit 1
+          fi
+          grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts \
+            || { echo "::error::versionCode patch did not apply"; exit 1; }
+          cat >> app/build.gradle.kts <<'KTS'
+
+          // CI only: on a runner the signing config named "debug" points at a
+          // freshly generated ~/.android/debug.keystore, so every build would
+          // carry a different signature and the tester could not install one
+          // test APK over the previous one. Pin it to the committed keystore.
+          // staging signs with this very config too - it asks for "release"
+          // first, and a fork has none, so it falls back to "debug".
+          android {
+              signingConfigs {
+                  getByName("debug") {
+                      storeFile = rootProject.file(".github/test-signing/debug.keystore")
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+          }
+          KTS
+
+      # Mess-APK (docs/10), asked for by name: staging is release-grade with R8,
+      # and it is the only variant that can answer "does it feel fast?" - a debug
+      # build runs measurably more sluggishly on a TV. It also puts the R8 keep
+      # rules of PR #713 to the test, which a debug build never touches.
+      - name: Build sideload staging APK
+        run: ./gradlew assembleSideloadStaging --no-daemon
+
+      - name: Verify APK signature against the committed keystore
+        run: |
+          EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
+            -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          # find, not ls: a filename with a space would break the glob (shellcheck SC2012).
+          APK=$(find app/build/outputs/apk/sideload/staging -name '*.apk' -type f | head -1)
+          ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          echo "APK:      $APK"
+          echo "expected: $EXPECTED"
+          echo "actual:   $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Signature mismatch - Gradle did not use the committed keystore."
+            exit 1
+          fi
+          echo "Signature verified against the committed keystore."
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arvio-youtube-apk
+          path: app/build/outputs/apk/sideload/staging/*.apk
+          if-no-files-found: error
+          retention-days: 14
