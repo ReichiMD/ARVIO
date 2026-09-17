@@ -284,7 +284,7 @@ class CloudSyncRepository @Inject constructor(
         val autoPlayMinQuality: String = "Any",
         val autoPlayMaxQuality: String? = null,
         val autoPlayMaxSizeGb: Int? = null,
-        val trailerAutoPlay: Boolean = false,
+        val trailerAutoPlay: Boolean = true,
         val trailerSoundEnabled: Boolean = false,
         val trailerDelaySeconds: Int = 2,
         val trailerInCards: Boolean = true,
@@ -640,7 +640,7 @@ class CloudSyncRepository @Inject constructor(
                         defaultAudioLanguage = prefs[defaultAudioLanguageKeyFor(profile.id)] ?: "Auto (Original)",
                         contentLanguage = resolveAppLanguage(prefs, profile.id),
 
-                        trailerAutoPlay = prefs[trailerAutoPlayKeyFor(profile.id)] ?: false,
+                        trailerAutoPlay = prefs[trailerAutoPlayKeyFor(profile.id)] ?: true,
                         trailerSoundEnabled = prefs[trailerSoundEnabledKeyFor(profile.id)] ?: false,
                         trailerDelaySeconds = prefs[trailerDelayKeyFor(profile.id)]?.toIntOrNull() ?: 2,
                         trailerInCards = prefs[trailerInCardsKeyFor(profile.id)] ?: true,
