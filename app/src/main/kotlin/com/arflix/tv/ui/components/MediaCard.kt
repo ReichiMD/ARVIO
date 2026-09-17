@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -732,6 +733,16 @@ fun PosterCard(
 }
 
 /**
+ * YouTube requires an embedded player to be at least 200x200 px. Checked
+ * against the measured pixel size, because 146dp clears it on a normal 1080p
+ * TV but falls six pixels short on tvdpi.
+ */
+private const val MIN_EMBEDDED_PLAYER_PX = 200
+
+/** Focus ring width of the featured card; the player is inset by it. */
+private val featuredCardOutline = 2.5.dp
+
+/**
  * Wide focused card that shows backdrop art and plays the trailer inline.
  * Used in TV card rows: the focused item expands to this wider landscape format
  * while other items in the row keep their normal width. The trailer starts
@@ -748,16 +759,30 @@ fun FeaturedMediaCard(
     trailerDelayMs: Long,
     trailerVolume: Float,
     onClick: () -> Unit,
+    onTrailerPlayingChanged: (Boolean) -> Unit = {},
 ) {
     val shape = rememberArvioCardShape(ArvioSkin.radius.md)
     val imageUrl = (item.backdrop ?: item.image).takeIf { it.isNotBlank() }
 
+    var trailerPlaying by remember(trailerKey) { mutableStateOf(false) }
+
+    // An embedded player must be at least 200x200 px. The card is 146dp high,
+    // which is 292px on a normal 1080p TV but only 194px on tvdpi - six pixels
+    // short. So measure the real size and simply leave the still frame up when
+    // it is too small, rather than shipping an undersized player.
+    var playerFitsMinimumSize by remember { mutableStateOf(false) }
+
     ArvioFocusableSurface(
-        modifier = Modifier.size(width, height),
+        modifier = Modifier
+            .size(width, height)
+            .onSizeChanged { size ->
+                playerFitsMinimumSize =
+                    size.width >= MIN_EMBEDDED_PLAYER_PX && size.height >= MIN_EMBEDDED_PLAYER_PX
+            },
         shape = shape,
         backgroundColor = Color(0xFF1A1A1A),
         outlineColor = ArvioSkin.colors.focusOutline,
-        outlineWidth = 2.5.dp,
+        outlineWidth = featuredCardOutline,
         focusedScale = 1f,
         pressedScale = 0.97f,
         animateFocus = false,
@@ -773,27 +798,49 @@ fun FeaturedMediaCard(
                 modifier = Modifier.fillMaxSize()
             )
         }
-        // Bottom gradient so title text is readable over the backdrop/trailer
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        0.55f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.85f)
+
+        if (trailerKey != null && playerFitsMinimumSize) {
+            BackgroundTrailerPlayer(
+                youtubeKey = trailerKey,
+                delayMs = trailerDelayMs,
+                soundEnabled = trailerVolume > 0f,
+                onPlayingChanged = { playing ->
+                    trailerPlaying = playing
+                    onTrailerPlayingChanged(playing)
+                },
+                // Inset by the focus ring's width so the ring stays outside the
+                // player instead of running along the edge of the picture.
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(featuredCardOutline)
+            )
+        }
+
+        // Everything below is ours and would sit ON the player, so it goes away
+        // while the trailer runs - the same way the home backdrop does it.
+        if (!trailerPlaying) {
+            // Bottom gradient so title text is readable over the backdrop
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.55f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.85f)
+                        )
                     )
-                )
-        )
-        Text(
-            text = item.title,
-            style = ArvioSkin.typography.cardTitle,
-            color = Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 10.dp, vertical = 8.dp)
-        )
+            )
+            Text(
+                text = item.title,
+                style = ArvioSkin.typography.cardTitle,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            )
+        }
     }
 }

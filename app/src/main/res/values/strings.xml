@@ -187,7 +187,7 @@
     <string name="auto_play_quality_desc">Min quality for auto-play</string>
     <string name="trailer_desc">Play trailers in hero banner</string>
     <string name="trailer_sound">Trailer Sound</string>
-    <string name="trailer_sound_desc">Play trailer audio in hero banner</string>
+    <string name="trailer_sound_desc">Play trailer audio in the hero banner and in cards</string>
     <string name="trailer_delay">Trailer Delay</string>
     <string name="trailer_delay_desc">Seconds before trailer starts playing</string>
     <string name="trailer_in_cards">Trailers In Cards</string>

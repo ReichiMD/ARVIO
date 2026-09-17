@@ -1219,8 +1219,12 @@ fun HomeScreen(
                     )
                 }
 
-                // YouTube trailer auto-play on hero backdrop
-                if (heroVideoUrl == null && uiState.trailerAutoPlay && uiState.heroTrailerKey != null && !trailerSuppressed && !heroRowIsContinueWatching) {
+                // YouTube trailer auto-play on hero backdrop.
+                // "Trailers In Cards" is an either-or, not an extra: its own
+                // text says "instead of full screen", and only one
+                // self-starting player per screen is allowed. So when the card
+                // trailer is on, the banner stays quiet.
+                if (heroVideoUrl == null && uiState.trailerAutoPlay && !uiState.trailerInCards && uiState.heroTrailerKey != null && !trailerSuppressed && !heroRowIsContinueWatching) {
                     BackgroundTrailerPlayer(
                         youtubeKey = uiState.heroTrailerKey!!,
                         delayMs = uiState.trailerDelaySeconds * 1000L,
@@ -1362,7 +1366,13 @@ fun HomeScreen(
             onNavigateToSettings = onNavigateToSettings,
             onSwitchProfile = onSwitchProfile,
             onExitApp = onExitApp,
-            featuredTrailerKey = null,
+            // Trailer Auto-Play stays the master switch; "Trailers In Cards"
+            // only decides WHERE it plays ("instead of full screen").
+            featuredTrailerKey = if (uiState.trailerAutoPlay && uiState.trailerInCards) {
+                uiState.heroTrailerKey
+            } else {
+                null
+            },
             featuredTrailerDelayMs = uiState.trailerDelaySeconds * 1000L,
             featuredTrailerVolume = if (uiState.trailerSoundEnabled) 1f else 0f,
             onOpenContextMenu = { item, isContinue ->
@@ -3953,6 +3963,9 @@ private fun ContentRow(
                             expandAnim.animateTo(380f, spring())
                         }
                         val expandedWidth = expandAnim.value.dp
+                        // The rank ribbon is drawn at zIndex 2, i.e. on top of
+                        // the card - so it has to go while the trailer runs.
+                        var cardTrailerPlaying by remember { mutableStateOf(false) }
                         Box(modifier = Modifier.width(expandedWidth)) {
                             FeaturedMediaCard(
                                 item = item,
@@ -3962,16 +3975,19 @@ private fun ContentRow(
                                 trailerDelayMs = 0L,
                                 trailerVolume = featuredTrailerVolume,
                                 onClick = onCardClick,
+                                onTrailerPlayingChanged = { cardTrailerPlaying = it },
                             )
-                            TopRankRibbon(
-                                rank = index + 1,
-                                isFocused = itemIsFocused,
-                                compact = !effectivePosterMode,
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .zIndex(2f)
-                                    .padding(start = 8.dp)
-                            )
+                            if (!cardTrailerPlaying) {
+                                TopRankRibbon(
+                                    rank = index + 1,
+                                    isFocused = itemIsFocused,
+                                    compact = !effectivePosterMode,
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .zIndex(2f)
+                                        .padding(start = 8.dp)
+                                )
+                            }
                         }
                     } else {
                         // Collapsed: plain constant width — no animation state, no frame delay.
