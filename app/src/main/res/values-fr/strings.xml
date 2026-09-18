@@ -169,7 +169,7 @@
     <string name="auto_play_quality_desc">Qualité minimale pour la lecture auto.</string>
     <string name="trailer_desc">TV : lire les bandes-annonces en arrière-plan de l’accueil</string>
     <string name="trailer_sound">Son des bandes-annonces</string>
-    <string name="trailer_sound_desc">TV : lire l’audio des bandes-annonces en arrière-plan de l’accueil</string>
+    <string name="trailer_sound_desc">TV : lire l’audio des bandes-annonces en arrière-plan de l’accueil et dans les cartes</string>
     <string name="trailer_delay">Délai des bandes-annonces</string>
     <string name="trailer_delay_desc">Secondes avant le démarrage de la bande-annonce</string>
     <string name="trailer_in_cards">Bandes-annonces dans les cartes</string>

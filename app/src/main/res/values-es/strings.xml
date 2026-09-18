@@ -184,7 +184,7 @@
     <string name="auto_play_quality_desc">Calidad mínima para la reproducción automática</string>
     <string name="trailer_desc">TV: reproducir tráilers en el fondo de la pantalla de inicio</string>
     <string name="trailer_sound">Sonido del tráiler</string>
-    <string name="trailer_sound_desc">TV: reproducir el audio del tráiler en el fondo de la pantalla de inicio</string>
+    <string name="trailer_sound_desc">TV: reproducir el audio del tráiler en el fondo de la pantalla de inicio y en las tarjetas</string>
     <string name="trailer_delay">Retraso del tráiler</string>
     <string name="trailer_delay_desc">Segundos antes de que el tráiler comience a reproducirse</string>
     <string name="trailer_in_cards">Tráilers en tarjetas</string>

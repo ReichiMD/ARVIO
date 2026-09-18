@@ -171,7 +171,7 @@
     <string name="auto_play_quality_desc">Qualidade mínima para reprodução automática</string>
     <string name="trailer_desc">TV: reproduzir trailers no fundo da tela inicial</string>
     <string name="trailer_sound">Som do trailer</string>
-    <string name="trailer_sound_desc">TV: reproduzir áudio do trailer no fundo da tela inicial</string>
+    <string name="trailer_sound_desc">TV: reproduzir áudio do trailer no fundo da tela inicial e nos cards</string>
     <string name="trailer_delay">Atraso do trailer</string>
     <string name="trailer_delay_desc">Segundos antes do trailer começar a ser reproduzido</string>
     <string name="trailer_in_cards">Trailers nos cards</string>

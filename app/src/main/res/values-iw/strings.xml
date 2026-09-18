@@ -113,7 +113,7 @@
     <string name="auto_play_quality_desc">איכות מינימום להפעלה אוטומטית</string>
     <string name="trailer_desc">הפעל טריילרים ברקע מסך הבית</string>
     <string name="trailer_sound">צליל טריילר</string>
-    <string name="trailer_sound_desc">הפעל שמע טריילר ברקע מסך הבית</string>
+    <string name="trailer_sound_desc">הפעל שמע טריילר ברקע מסך הבית ובכרטיסים</string>
     <string name="trailer_delay">השהיית טריילר</string>
     <string name="trailer_delay_desc">שניות לפני שהטריילר מתחיל לנגן</string>
     <string name="trailer_in_cards">טריילרים בכרטיסים</string>

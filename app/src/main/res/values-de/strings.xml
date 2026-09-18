@@ -105,7 +105,7 @@
     <string name="subtitle_stylized_desc">Eingebettete ASS/SSA-Stile berücksichtigen, wenn die System-Schriftart genutzt wird. Mitgelieferte Schriftarten überschreiben eingebettete Stile.</string>
     <string name="trailer_desc">TV: Trailer im Hintergrund der Startseite abspielen</string>
     <string name="trailer_sound">Trailer-Ton</string>
-    <string name="trailer_sound_desc">TV: Trailer-Ton im Hintergrund der Startseite abspielen</string>
+    <string name="trailer_sound_desc">TV: Trailer-Ton im Hintergrund der Startseite und in Karten abspielen</string>
     <string name="trailer_delay">Trailer-Verzögerung</string>
     <string name="trailer_delay_desc">Sekunden, bevor der Trailer startet</string>
     <string name="trailer_in_cards">Trailer in Karten</string>
