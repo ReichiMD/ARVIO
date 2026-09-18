@@ -167,9 +167,9 @@
     <string name="auto_play_desc">Démarre automatiquement l’épisode suivant</string>
     <string name="autoplay_desc">Désactivé, le sélecteur de source s’ouvre à la lecture</string>
     <string name="auto_play_quality_desc">Qualité minimale pour la lecture auto.</string>
-    <string name="trailer_desc">Lire les bandes-annonces dans la bannière hero</string>
+    <string name="trailer_desc">TV : lire les bandes-annonces en arrière-plan de l’accueil</string>
     <string name="trailer_sound">Son des bandes-annonces</string>
-    <string name="trailer_sound_desc">Lire l’audio des bandes-annonces dans la bannière hero</string>
+    <string name="trailer_sound_desc">TV : lire l’audio des bandes-annonces en arrière-plan de l’accueil</string>
     <string name="trailer_delay">Délai des bandes-annonces</string>
     <string name="trailer_delay_desc">Secondes avant le démarrage de la bande-annonce</string>
     <string name="trailer_in_cards">Bandes-annonces dans les cartes</string>
@@ -469,7 +469,7 @@
     <string name="settings_help_source_autoplay">Lecture auto de la source</string>
     <string name="settings_help_source_autoplay_desc">Détermine si une source unique démarre immédiatement ou ouvre le sélecteur.</string>
     <string name="settings_help_trailers">Bandes-annonces</string>
-    <string name="settings_help_trailers_desc">Réglez la lecture auto et le son des bandes-annonces sur les bannières hero.</string>
+    <string name="settings_help_trailers_desc">Réglez la lecture auto et le son des bandes-annonces en arrière-plan de l’accueil.</string>
     <string name="settings_help_volume_boost_desc">Amplifie la sortie audio de lecture quand c’est activé.</string>
     <string name="settings_help_playback_desc">Réglez la qualité des sources, la synchro de fréquence d’images et le comportement de lecture.</string>
     <string name="settings_help_interface_desc">Contrôle la mise en page, le mode OLED, l’horloge et le style de focus.</string>
