@@ -182,9 +182,9 @@
     <string name="auto_play_desc">Comenzar el siguiente episodio automáticamente</string>
     <string name="autoplay_desc">Si está desactivado, abre el selector de fuentes al pulsar Reproducir</string>
     <string name="auto_play_quality_desc">Calidad mínima para la reproducción automática</string>
-    <string name="trailer_desc">Reproducir tráilers en el banner principal</string>
+    <string name="trailer_desc">TV: reproducir tráilers en el fondo de la pantalla de inicio</string>
     <string name="trailer_sound">Sonido del tráiler</string>
-    <string name="trailer_sound_desc">Reproducir el audio del tráiler en el banner principal</string>
+    <string name="trailer_sound_desc">TV: reproducir el audio del tráiler en el fondo de la pantalla de inicio</string>
     <string name="trailer_delay">Retraso del tráiler</string>
     <string name="trailer_delay_desc">Segundos antes de que el tráiler comience a reproducirse</string>
     <string name="trailer_in_cards">Tráilers en tarjetas</string>
@@ -560,7 +560,7 @@
     <string name="settings_help_source_autoplay">Auto-reproducir fuente</string>
     <string name="settings_help_source_autoplay_desc">Controla si una fuente individual comienza inmediatamente o abre el selector.</string>
     <string name="settings_help_trailers">Tráilers</string>
-    <string name="settings_help_trailers_desc">Ajusta el comportamiento de auto-reproducción y sonido de los tráilers en los banners principales.</string>
+    <string name="settings_help_trailers_desc">Ajusta el comportamiento de auto-reproducción y sonido de los tráilers en el fondo de la pantalla de inicio.</string>
     <string name="settings_help_volume_boost_desc">Aumenta el nivel de audio durante la reproducción si está activado.</string>
     <string name="settings_help_playback_desc">Ajusta la calidad de la fuente, el ajuste de frame-rate y el comportamiento de reproducción.</string>
     <string name="settings_help_interface_desc">Controla el diseño, modo OLED, reloj y estilo de enfoque.</string>

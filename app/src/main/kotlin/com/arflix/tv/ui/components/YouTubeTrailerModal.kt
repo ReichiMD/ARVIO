@@ -12,7 +12,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -295,7 +294,6 @@ fun YouTubeTrailerModal(
     val playerFocusRequester = remember { FocusRequester() }
     val youtubeFocusRequester = remember { FocusRequester() }
 
-    var isPlayerFocused by remember { mutableStateOf(false) }
     var isYouTubeFocused by remember { mutableStateOf(false) }
 
     var activePlayer by remember(youtubeKey) { mutableStateOf<YouTubePlayer?>(null) }
@@ -493,24 +491,15 @@ fun YouTubeTrailerModal(
                     .widthIn(max = 1000.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // The focus ring sits on this wrapper and the padding keeps it
-                // clear of the video: a ring drawn on the video's own edge is
-                // itself something lying over the player.
+                // No ring around the video, at any focus state. A 3dp gap still
+                // reads as a frame on the picture, and the office decision on
+                // the TV layout is explicit that the white frame goes. Focus is
+                // legible without it: the strip below highlights its own items,
+                // so "nothing highlighted" means the video has the keys.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(
-                            width = 2.dp,
-                            color = if (isPlayerFocused) {
-                                ArvioSkin.colors.focusOutline
-                            } else {
-                                Color.Transparent
-                            },
-                            shape = RoundedCornerShape(15.dp)
-                        )
-                        .padding(3.dp)
                         .focusRequester(playerFocusRequester)
-                        .onFocusChanged { isPlayerFocused = it.isFocused }
                         .focusable()
                         .onPreviewKeyEvent { event ->
                             if (event.type == KeyEventType.KeyDown) {

@@ -103,9 +103,9 @@
     <string name="subtitle_offset_desc">Vertikale Position der Untertitel</string>
     <string name="subtitle_stylized">Stilisierte Untertitel</string>
     <string name="subtitle_stylized_desc">Eingebettete ASS/SSA-Stile berücksichtigen, wenn die System-Schriftart genutzt wird. Mitgelieferte Schriftarten überschreiben eingebettete Stile.</string>
-    <string name="trailer_desc">Trailer im Hero-Banner abspielen</string>
+    <string name="trailer_desc">TV: Trailer im Hintergrund der Startseite abspielen</string>
     <string name="trailer_sound">Trailer-Ton</string>
-    <string name="trailer_sound_desc">Trailer-Ton im Hero-Banner abspielen</string>
+    <string name="trailer_sound_desc">TV: Trailer-Ton im Hintergrund der Startseite abspielen</string>
     <string name="trailer_delay">Trailer-Verzögerung</string>
     <string name="trailer_delay_desc">Sekunden, bevor der Trailer startet</string>
     <string name="trailer_in_cards">Trailer in Karten</string>
@@ -467,7 +467,7 @@
     <string name="settings_help_source_autoplay">Quell-Automatikwiedergabe</string>
     <string name="settings_help_source_autoplay_desc">Steuert, ob eine einzelne Quelle sofort startet oder die Auswahl öffnet.</string>
     <string name="settings_help_trailers">Trailer</string>
-    <string name="settings_help_trailers_desc">Trailer-Automatikwiedergabe und Tonverhalten auf Hero-Bannern einstellen.</string>
+    <string name="settings_help_trailers_desc">Trailer-Automatikwiedergabe und Tonverhalten im Hintergrund der Startseite einstellen.</string>
     <string name="settings_help_volume_boost_desc">Erhöht die Audio-Ausgabe bei der Wiedergabe, wenn aktiviert.</string>
     <string name="settings_help_playback_desc">Quellqualität, Bildratenanpassung und Wiedergabeverhalten optimieren.</string>
     <string name="settings_help_interface_desc">Layout, OLED-Modus, Uhr und Fokus-Stil steuern.</string>

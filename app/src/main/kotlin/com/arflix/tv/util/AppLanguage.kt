@@ -144,7 +144,7 @@ fun tr(text: String): String {
         "Min quality for auto-play",
         "Auto" -> R.string.auto
         "Trailer Auto-Play",
-        "Play trailers in hero banner",
+        "TV: play trailers in the home background",
         "Trailer",
         "Close trailer" -> R.string.trailer
         // Interface
@@ -560,7 +560,7 @@ private object AppLanguageRegexes {
         "Auto-Play Min Quality" to auto,
         "Min quality for auto-play" to auto,
         "Trailer Auto-Play" to trailer,
-        "Play trailers in hero banner" to trailer,
+        "TV: play trailers in the home background" to trailer,
         "Match Frame Rate" to playback,
         "Off, Seamless, or Always" to "$off / $auto",
         "Quality Regex Filters" to "Regex",

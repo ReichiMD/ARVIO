@@ -169,9 +169,9 @@
     <string name="auto_play_desc">Iniciar próximo episódio automaticamente</string>
     <string name="autoplay_desc">Quando desligado, abre o seletor de fontes ao clicar em Reproduzir</string>
     <string name="auto_play_quality_desc">Qualidade mínima para reprodução automática</string>
-    <string name="trailer_desc">Reproduzir trailers no banner principal</string>
+    <string name="trailer_desc">TV: reproduzir trailers no fundo da tela inicial</string>
     <string name="trailer_sound">Som do trailer</string>
-    <string name="trailer_sound_desc">Reproduzir áudio do trailer no banner principal</string>
+    <string name="trailer_sound_desc">TV: reproduzir áudio do trailer no fundo da tela inicial</string>
     <string name="trailer_delay">Atraso do trailer</string>
     <string name="trailer_delay_desc">Segundos antes do trailer começar a ser reproduzido</string>
     <string name="trailer_in_cards">Trailers nos cards</string>
@@ -509,7 +509,7 @@
     <string name="settings_help_source_autoplay">Reprodução automática de fonte</string>
     <string name="settings_help_source_autoplay_desc">Controla se uma fonte única inicia imediatamente ou abre o seletor.</string>
     <string name="settings_help_trailers">Trailers</string>
-    <string name="settings_help_trailers_desc">Ajuste a reprodução automática e o áudio dos trailers no banner principal.</string>
+    <string name="settings_help_trailers_desc">Ajuste a reprodução automática e o áudio dos trailers no fundo da tela inicial.</string>
     <string name="settings_help_volume_boost_desc">Amplifica o volume de saída do áudio quando ativado.</string>
     <string name="settings_help_playback_desc">Ajuste a qualidade da fonte, sincronização de taxa de quadros e reprodução.</string>
     <string name="settings_help_interface_desc">Controle layout, modo OLED, relógio e estilo de foco.</string>

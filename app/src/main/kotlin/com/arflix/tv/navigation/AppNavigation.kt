@@ -150,6 +150,9 @@ fun AppNavigation(
     isCloudConnected: Boolean = false,
     onSwitchProfile: () -> Unit = {},
     onTvFullscreenChanged: (Boolean) -> Unit = {},
+    onOverlayFullscreenChanged: (Boolean) -> Unit = {},
+    onSettingsSubPageChanged: (Boolean) -> Unit = {},
+    onTvSubScreenChanged: (Boolean) -> Unit = {},
     onExitApp: () -> Unit = {}
 ) {
     val navigateTopLevel: (String) -> Unit = { route ->
@@ -307,6 +310,7 @@ fun AppNavigation(
                 initialChannelId = initialChannelId,
                 initialStreamUrl = initialStreamUrl,
                 onFullscreenChanged = onTvFullscreenChanged,
+                onSubScreenChanged = onTvSubScreenChanged,
                 onNavigateToHome = { navigateHome() },
                 onNavigateToSearch = { navigateTopLevel(Screen.Search.route) },
                 onNavigateToWatchlist = { navigateTopLevel(Screen.Watchlist.route) },
@@ -360,7 +364,8 @@ fun AppNavigation(
                     onSwitchProfile()
                     navController.navigateToProfileSelection()
                 },
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onSubPageChanged = onSettingsSubPageChanged
             )
         }
 
@@ -473,6 +478,7 @@ fun AppNavigation(
             val mediaType = if (mediaTypeStr == "tv") MediaType.TV else MediaType.MOVIE
 
             DetailsScreen(
+                onFullscreenChanged = onOverlayFullscreenChanged,
                 mediaType = mediaType,
                 mediaId = mediaId,
                 initialSeason = initialSeason,
