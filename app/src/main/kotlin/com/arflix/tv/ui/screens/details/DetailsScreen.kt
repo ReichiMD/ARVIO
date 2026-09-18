@@ -238,6 +238,7 @@ fun DetailsScreen(
     onNavigateToTv: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onSwitchProfile: () -> Unit = {},
+    onFullscreenChanged: (Boolean) -> Unit = {},
     onBack: () -> Unit
 ) {
     val isRtlLayoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
@@ -269,6 +270,12 @@ fun DetailsScreen(
     // Stream Selector state
     var showStreamSelector by remember { mutableStateOf(false) }
     var showTrailerPlayer by remember { mutableStateOf(false) }
+    // Tell the app shell the trailer covers the screen, so the bottom bar stops
+    // reserving its height. Reset on leaving, or the bar would stay hidden.
+    DisposableEffect(showTrailerPlayer) {
+        onFullscreenChanged(showTrailerPlayer)
+        onDispose { onFullscreenChanged(false) }
+    }
     KeepScreenOn(active = showTrailerPlayer)
 
     // Episode Context Menu state
