@@ -101,6 +101,32 @@ jobs:
             grep -q "$k" app/src/main/kotlin/com/arflix/tv/ui/components/YouTubeTrailerModal.kt \
               || { echo "::error::TV remote handling lost $k"; exit 1; }
           done
+          # --- this round: the setting is named after where it actually plays ---
+          grep -q '<string name="trailer_desc">TV: play trailers in the home background</string>' \
+            app/src/main/res/values/strings.xml \
+            || { echo "::error::trailer_desc was not renamed"; exit 1; }
+          grep -q '<string name="trailer_sound_desc">TV: play trailer audio in the home background</string>' \
+            app/src/main/res/values/strings.xml \
+            || { echo "::error::trailer_sound_desc was not renamed"; exit 1; }
+          # no trailer description may still say "hero banner" in ANY language.
+          # show_budget_desc legitimately still does - it really is on the banner.
+          if grep -rn 'hero banner\|Hero-Banner\|banner principal\|banniere hero\|bannière hero' \
+               app/src/main/res/values*/strings.xml | grep -i 'trailer'; then
+            echo "::error::a trailer description still says hero banner"; exit 1
+          fi
+          # the translations must move with it, not be left in English
+          grep -q 'TV: Trailer im Hintergrund der Startseite abspielen' \
+            app/src/main/res/values-de/strings.xml \
+            || { echo "::error::the German description was not carried over"; exit 1; }
+          # AppLanguage keys off the English literal - a stale key silently
+          # breaks the lookup for every non-English language.
+          if grep -n 'Play trailers in hero banner' \
+               app/src/main/kotlin/com/arflix/tv/util/AppLanguage.kt; then
+            echo "::error::AppLanguage still keys off the old English text"; exit 1
+          fi
+          test "$(grep -c 'TV: play trailers in the home background' \
+            app/src/main/kotlin/com/arflix/tv/util/AppLanguage.kt)" = "2" \
+            || { echo "::error::AppLanguage should carry the new text twice"; exit 1; }
           echo "Trailer round checks passed."
 
       - name: Compile and run unit tests
