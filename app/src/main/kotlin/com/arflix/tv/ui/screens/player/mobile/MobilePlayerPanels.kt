@@ -915,6 +915,20 @@ fun MobileSubtitlesSheet(
                                             SubtitleBadge(text = "Forced")
                                         }
                                     }
+                                    // TEST BRANCH ONLY - remove before any pull request.
+                                    // The raw values the player got for this track; a tester's
+                                    // screenshot then settles whether the file carries a name and
+                                    // the forced flag at all.
+                                    Text(
+                                        text = "RAW lang=" + sub.lang.ifBlank { "-" } +
+                                            " name=" + sub.label.ifBlank { "-" } +
+                                            " flag=" + (if (sub.hasForcedFlag) "YES" else "no") +
+                                            " forced=" + (if (sub.isForced) "YES" else "no") +
+                                            " img=" + (if (sub.isBitmap) "YES" else "no"),
+                                        color = MobilePlayerTokens.InkSecondary,
+                                        fontSize = 9.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
                                 }
                             }
                         }

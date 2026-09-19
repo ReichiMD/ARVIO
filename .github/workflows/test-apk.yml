@@ -71,7 +71,15 @@ jobs:
             || { echo "::error::audio language never reaches the ViewModel"; exit 1; }
           grep -q 'ForcedSubtitles.pick' app/src/main/kotlin/com/arflix/tv/ui/screens/player/PlayerViewModel.kt \
             || { echo "::error::selection rule not called"; exit 1; }
-          echo "forced-subtitles patch verified: setting, cloud, TV row, phone row, audio feed, rule"
+          grep -q 'forcedModeWantsAnotherLook' app/src/main/kotlin/com/arflix/tv/ui/screens/player/PlayerViewModel.kt \
+            || { echo "::error::the gate fix is missing - the rule would never get a second chance"; exit 1; }
+          grep -q 'needsAnotherLook' app/src/main/kotlin/com/arflix/tv/util/ForcedSubtitles.kt \
+            || { echo "::error::needsAnotherLook missing"; exit 1; }
+          test "$(grep -c 'val namedLabel' app/src/main/kotlin/com/arflix/tv/ui/screens/player/PlayerScreen.kt)" = "2" \
+            || { echo "::error::built-in track names are not on the main line in BOTH lists"; exit 1; }
+          test "$(grep -c 'RAW lang=' app/src/main/kotlin/com/arflix/tv/ui/screens/player/PlayerScreen.kt app/src/main/kotlin/com/arflix/tv/ui/screens/player/mobile/MobilePlayerPanels.kt | grep -c ':[1-9]')" = "2" \
+            || { echo "::error::the raw-track diagnostic is missing on one of the two surfaces"; exit 1; }
+          echo "forced-subtitles patch verified: setting, cloud, TV row, phone row, audio feed, rule, gate fix, track names, diagnostic"
 
       - name: Compile and run unit tests
         run: |

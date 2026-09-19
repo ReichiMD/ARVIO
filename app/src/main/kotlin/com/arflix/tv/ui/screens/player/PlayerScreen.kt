@@ -5780,7 +5780,11 @@ private fun SubtitleMenu(
                                                 stringResource(R.string.settings_source_builtin),
                                                 if (subtitle.isForced) stringResource(R.string.settings_value_forced) else null
                                             ).joinToString(" · ")
-                                            detail = null
+                                            // TEST BRANCH ONLY - remove before any pull request.
+                                            // Prints what the player actually handed us for this
+                                            // track, so a tester's screenshot settles whether the
+                                            // file carries a name and the forced flag at all.
+                                            detail = forcedDiagnosticLine(subtitle)
                                         } else {
                                             badge = listOfNotNull(
                                                 subtitle.provider.ifBlank { null },
@@ -6099,9 +6103,11 @@ private fun SubtitleMenu(
                                     val displayName = (if (!sub.isEmbedded && score > 0) "$namedLabel ($score%)" else namedLabel) + offsetNote
                                     val description = when {
                                         sub.isEmbedded && sub.url.isBlank() -> {
+                                            // TEST BRANCH ONLY - remove before any pull request.
                                             listOfNotNull(
                                                 stringResource(R.string.settings_source_builtin),
-                                                if (sub.isForced) stringResource(R.string.settings_value_forced) else null
+                                                if (sub.isForced) stringResource(R.string.settings_value_forced) else null,
+                                                forcedDiagnosticLine(sub)
                                             ).joinToString(" · ")
                                         }
                                         else -> listOfNotNull(
@@ -7290,3 +7296,19 @@ private fun guessCastMimeType(url: String): String = when {
     url.contains(".mpd", ignoreCase = true)  -> "application/dash+xml"
     else                                     -> "video/mp4"
 }
+
+/**
+ * TEST BRANCH ONLY - remove before any pull request.
+ *
+ * A tester reported a file with about ten English subtitle tracks that no app but Nuvio could
+ * tell apart. Everything downstream depends on two values the player either gets from the file
+ * or does not — the track's own name and the container's forced flag — and neither is visible
+ * anywhere in the normal UI. This prints them verbatim so one screenshot answers it.
+ */
+private fun forcedDiagnosticLine(sub: com.arflix.tv.data.model.Subtitle): String =
+    "RAW lang=" + sub.lang.ifBlank { "-" } +
+        " name=" + sub.label.ifBlank { "-" } +
+        " flag=" + (if (sub.hasForcedFlag) "YES" else "no") +
+        " forced=" + (if (sub.isForced) "YES" else "no") +
+        " img=" + (if (sub.isBitmap) "YES" else "no") +
+        " id=" + sub.id.ifBlank { "-" }
