@@ -70,6 +70,23 @@ object ForcedSubtitles {
         bestFor(subtitles, preferredLang, normalize)
             ?: fallbackLang?.let { bestFor(subtitles, it, normalize) }
 
+    /**
+     * Whether the selection has to be decided again, given what is currently on screen.
+     *
+     * This exists because every other gate in the player asks "is the selected track already in
+     * the right LANGUAGE?" — and in forced mode that question separates nothing. A plain English
+     * track and the English forced track are both English, so those gates conclude "nothing to
+     * do" and [pick] never gets to run. A file carrying ten English tracks is exactly where that
+     * goes wrong, which is how it was found.
+     *
+     * So while the rule is active, anything that is not itself a forced track is never good
+     * enough, whatever language it happens to be in.
+     */
+    fun needsAnotherLook(current: Subtitle?, ruleActive: Boolean): Boolean {
+        if (!ruleActive) return false
+        return current == null || !isForcedTrack(current)
+    }
+
     private fun bestFor(
         subtitles: List<Subtitle>,
         target: String,

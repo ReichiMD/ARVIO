@@ -1692,7 +1692,8 @@ class PlayerViewModel @Inject constructor(
             // a fallback-language track (e.g. English selected while waiting for Hebrew), let
             // applyPreferredSubtitle decide whether to upgrade to the preferred language.
             if (currentSel?.isEmbedded == true &&
-                normalizeLanguage(currentSel.lang) == normalizeLanguage(preferred)) {
+                normalizeLanguage(currentSel.lang) == normalizeLanguage(preferred) &&
+                !forcedModeWantsAnotherLook(currentSel, preferred)) {
                 return@launch
             }
             val subs = _uiState.value.subtitles
@@ -1921,6 +1922,23 @@ class PlayerViewModel @Inject constructor(
      * Whether the forced rule may run for this film, and which track it picks.
      * The rule itself lives in [ForcedSubtitles] — pure, and unit-tested there.
      */
+    /**
+     * Whether forced mode must have the selection decided again.
+     *
+     * Both gates below ([scheduleSubtitleSelection] and the reapply check in
+     * [updatePlayerTextTracks]) judge an existing pick by its LANGUAGE, which in forced mode tells
+     * them nothing: the plain English track and the English forced track are equally English, so
+     * they concluded "already fine" and the rule never ran a second time. On a file with ten
+     * English tracks that made the whole setting look dead.
+     */
+    private fun forcedModeWantsAnotherLook(current: Subtitle?, preference: String): Boolean {
+        if (!_uiState.value.useForcedSubtitles) return false
+        val normalizedPref = normalizeLanguage(preference)
+        if (normalizedPref.isBlank() || isSubtitleDisabledPreference(preference)) return false
+        if (!forcedRuleApplies(normalizedPref)) return false
+        return ForcedSubtitles.needsAnotherLook(current, ruleActive = true)
+    }
+
     private fun forcedRuleApplies(normalizedPref: String): Boolean =
         ForcedSubtitles.ruleApplies(currentAudioLanguage, normalizedPref, ::normalizeLanguage)
 
@@ -3106,6 +3124,10 @@ class PlayerViewModel @Inject constructor(
             val normalizedPref = normalizeLanguage(preferred)
             val shouldReapply = when {
                 currentSel == null -> true
+                // Forced mode judges the pick itself, not its language — see
+                // forcedModeWantsAnotherLook. Without this the forced track arriving later than a
+                // plain one of the same language never displaces it.
+                forcedModeWantsAnotherLook(currentSel, preferred) -> true
                 // AI is active (source track is embedded): re-check any time embedded tracks arrive
                 // so a preferred-language built-in that arrives late can displace the AI source.
                 _uiState.value.isAiTranslating && finalList.any { it.isEmbedded } -> true

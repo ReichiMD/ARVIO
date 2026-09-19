@@ -162,6 +162,33 @@ class ForcedSubtitlesTest {
         assertThat(ForcedSubtitles.pick(listOf(byLabel), "en", null, normalize)).isEqualTo(byLabel)
     }
 
+    // ── The gate that made the whole setting look dead (king cOllier, 19.09.) ──
+
+    @Test
+    fun aPlainTrackAlreadyOnScreenIsNeverGoodEnough() {
+        // The reported failure: a file with ~10 English tracks. Once any plain English one was
+        // selected, every language-based gate in the player said "already English, nothing to do"
+        // and the rule never ran again. Language cannot decide this — only the track itself can.
+        assertThat(ForcedSubtitles.needsAnotherLook(englishFull, ruleActive = true)).isTrue()
+    }
+
+    @Test
+    fun aForcedTrackAlreadyOnScreenIsLeftAlone() {
+        assertThat(ForcedSubtitles.needsAnotherLook(englishForced, ruleActive = true)).isFalse()
+    }
+
+    @Test
+    fun nothingSelectedAlwaysNeedsADecision() {
+        assertThat(ForcedSubtitles.needsAnotherLook(null, ruleActive = true)).isTrue()
+    }
+
+    @Test
+    fun withTheRuleInactiveNothingIsReconsidered() {
+        // Switch off, or a dubbed film: the existing behaviour must not be disturbed at all.
+        assertThat(ForcedSubtitles.needsAnotherLook(englishFull, ruleActive = false)).isFalse()
+        assertThat(ForcedSubtitles.needsAnotherLook(null, ruleActive = false)).isFalse()
+    }
+
     @Test
     fun anEmptyTrackListSelectsNothing() {
         assertThat(ForcedSubtitles.pick(emptyList(), "en", "de", normalize)).isNull()
