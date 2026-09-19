@@ -28,21 +28,38 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      # Without a real key the app is an empty browser. Trakt itself does not
-      # need TMDB, but the tester has to walk through a normally filled app to
-      # reach the settings screen.
+      # Without real keys the app cannot do the thing under test. Round 1 only
+      # injected TMDB and the app answered "Trakt-Aktivierung fehlgeschlagen
+      # (400)": secrets.defaults.properties ships TRAKT_CLIENT_ID as the
+      # placeholder "your-trakt-client-id", Constants.usableSecret turns any
+      # "your-" value into an empty string, and Trakt rejects an empty client_id
+      # with 400 before any dialog is drawn. The real keys are injected the same
+      # way build-check.yml does it.
       - name: Prepare runtime configuration
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
         run: |
           cp secrets.defaults.properties secrets.properties
-          if [ -n "$TMDB_API_KEY" ]; then
-            sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
-            echo "TMDB key injected"
-          else
+          if [ -z "$TMDB_API_KEY" ]; then
             echo "::error::TMDB_API_KEY secret is empty - the app would start as an empty browser"
             exit 1
           fi
+          if [ -z "$TRAKT_CLIENT_ID" ] || [ -z "$TRAKT_CLIENT_SECRET" ]; then
+            echo "::error::TRAKT_CLIENT_ID/SECRET repository secret is empty - Trakt would answer 400 again"
+            exit 1
+          fi
+          sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+          sed -i "s|^TRAKT_CLIENT_ID=.*|TRAKT_CLIENT_ID=$TRAKT_CLIENT_ID|" secrets.properties
+          sed -i "s|^TRAKT_CLIENT_SECRET=.*|TRAKT_CLIENT_SECRET=$TRAKT_CLIENT_SECRET|" secrets.properties
+          # The placeholders are what caused round 1 to fail, so prove they are
+          # gone. Only the shape is printed, never a value.
+          if grep -qi '^TRAKT_CLIENT_ID=your-\|^TRAKT_CLIENT_SECRET=your-\|^TMDB_API_KEY=your-' secrets.properties; then
+            echo "::error::a placeholder survived in secrets.properties"
+            exit 1
+          fi
+          echo "keys injected; TRAKT_CLIENT_ID length: ${#TRAKT_CLIENT_ID}"
 
       # Sanity check: the TV preview must be in this build, and it must be the
       # kind that only fires when the user forces TV mode on a touch device.
