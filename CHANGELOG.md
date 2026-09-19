@@ -2,10 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [2.0.0] - 2026-09-19
 
-### Added
-- (Nothing yet)
+- Redesigned Library for OLED TV, phones, tablets and web, with Watchlists, My Lists and Homeserver navigation, poster/landscape cards, clearlogos and progressive server-library loading.
+- Added richer Search discovery filters and Home View all; improved default trending catalogue order.
+- Refreshed Live TV and sports navigation, mobile playlist overviews, alternative-source selection, stream information, category reordering, guide loading and catch-up controls. Expanded IPTV support to five playlists.
+- Improved Stalker movie/series sources and import controls, shared Plex/Emby playback and Silo compatibility.
+- Improved Continue Watching, SIMKL synchronization, Trakt activation retries, subtitle matching/timing, frame-rate matching and per-profile autoplay limits.
+- Refined transparent mobile navigation, profile PIN entry, startup performance and all-language web localization. Manual Details trailers use the official YouTube embedded player; Home trailer autoplay is not included.
+- Contributors: @Himanth-reddy, @ReichiMD, @Aaronnn17, @silentbil, @Saelon600 and @AndreOliveira23.
+- Version 2.0.0, version code 316. [Release notes](releases/v2.0.0/RELEASE_NOTES.md), [merged contributions](releases/v2.0.0/MERGED_CONTRIBUTIONS.md), [commit history](releases/v2.0.0/COMMIT_CHANGELOG.md).
 
 ## [1.9.997] - 2026-09-09
 

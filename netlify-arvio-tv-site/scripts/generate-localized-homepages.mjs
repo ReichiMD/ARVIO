@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = fs.readFileSync(path.join(siteRoot, "index.html"), "utf8");
+const newCopy = JSON.parse(fs.readFileSync(path.join(siteRoot, "scripts/homepage-copy-v2.json"), "utf8"));
 
 const locales = {
   pt: {
@@ -33,6 +34,16 @@ const locales = {
 };
 
 const copy = [
+  ["ARVIO 2.0.", "ARVIO 2.0.", "ARVIO 2.0."],
+  ["On your screen.", "Na sua tela.", "En tu pantalla."],
+  ["Explore the actual app on TV, mobile, tablet and the web. Open a screenshot to see it in full.", "Explore o aplicativo real na TV, no celular, no tablet e na web. Abra uma captura para vê-la por inteiro.", "Explora la aplicación real en TV, móvil, tableta y web. Abre una captura para verla completa."],
+  ["Demo setup · Phone and tablet use demonstration libraries and channels; content and subscriptions are not included.", "Configuração de demonstração · Celular e tablet usam bibliotecas e canais de demonstração; conteúdo e assinaturas não estão incluídos.", "Configuración de demostración · El móvil y la tableta usan bibliotecas y canales de demostración; no se incluyen contenidos ni suscripciones."],
+  ["Screenshots show connected sources and example setups. ARVIO includes no media or subscriptions.", "As capturas mostram fontes conectadas e exemplos de configuração. O ARVIO não inclui conteúdo nem assinaturas.", "Las capturas muestran fuentes conectadas y ejemplos de configuración. ARVIO no incluye contenidos ni suscripciones."],
+  ["Library", "Biblioteca", "Biblioteca"],
+  ["Homeserver", "Servidor doméstico", "Servidor doméstico"],
+  ["Sports", "Esportes", "Deportes"],
+  ["Mobile", "Celular", "Móvil"],
+  ["Tablet", "Tablet", "Tableta"],
   ["Features", "Recursos", "Funciones"],
   ["Guide", "Guia", "Guía"],
   ["Dashboard", "Painel", "Panel"],
@@ -339,6 +350,11 @@ const copy = [
 ];
 
 const attributes = [
+  ["Explore ARVIO Premium screenshots and features", "Explore as capturas e os recursos do ARVIO Premium", "Explora las capturas y funciones de ARVIO Premium"],
+  ["ARVIO Web home in a desktop browser", "Início do ARVIO Web em um navegador de computador", "Inicio de ARVIO Web en un navegador de escritorio"],
+  ["ARVIO Web live TV guide in a desktop browser", "Guia de TV ao vivo do ARVIO Web em um navegador de computador", "Guía de TV en vivo de ARVIO Web en un navegador de escritorio"],
+  ["ARVIO Web collections in a desktop browser", "Coleções do ARVIO Web em um navegador de computador", "Colecciones de ARVIO Web en un navegador de escritorio"],
+  ["ARVIO Web title details in a desktop browser", "Detalhes de títulos no ARVIO Web em um navegador de computador", "Detalles de títulos de ARVIO Web en un navegador de escritorio"],
   ["ARVIO home", "Início do ARVIO", "Inicio de ARVIO"],
   ["Toggle theme", "Alternar tema", "Cambiar tema"],
   ["Get ARVIO on Google Play", "Baixar ARVIO no Google Play", "Descargar ARVIO en Google Play"],
@@ -362,7 +378,7 @@ function replaceTextNodes(html, translations) {
   });
 
   html = html.replace(/>([^<>]+)</gu, (match, text) => {
-    const value = text.replace(/\s+/gu, " ").trim();
+    const value = text.replace(/\s+/gu, " ").trim().replaceAll("&amp;", "&");
     const translated = translations.get(value);
     if (!translated) return match;
     const start = text.match(/^\s*/u)?.[0] ?? "";
@@ -376,8 +392,8 @@ function replaceTextNodes(html, translations) {
 function render(localeKey) {
   const locale = locales[localeKey];
   const valueIndex = localeKey === "pt" ? 1 : 2;
-  const translations = new Map(copy.map((entry) => [entry[0], entry[valueIndex]]));
-  const attributeTranslations = new Map(attributes.map((entry) => [entry[0], entry[valueIndex]]));
+  const translations = new Map([...copy, ...newCopy].map((entry) => [entry[0], entry[valueIndex]]));
+  const attributeTranslations = new Map([...attributes, ...newCopy].map((entry) => [entry[0], entry[valueIndex]]));
   let html = replaceTextNodes(source, translations);
 
   html = html.replace('<html lang="en">', `<html lang="${locale.lang}">`);
@@ -402,6 +418,12 @@ function render(localeKey) {
     html = html.replaceAll(`alt="${english}"`, `alt="${translated}"`);
   }
 
+  html = html.replace(/alt="ARVIO 2\.0 · ([^"]+)"/gu, (_, label) =>
+    `alt="ARVIO 2.0 · ${label.split(' · ').map(part => translations.get(part) ?? part).join(' · ')}"`);
+
+  const clientCopy = JSON.stringify(Object.fromEntries(translations)).replaceAll("<", "\\u003c");
+  html = html.replace(/(<script type="application\/json" id="home-copy">)[\s\S]*?(<\/script>)/u, (_, start, end) => start + clientCopy + end);
+  html = html.replaceAll('href="/premium/"', `href="/premium/?lang=${locale.lang === "es" ? "es-ES" : locale.lang}"`);
   return html.replace(/[ \t]+$/gmu, "");
 }
 

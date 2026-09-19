@@ -76,6 +76,8 @@ jobs:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
           TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -90,6 +92,8 @@ jobs:
           : "${TMDB_API_KEY:?Missing TMDB_API_KEY repository secret}"
           : "${TRAKT_CLIENT_ID:?Missing TRAKT_CLIENT_ID repository secret}"
           : "${TRAKT_CLIENT_SECRET:?Missing TRAKT_CLIENT_SECRET repository secret}"
+          : "${TELEGRAM_API_ID:?Missing TELEGRAM_API_ID repository secret}"
+          : "${TELEGRAM_API_HASH:?Missing TELEGRAM_API_HASH repository secret}"
           : "${KEYSTORE_BASE64:?Missing KEYSTORE_BASE64 repository secret}"
           : "${KEYSTORE_PASSWORD:?Missing KEYSTORE_PASSWORD repository secret}"
           : "${KEY_ALIAS:?Missing KEY_ALIAS repository secret}"
@@ -117,8 +121,8 @@ jobs:
             "TMDB_API_KEY=$TMDB_API_KEY" \
             "TRAKT_CLIENT_ID=$TRAKT_CLIENT_ID" \
             "TRAKT_CLIENT_SECRET=$TRAKT_CLIENT_SECRET" \
-            "TELEGRAM_API_ID=${TELEGRAM_API_ID:-}" \
-            "TELEGRAM_API_HASH=${TELEGRAM_API_HASH:-}" \
+            "TELEGRAM_API_ID=$TELEGRAM_API_ID" \
+            "TELEGRAM_API_HASH=$TELEGRAM_API_HASH" \
             > secrets.properties
 
       - name: Prepare production signing

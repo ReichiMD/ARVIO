@@ -522,7 +522,8 @@ class CatalogRepository @Inject constructor(
         val existingIds = current.map { it.id }.toHashSet()
         val missing = supportedCatalogs.filterNot { existingIds.contains(it.id) }
         if (missing.isNotEmpty()) {
-            current.addAll(0, missing)
+            // New libraries follow existing catalogs; never displace the trending defaults.
+            current.addAll(missing)
             changed = true
         }
 

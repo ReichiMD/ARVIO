@@ -37,11 +37,14 @@ android {
         // Fire TV devices can be as low as Android 7.1 (API 25) or lower depending on model/OS.
         minSdk = 23
         targetSdk = 36
-        versionCode = 315
+        versionCode = 317
         versionName = "2.0.0"
         buildConfigField("String", "GITHUB_OWNER", "\"ProdigyV21\"")
         buildConfigField("String", "GITHUB_REPO", "\"ARVIO\"")
         buildConfigField("Boolean", "FEATURE_PLUGINS_ENABLED", "false")
+        // Use the same resolution for generated values and release validation.
+        buildConfigField("String", "TELEGRAM_API_ID", "\"${escapeBuildConfigString(localSecretValue("TELEGRAM_API_ID"))}\"")
+        buildConfigField("String", "TELEGRAM_API_HASH", "\"${escapeBuildConfigString(localSecretValue("TELEGRAM_API_HASH"))}\"")
         // Public endpoint override for isolated preview testing; never a provider API key.
         buildConfigField("String", "SPORTS_METADATA_URL", "\"${escapeBuildConfigString(localSecretValue("SPORTS_METADATA_URL"))}\"")
         // Emergency Supabase cost guard. Keep high-volume public metadata and
@@ -491,6 +494,8 @@ secrets {
     ignoreList.add("sdk.*")
     ignoreList.add("APP_ANON_KEY")
     ignoreList.add("SIMKL_CLIENT_SECRET")
+    ignoreList.add("TELEGRAM_API_ID")
+    ignoreList.add("TELEGRAM_API_HASH")
 }
 
 fun localSecretValue(name: String): String {
@@ -522,6 +527,12 @@ val validateReleaseCloudSecrets = tasks.register("validateReleaseCloudSecrets") 
         val supabaseUrl = localSecretValue("SUPABASE_URL")
         val traktClientId = localSecretValue("TRAKT_CLIENT_ID")
         val traktClientSecret = localSecretValue("TRAKT_CLIENT_SECRET")
+        val telegramApiId = localSecretValue("TELEGRAM_API_ID").toIntOrNull() ?: 0
+        val telegramApiHash = localSecretValue("TELEGRAM_API_HASH")
+        require(telegramApiId > 0 && telegramApiHash.matches(Regex("[a-fA-F0-9]{32}"))) {
+            "Release builds require valid TELEGRAM_API_ID and TELEGRAM_API_HASH values. " +
+                "Refusing to ship an official build with Telegram disabled."
+        }
         val supabaseHost = supabaseUrl.substringAfter("://", missingDelimiterValue = "").substringBefore('/')
         val hasValidSupabaseUrl =
             (supabaseUrl.startsWith("https://") || supabaseUrl.startsWith("http://")) &&

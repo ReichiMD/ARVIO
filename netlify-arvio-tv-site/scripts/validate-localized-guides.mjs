@@ -49,7 +49,8 @@ for (const file of pages) {
   for (const href of links) {
     if (href.startsWith("/assets/") || href.endsWith(".css") || href.startsWith("/go/") || href === "/privacy") continue;
     const cleanRoute = href.split(/[?#]/u)[0];
-    if (!knownRoutes.has(cleanRoute)) errors.push(`${route}: internal link does not resolve locally (${href})`);
+    const localIndex = path.join(siteRoot, cleanRoute.replace(/^\//u, ""), "index.html");
+    if (!knownRoutes.has(cleanRoute) && !fs.existsSync(localIndex)) errors.push(`${route}: internal link does not resolve locally (${href})`);
   }
 }
 
@@ -65,6 +66,8 @@ const englishHome = fs.readFileSync(path.join(siteRoot, "index.html"), "utf8");
 const englishBody = englishHome.match(/<body>[\s\S]*<\/body>/u)?.[0] ?? "";
 const englishBodyTags = [...englishBody.matchAll(/<([a-z][a-z0-9-]*)\b/giu)].map((match) => match[1]).join(",");
 const englishCss = englishHome.match(/<style>([\s\S]*?)<\/style>/u)?.[1].replaceAll("/assets/", "assets/");
+const stylesheetLinks = (html) => [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/gu)].map((match) => match[1]);
+const englishStylesheets = stylesheetLinks(englishHome);
 
 for (const [directory, language] of [["pt-br", "pt-BR"], ["es", "es"]]) {
   const file = path.join(siteRoot, directory, "index.html");
@@ -77,6 +80,13 @@ for (const [directory, language] of [["pt-br", "pt-BR"], ["es", "es"]]) {
   if (html.includes('href="/guides/guide.css"')) errors.push(`/${directory}/: simplified guide template was generated instead of the main site`);
   if (bodyTags !== englishBodyTags) errors.push(`/${directory}/: homepage structure differs from the English production homepage`);
   if (css !== englishCss) errors.push(`/${directory}/: homepage styles differ from the English production homepage`);
+  if (JSON.stringify(stylesheetLinks(html)) !== JSON.stringify(englishStylesheets)) errors.push(`/${directory}/: homepage stylesheet links differ from English`);
+  try {
+    const labels = JSON.parse(html.match(/<script type="application\/json" id="home-copy">([\s\S]*?)<\/script>/u)?.[1] ?? "{}");
+    for (const key of ["See it in action", "Stop preview", "Enable motion ↗", "Your channels.\nA guide that feels right."]) {
+      if (!labels[key] || labels[key] === key) errors.push(`/${directory}/: missing translated interactive label (${key})`);
+    }
+  } catch (error) { errors.push(`/${directory}/: invalid interactive translations (${error.message})`); }
   if (html.includes('src="assets/') || html.includes('url("assets/')) errors.push(`/${directory}/: contains a locale-relative asset path`);
 }
 

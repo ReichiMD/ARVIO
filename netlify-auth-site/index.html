@@ -330,7 +330,48 @@
       gap: 16px;
     }
 
+    .premium-banner {
+      padding: 20px 28px 22px;
+      border-top: 1px solid rgba(13, 240, 194, 0.16);
+      background: linear-gradient(125deg, rgba(13, 240, 194, 0.08), rgba(103, 183, 255, 0.04));
+    }
+    .premium-eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent-1);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .premium-title { margin: 0; font-size: 18px; line-height: 1.3; letter-spacing: -0.025em; }
+    .premium-copy { margin: 8px 0 14px; color: #bcb8b0; font-size: 13px; line-height: 1.55; }
+    .premium-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+    }
+    .premium-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 44px;
+      padding: 10px 14px;
+      border: 1px solid rgba(13, 240, 194, 0.28);
+      border-radius: 10px;
+      background: rgba(13, 240, 194, 0.08);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .premium-link:hover { background: rgba(13, 240, 194, 0.16); }
+    .premium-link:focus-visible { outline: 2px solid var(--accent-1); outline-offset: 4px; }
+    .premium-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+
     @media (max-width: 480px) {
+      .premium-banner { padding: 18px 22px 20px; }
       .head { padding: 24px 22px 18px; }
       .body { padding: 18px 22px 22px; }
       .title { font-size: 22px; }
@@ -387,6 +428,15 @@
         <a class="privacy-link" href="/delete-account">Delete account</a>
       </div>
     </section>
+    <aside class="premium-banner" aria-labelledby="premium-title">
+      <p class="premium-eyebrow">ARVIO Premium · Optional membership</p>
+      <h2 class="premium-title" id="premium-title">Your ARVIO. In your browser.</h2>
+      <p class="premium-copy">Hosted for your iPhone, iPad and computer. Your membership helps fund ARVIO’s hosting and development.</p>
+      <div class="premium-bottom">
+        <a class="premium-link" href="https://arvio.tv/premium/" target="_blank" rel="noopener noreferrer">Explore Premium <span aria-hidden="true">↗</span></a>
+        <span class="premium-note">Android &amp; TV stay free.</span>
+      </div>
+    </aside>
   </main>
 
   <!-- Starfield + shooting-stars -->

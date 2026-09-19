@@ -187,9 +187,6 @@ export function HomeScreen() {
       {dedupedCategories.map((category) => (
         <MediaRail key={category.id} category={category} onOpen={openDetails} onFocus={onCardFocus} posterMode={posterMode} />
       ))}
-      {homeServerRows.map((category) => (
-        <MediaRail key={category.id} category={category} onOpen={openDetails} onFocus={onCardFocus} posterMode={posterMode} />
-      ))}
       {catalogConfigs.map((catalog, index) => (
         <LazyRail
           key={catalog.id}
@@ -199,6 +196,9 @@ export function HomeScreen() {
           onFocus={onCardFocus}
           onLoaded={seedHeroFromRow}
         />
+      ))}
+      {homeServerRows.map((category) => (
+        <MediaRail key={category.id} category={category} onOpen={openDetails} onFocus={onCardFocus} posterMode={posterMode} />
       ))}
     </div>
   );

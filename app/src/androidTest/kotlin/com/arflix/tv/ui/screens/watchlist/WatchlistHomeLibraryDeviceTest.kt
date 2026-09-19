@@ -38,12 +38,13 @@ class WatchlistHomeLibraryDeviceTest {
     private val store = ViewModelStore()
     private val client = mockk<OkHttpClient>()
     private lateinit var model: WatchlistViewModel
+    private lateinit var loadSavedLibraries: () -> Unit
 
     @After fun cleanup() { compose.runOnUiThread { store.clear() } }
 
     @Test fun tvSavedSourcesRemainNavigableWhileServerIsStalled() {
         show(DeviceType.TV)
-        compose.onNodeWithText("Libraries").performClick()
+        compose.onNodeWithText("Homeserver").performClick()
         choose("Jellyfin A")
         compose.runOnIdle { assertEquals(HomeServerKind.JELLYFIN, model.libraryState.value.selectedProvider); assertTrue(model.libraryState.value.isLoading) }
         choose("Emby B")
@@ -52,9 +53,24 @@ class WatchlistHomeLibraryDeviceTest {
     }
     @Test fun mobileCanSwitchSavedSourcesDuringLoading() {
         show(DeviceType.PHONE)
-        compose.onNodeWithText("Libraries").performClick()
+        compose.onNodeWithText("Homeserver").performClick()
         choose("Jellyfin A"); choose("Emby A")
         compose.runOnIdle { assertEquals(HomeServerKind.EMBY, model.libraryState.value.selectedProvider); assertTrue(model.libraryState.value.isLoading) }
+        verify { client wasNot Called }
+    }
+
+    @Test fun librariesArrivingAfterOpeningHomeserverAreSelectedAutomatically() {
+        show(DeviceType.PHONE, initiallyConnected = false)
+        compose.onNodeWithText("Homeserver").performClick()
+        compose.runOnIdle { assertNull(model.libraryState.value.selectedSourceRef) }
+        loadSavedLibraries()
+        compose.waitUntil(timeoutMillis = 3_000) { model.libraryState.value.selectedSourceRef != null }
+        compose.runOnIdle {
+            assertEquals(HomeServerKind.JELLYFIN, model.libraryState.value.selectedProvider)
+            assertTrue(model.libraryState.value.isLoading)
+        }
+        choose("Emby B")
+        compose.runOnIdle { assertEquals(HomeServerKind.EMBY, model.libraryState.value.selectedProvider) }
         verify { client wasNot Called }
     }
     private fun choose(server: String) {
@@ -66,10 +82,11 @@ class WatchlistHomeLibraryDeviceTest {
         compose.waitForIdle()
     }
 
-    private fun show(device: DeviceType) {
+    private fun show(device: DeviceType, initiallyConnected: Boolean = true) {
         val profile = "library-device-${UUID.randomUUID()}"
         val profiles = mockk<ProfileManager>(relaxed = true) {
             every { activeProfileId } returns MutableStateFlow(profile)
+            coEvery { getProfileId() } returns profile
             every { profileStringKeyFor(any(), any()) } answers {
                 stringPreferencesKey("${firstArg<String>()}_${secondArg<String>()}")
             }
@@ -80,7 +97,10 @@ class WatchlistHomeLibraryDeviceTest {
             server("Emby A", HomeServerKind.EMBY), server("Emby B", HomeServerKind.EMBY),
             server("Plex", HomeServerKind.PLEX))
         // Exercise the real encrypted settings snapshot, not a pre-populated UI state.
-        runBlocking { homes.importCloudConnectionsJsonForProfile(profile, Gson().toJson(connections)) }
+        loadSavedLibraries = {
+            runBlocking { homes.importCloudConnectionsJsonForProfile(profile, Gson().toJson(connections)) }
+        }
+        if (initiallyConnected) loadSavedLibraries()
         val watchlist = mockk<WatchlistRepository>(relaxed = true) {
             every { watchlistItems } returns MutableStateFlow(emptyList())
         }
@@ -112,8 +132,10 @@ class WatchlistHomeLibraryDeviceTest {
         compose.setContent {
             CompositionLocalProvider(LocalDeviceType provides device) { WatchlistScreen(viewModel = model) }
         }
-        compose.waitUntil(timeoutMillis = 3_000) { model.libraryState.value.providers.size == 3 }
-        assertEquals(10, model.libraryState.value.libraries.size)
+        compose.waitUntil(timeoutMillis = 3_000) {
+            model.libraryState.value.providers.size == if (initiallyConnected) 3 else 0
+        }
+        assertEquals(if (initiallyConnected) 10 else 0, model.libraryState.value.libraries.size)
         verify { client wasNot Called }
     }
 

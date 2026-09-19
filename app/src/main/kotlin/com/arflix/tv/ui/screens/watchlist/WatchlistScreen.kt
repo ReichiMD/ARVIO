@@ -138,6 +138,11 @@ fun WatchlistScreen(
         onDispose { lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(serverMode, query) { if (serverMode) viewModel.setLibrarySearch(query) }
+    LaunchedEffect(serverMode, servers.libraries, servers.selectedSourceRef) {
+        if (serverMode && servers.selectedSourceRef == null) {
+            servers.libraries.firstOrNull()?.let { selectSource(WatchlistSourceItem.HomeServer(it)) }
+        }
+    }
     LaunchedEffect(serverMode, sort) { if (serverMode) viewModel.setLibrarySort(sort) }
     val loadingMore = if(serverMode) servers.isLoadingMore else state.isLoadingMore
     val hasMore = if(serverMode) servers.hasMore else state.hasMore

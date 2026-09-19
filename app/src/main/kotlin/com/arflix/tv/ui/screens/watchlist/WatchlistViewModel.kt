@@ -17,6 +17,7 @@ import com.arflix.tv.data.model.MediaType.TV
 import com.arflix.tv.data.repository.CatalogRepository
 import com.arflix.tv.data.repository.CloudSyncRepository
 import com.arflix.tv.data.repository.HomeServerCatalogCandidate
+import com.arflix.tv.data.repository.HomeServerConnection
 import com.arflix.tv.data.repository.HomeServerKind
 import com.arflix.tv.data.repository.HomeServerLibrarySort
 import com.arflix.tv.data.repository.HomeServerRepository
@@ -223,6 +224,7 @@ class WatchlistViewModel @Inject constructor(
     private val sourcePageStates = mutableMapOf<String, SourcePageState>()
     private var currentCatalogs: List<CatalogConfig> = emptyList()
     private var currentHomeServerCandidates: List<HomeServerCatalogCandidate> = emptyList()
+    private val libraryRecoveryAttempts = mutableSetOf<Pair<String, HomeServerConnection>>()
     private var currentTrackerLists: List<WatchlistSourceItem.TrackerList> = emptyList()
     private var sourceLoadJob: Job? = null
     private var sourceLoadMoreJob: Job? = null
@@ -294,6 +296,12 @@ class WatchlistViewModel @Inject constructor(
                     .filter { it.collectionType.trim().lowercase(Locale.ROOT) in BROWSABLE_LIBRARY_TYPES }
                 updateHomeLibraryState(usable, candidates)
                 updateAvailableSources(homeServerCandidates = candidates)
+                val profileId = profileManager.getProfileId()
+                val needsRecovery = connections.filter { it.isUsable && it.collections.isEmpty() }
+                    .map { profileId to it }.filter { libraryRecoveryAttempts.add(it) }
+                if (needsRecovery.isNotEmpty()) {
+                    viewModelScope.launch { homeServerRepository.refreshMissingLibraries() }
+                }
             }
         }
     }
@@ -464,7 +472,10 @@ class WatchlistViewModel @Inject constructor(
         }
     }
 
-    fun refreshLibrary() = loadLibraryFirstPage(force = true)
+    fun refreshLibrary() {
+        loadLibraryFirstPage(force = true)
+        viewModelScope.launch { homeServerRepository.refreshMissingLibraries() }
+    }
 
     private fun libraryCacheKey(state: HomeLibraryUiState): String = listOf(
         state.selectedSourceRef.orEmpty(),

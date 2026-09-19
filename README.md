@@ -115,29 +115,49 @@ If ARVIO helps you and you want to support development, donations are appreciate
 
 ## Screenshots
 
+ARVIO 2.0 across TV, phones, tablets and the web. Select an image to view it in full, or explore the [complete screenshot gallery](https://arvio.tv/#screens).
+
+### Android TV
+
 | Home | Details |
-|------|---------|
-| ![Home screen](screenshots/home_v190.png) | ![Details screen](screenshots/details_v190.png) |
+|---|---|
+| ![ARVIO 2.0 tv · Home](netlify-arvio-tv-site/assets/screenshots-v2/tv/01-home.webp) | ![ARVIO 2.0 tv · Details](netlify-arvio-tv-site/assets/screenshots-v2/tv/02-details.webp) |
 
-| Live TV | Collections |
-|---------|-------------|
-| ![Live TV screen](screenshots/live_tv_v1991.png) | ![Collections screen](screenshots/collections_v1991.png) |
+| Library | Homeserver |
+|---|---|
+| ![ARVIO 2.0 tv · Library](netlify-arvio-tv-site/assets/screenshots-v2/tv/03-library.webp) | ![ARVIO 2.0 tv · Homeserver](netlify-arvio-tv-site/assets/screenshots-v2/tv/04-homeserver.webp) |
 
-| Mobile | Profiles |
-|--------|----------|
-| ![Mobile screen](screenshots/mobile_home.webp) | ![Profiles screen](screenshots/profiles_v1991.png) |
+| Live TV | Sports |
+|---|---|
+| ![ARVIO 2.0 tv · Live TV](netlify-arvio-tv-site/assets/screenshots-v2/tv/05-tv.webp) | ![ARVIO 2.0 tv · Sports](netlify-arvio-tv-site/assets/screenshots-v2/tv/06-sports.webp) |
+
+### Mobile
+
+| Home | Library | Live TV |
+|---|---|---|
+| ![ARVIO 2.0 mobile · Home](netlify-arvio-tv-site/assets/screenshots-v2/phone/01-home.webp) | ![ARVIO 2.0 mobile · Library](netlify-arvio-tv-site/assets/screenshots-v2/phone/03-library.webp) | ![ARVIO 2.0 mobile · Live TV](netlify-arvio-tv-site/assets/screenshots-v2/phone/05-tv.webp) |
+
+### Tablet · Landscape
+
+| Home | Service collections |
+|---|---|
+| ![ARVIO 2.0 tablet · Home](netlify-arvio-tv-site/assets/screenshots-v2/tablet/01-home.webp) | ![ARVIO 2.0 tablet · Service collections](netlify-arvio-tv-site/assets/screenshots-v2/tablet/07-services.webp) |
+
+Phone and tablet captures use demonstration libraries and channels.
 
 ### ARVIO Web — iPhone, iPad & any browser
 
-The same ARVIO experience in the browser at [web.arvio.tv](https://web.arvio.tv) — for the devices an APK can't reach. Profiles, watchlist and progress sync with the app.
+Use ARVIO in your browser at [web.arvio.tv](https://web.arvio.tv), with optional ARVIO Cloud sync for profiles, watchlists and progress. You can also [self-host the web app](web/README.md). The captures below show the desktop browser layout.
 
-| Web · Home (iPad) | Web · Details (iPad) |
-|-------------------|----------------------|
-| ![ARVIO Web home on iPad](screenshots/ipad_home.webp) | ![ARVIO Web details on iPad](screenshots/ipad_details.webp) |
+| Home | Details |
+|---|---|
+| ![ARVIO 2.0 web · Home](netlify-arvio-tv-site/assets/screenshots-v2/web/01-home.webp) | ![ARVIO 2.0 web · Details](netlify-arvio-tv-site/assets/screenshots-v2/web/02-details.webp) |
 
-| Web · Live TV guide (iPad) | Web · Catalogs (iPad) |
-|----------------------------|-----------------------|
-| ![ARVIO Web live TV on iPad](screenshots/ipad_live_tv.webp) | ![ARVIO Web catalogs on iPad](screenshots/ipad_catalogs.webp) |
+| Library | Service collections |
+|---|---|
+| ![ARVIO 2.0 web · Library](netlify-arvio-tv-site/assets/screenshots-v2/web/03-library.webp) | ![ARVIO 2.0 web · Service collections](netlify-arvio-tv-site/assets/screenshots-v2/web/07-services.webp) |
+
+Screenshots show connected sources and example setups. ARVIO includes no media or subscriptions.
 
 ## Content And Source Policy
 

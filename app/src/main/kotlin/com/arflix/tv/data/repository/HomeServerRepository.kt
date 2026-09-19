@@ -17,7 +17,6 @@ import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +33,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Headers
@@ -332,6 +335,7 @@ class HomeServerRepository @Inject constructor(
         }
     }
     private val sourceRequests = mutableMapOf<String, Deferred<List<StreamSource>>>()
+    private val libraryRecoveryMutex = Mutex()
 
     val connections: Flow<List<HomeServerConnection>> = combine(
         profileManager.activeProfileId,
@@ -647,6 +651,45 @@ class HomeServerRepository @Inject constructor(
             .distinctBy { it.sourceRef }
             .toList()
 
+    /** Recover incomplete synced snapshots without delaying already saved libraries. */
+    suspend fun refreshMissingLibraries() {
+        withContext(Dispatchers.IO) {
+            libraryRecoveryMutex.withLock {
+                val profileId = profileManager.getProfileId()
+                val missing = currentConnectionsForProfile(profileId)
+                    .filter { it.isUsable && it.collections.isEmpty() }
+                val permits = Semaphore(2)
+                coroutineScope {
+                    missing.map { connection -> async {
+                        permits.withPermit {
+                            val collections = try {
+                                fetchCollections(connection)
+                            } catch (error: Exception) {
+                                if (error is CancellationException) throw error
+                                emptyList()
+                            }
+                            if (collections.isEmpty()) return@withPermit
+                            // Publish each healthy server without waiting for an offline one.
+                            context.settingsDataStore.edit { prefs ->
+                                val key = connectionKeyFor(profileId)
+                                val current = parseConnections(prefs[key])
+                                // Never restore a server deleted or edited during discovery.
+                                val updated = current.map {
+                                    if (it == connection) it.copy(collections = collections) else it
+                                }
+                                if (updated != current) {
+                                    prefs[key] = gson.toJson(HomeServerProfileConfig(
+                                        connections = updated.map { it.sanitized().encryptedForStorage() }
+                                    ))
+                                }
+                            }
+                        }
+                    } }.awaitAll()
+                }
+            }
+        }
+    }
+
     suspend fun getCatalogCandidates(): List<HomeServerCatalogCandidate> = withContext(Dispatchers.IO) {
         currentConnections()
             .filter { it.isUsable }
@@ -857,19 +900,34 @@ class HomeServerRepository @Inject constructor(
         if (json.isNullOrBlank()) return emptyList()
         return try {
             val root = JsonParser().parse(json)
-            val connections = when {
+            val entries = when {
                 root.isJsonObject && root.asJsonObject.has("connections") -> {
-                    gson.fromJson(root, HomeServerProfileConfig::class.java).connections
+                    root.asJsonObject.array("connections")
                 }
-                root.isJsonArray -> {
-                    val type = TypeToken.getParameterized(List::class.java, HomeServerConnection::class.java).type
-                    gson.fromJson<List<HomeServerConnection>>(root, type)
-                }
-                root.isJsonObject -> listOf(gson.fromJson(root, HomeServerConnection::class.java))
+                root.isJsonArray -> root.asJsonArray.toList()
+                root.isJsonObject -> listOf(root)
                 else -> emptyList()
             }
-            connections
-                .map { it.sanitized().decryptedForUse() }
+            entries.mapNotNull { entry ->
+                try {
+                    val record = entry.asJsonObjectOrNull()?.deepCopy() ?: return@mapNotNull null
+                    // Older web snapshots used type/url/token instead of the Android names.
+                    mapOf("connectionId" to "id", "serverUrl" to "url", "accessToken" to "token",
+                        "displayName" to "name", "userName" to "username").forEach { (key, legacyKey) ->
+                        if (record.string(key).isBlank()) record.addProperty(key, record.string(legacyKey))
+                    }
+                    val kind = record.string("serverKind").ifBlank { record.string("type") }.uppercase(Locale.ROOT)
+                    record.addProperty("serverKind", HomeServerKind.entries.firstOrNull { it.name == kind }?.name
+                        ?: HomeServerKind.UNKNOWN.name)
+                    val collections = com.google.gson.JsonArray()
+                    record.array("collections").filter { it.isJsonObject }.forEach(collections::add)
+                    record.add("collections", collections)
+                    gson.fromJson(record, HomeServerConnection::class.java).sanitized().decryptedForUse()
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    null
+                }
+            }
                 .filter { it.serverUrl.isNotBlank() || it.accessToken.isNotBlank() }
                 .distinctBy { connectionIdentity(it) }
         } catch (e: Exception) {
