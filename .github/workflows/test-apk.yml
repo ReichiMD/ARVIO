@@ -93,7 +93,35 @@ jobs:
           # helper both have to survive the rebuild.
           grep -q 'onToggleHold' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
             || { echo "::error::live TV lost its hold-and-move chip"; exit 1; }
-          echo "category selection verified: portal fetch, storage, sieve before the cap, tab bar on both routes, live TV intact"
+          # The categories must be fetched by the channel load, not by the
+          # settings screen. A portal drops an idle connection after seconds,
+          # so a request sent when the screen opens is the one that gets lost -
+          # which is the bug this build exists to fix. Reading the settings
+          # path is not enough: it looks identical either way.
+          python3 - <<'PY'
+          src = open("app/src/main/kotlin/com/arflix/tv/data/repository/IptvRepository.kt").read()
+          start = src.index("private suspend fun fetchStalkerChannels")
+          end = src.index("internal fun activeStalkerLiveTvPortals", start)
+          body = src[start:end]
+          for call in ("getVodCategories()", "getSeriesCategories()"):
+              if call not in body:
+                  raise SystemExit(
+                      "::error::" + call + " is not fetched inside the channel "
+                      "session - the settings screen would ask a cold portal again"
+                  )
+          reader = src.index("suspend fun stalkerCategories", 0)
+          tail = src[reader:src.index("internal fun stalkerCategorySnapshotOf", reader)]
+          for call in ("getVodCategories", "getSeriesCategories", "getOrCreateStalkerApi"):
+              if call in tail:
+                  raise SystemExit(
+                      "::error::stalkerCategories still talks to the portal - "
+                      "it must read the stored names only"
+                  )
+          print("categories are fetched in the channel session and read from disk")
+          PY
+          grep -q 'settings_iptv_catalog_not_loaded' app/src/main/res/values/strings.xml \
+            || { echo "::error::the screen cannot tell 'not fetched yet' from 'no categories'"; exit 1; }
+          echo "category selection verified: fetch in the channel session, stored on disk, sieve before the cap, tab bar on both routes, live TV intact"
 
       - name: Compile and run unit tests
         run: |
