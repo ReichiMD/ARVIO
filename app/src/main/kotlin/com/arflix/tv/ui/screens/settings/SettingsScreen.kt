@@ -12315,7 +12315,10 @@ private fun StalkerCatalogCategoryList(
                     modifier = Modifier.settingsFocusSlot(1)
                 )
             }
-            if (hiddenForPortal.isEmpty()) {
+            // On TV the hint sits directly under the bulk row, as it always has.
+            // The phone puts it under the CATEGORIES heading instead, where the
+            // live TV page has its own heading - the two pages are read as one.
+            if (hiddenForPortal.isEmpty() && !isMobile) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = stringResource(R.string.settings_iptv_catalog_all_searched),
@@ -12348,11 +12351,56 @@ private fun StalkerCatalogCategoryList(
             return@Column
         }
 
+        if (isMobile) {
+            // Everything below is the live TV categories page, rebuilt row for
+            // row: the same CATEGORIES heading, the same card, the same hairline
+            // between rows and the same row. Only the drag handle is missing,
+            // because an order changes nothing here (G-T5).
+            Text(
+                text = stringResource(R.string.settings_section_categories),
+                style = ArflixTypography.caption.copy(fontSize = 12.sp, letterSpacing = 1.sp),
+                color = TextSecondary,
+                modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+            )
+            if (hiddenForPortal.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.settings_iptv_catalog_all_searched),
+                    style = ArflixTypography.caption.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = TextSecondary,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
+                )
+            }
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(
+                    bottom = 16.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(BackgroundElevated)
+            ) {
+                itemsIndexed(
+                    items = categories,
+                    key = { _, category -> category.id }
+                ) { index, category ->
+                    MobileStalkerCatalogRow(
+                        title = category.title,
+                        isHidden = category.id in hiddenForPortal,
+                        showDivider = index < categories.lastIndex,
+                        onClick = { onToggleCategory(category.id) }
+                    )
+                }
+            }
+            return@Column
+        }
+
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (isMobile) Modifier.weight(1f) else Modifier.heightIn(max = 560.dp)),
+                .heightIn(max = 560.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
@@ -12361,7 +12409,7 @@ private fun StalkerCatalogCategoryList(
                 key = { _, category -> category.id }
             ) { index, category ->
                 val rowFocusIndex = index + firstCategoryIndex
-                val isRowFocused = !isMobile && focusedIndex == rowFocusIndex
+                val isRowFocused = focusedIndex == rowFocusIndex
                 val isHidden = category.id in hiddenForPortal
                 Row(
                     modifier = Modifier
@@ -12543,6 +12591,78 @@ private fun MobileIptvCategoryRow(
             )
         }
         if (showDivider && !isDragged) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .padding(horizontal = 16.dp)
+                    .background(Color.White.copy(alpha = 0.05f))
+            )
+        }
+    }
+}
+
+/**
+ * One catalog category row on the phone: tap it to include or exclude the
+ * category from a lookup.
+ *
+ * Deliberately a near-copy of [MobileIptvCategoryRow] rather than a shared
+ * composable: the two rows must *look* the same, but the live TV one carries a
+ * drag handle, a held state and a reorder gesture that none of this has any use
+ * for (G-T5 - an order changes nothing in a catalog lookup). Folding both into
+ * one composable would mean a handful of flags that only ever say "not here",
+ * and the next person to touch the live TV row would silently change this one.
+ * The measurements are what is shared, and they are kept in step by hand.
+ */
+@Composable
+private fun MobileStalkerCatalogRow(
+    title: String,
+    isHidden: Boolean,
+    showDivider: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(BackgroundElevated)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (isHidden) Icons.Default.VisibilityOff else Icons.Default.Check,
+                contentDescription = null,
+                tint = TextSecondary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = ArflixTypography.cardTitle.copy(fontSize = 16.sp),
+                    // The excluded rows are the ones the eye should skip, so they
+                    // step back a shade - the same thing a hidden live TV group
+                    // says with its crossed-out eye.
+                    color = if (isHidden) TextSecondary else TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = stringResource(
+                        if (isHidden) R.string.settings_iptv_catalog_skipped
+                        else R.string.settings_iptv_catalog_searched
+                    ),
+                    style = ArflixTypography.caption.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = TextSecondary
+                )
+            }
+        }
+        if (showDivider) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

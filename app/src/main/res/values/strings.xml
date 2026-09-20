@@ -858,7 +858,7 @@
     <string name="settings_iptv_catalog_loading">Loading categories…</string>
     <string name="settings_iptv_catalog_not_loaded">These categories arrive with this portal\'s next refresh. They are not needed to play anything — until then every category is searched.</string>
     <string name="settings_iptv_catalog_unsupported">This portal did not report any categories. Nothing changes: every category is searched.</string>
-    <string name="settings_iptv_catalog_all_searched">No category selected — all of them are searched</string>
+    <string name="settings_iptv_catalog_all_searched">Every category is searched</string>
     <string name="settings_iptv_catalog_searched">Searched</string>
     <string name="settings_iptv_catalog_skipped">Not searched</string>
     <string name="settings_iptv_catalog_movies_desc">Categories this portal is searched in when a movie is played</string>
