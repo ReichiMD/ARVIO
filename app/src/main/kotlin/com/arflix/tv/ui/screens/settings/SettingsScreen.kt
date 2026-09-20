@@ -4496,6 +4496,17 @@ private fun MobileSettingsLayout(
                     .fillMaxSize()
                     .arvioBackSurface(backMotion)
                     .background(appBackgroundDark())
+                    // The main settings list stays composed underneath this page,
+                    // and an opaque background hides it without stopping a touch.
+                    // A tap that lands anywhere this page has no control - the gap
+                    // under a heading, the space beside a row, the empty area below
+                    // a short list - therefore reached whatever sat at the same
+                    // spot in the list below, which starts with the app language
+                    // row. Opening a sub-page and tapping just under its heading
+                    // opened the language picker. Swallow what no child of this
+                    // page took; children are hit first, so nothing here loses a
+                    // tap it would otherwise have received.
+                    .pointerInput(Unit) { detectTapGestures { } }
             ) {
                 Row(
                     modifier = Modifier
