@@ -2423,6 +2423,11 @@ class StreamRepository @Inject constructor(
         runCatching { homeServerRepository.hasUsableConnections() }.getOrDefault(false)
     }
 
+    /** Counterpart of [hasHomeServerConnections] for IPTV playlists and portals. */
+    suspend fun hasIptvVodProviders(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { iptvRepository.hasVodSearchProviders() }.getOrDefault(false)
+    }
+
     suspend fun resolveMovieHomeServerSources(
         imdbId: String?,
         title: String = "",

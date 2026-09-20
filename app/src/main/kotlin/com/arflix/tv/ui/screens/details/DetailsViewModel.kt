@@ -1848,6 +1848,11 @@ class DetailsViewModel @Inject constructor(
                 val canonicalEpisode = identity?.tmdbEpisode
                 val animeQueryOverride = identity?.kitsuQuery
                 val hasHomeServerConnections = streamRepository.hasHomeServerConnections()
+                // Counted alongside the addons: an IPTV playlist or portal is a
+                // source of streams like any other, and leaving it out told every
+                // user whose only provider is IPTV to go install a streaming addon
+                // whenever a search came back empty.
+                val hasIptvVodProviders = streamRepository.hasIptvVodProviders()
                 // Start VOD append in background - runs parallel to addon stream fetch
                 homeServerAppendJob = viewModelScope.launch {
                     appendHomeServerSourcesInBackground(
@@ -1966,9 +1971,12 @@ class DetailsViewModel @Inject constructor(
                             isLoadingStreams = false,
                             streams = emptyList(),
                             subtitles = emptyList(),
-                            hasStreamingAddons = streamRepository.installedAddons.first()
-                                .count { it.isVodStreamingAddon() } > 0 ||
-                                hasHomeServerConnections
+                            hasStreamingAddons = hasAnyStreamProvider(
+                                streamingAddonCount = streamRepository.installedAddons.first()
+                                    .count { it.isVodStreamingAddon() },
+                                hasHomeServerConnections = hasHomeServerConnections,
+                                hasIptvVodProviders = hasIptvVodProviders
+                            )
                         )
                         return@launch
                     }
@@ -1999,7 +2007,11 @@ class DetailsViewModel @Inject constructor(
                             totalAddons = progressive.totalAddons,
                             streams = mergedStreams,
                             subtitles = progressive.subtitles,
-                            hasStreamingAddons = addonCount > 0 || hasHomeServerConnections
+                            hasStreamingAddons = hasAnyStreamProvider(
+                                streamingAddonCount = addonCount,
+                                hasHomeServerConnections = hasHomeServerConnections,
+                                hasIptvVodProviders = hasIptvVodProviders
+                            )
                         )
                         prewarmVisibleStreams(mergedStreams)
                         if (progressive.isFinal) {
@@ -2016,9 +2028,12 @@ class DetailsViewModel @Inject constructor(
                             isLoadingStreams = false,
                             streams = emptyList(),
                             subtitles = emptyList(),
-                            hasStreamingAddons = streamRepository.installedAddons.first()
-                                .count { it.isVodStreamingAddon() } > 0 ||
-                                hasHomeServerConnections
+                            hasStreamingAddons = hasAnyStreamProvider(
+                                streamingAddonCount = streamRepository.installedAddons.first()
+                                    .count { it.isVodStreamingAddon() },
+                                hasHomeServerConnections = hasHomeServerConnections,
+                                hasIptvVodProviders = hasIptvVodProviders
+                            )
                         )
                         return@launch
                     }
@@ -2056,7 +2071,11 @@ class DetailsViewModel @Inject constructor(
                             totalAddons = progressive.totalAddons,
                             streams = mergedStreams,
                             subtitles = progressive.subtitles,
-                            hasStreamingAddons = addonCount > 0 || hasHomeServerConnections
+                            hasStreamingAddons = hasAnyStreamProvider(
+                                streamingAddonCount = addonCount,
+                                hasHomeServerConnections = hasHomeServerConnections,
+                                hasIptvVodProviders = hasIptvVodProviders
+                            )
                         )
                         prewarmVisibleStreams(mergedStreams)
                     }
@@ -3007,9 +3026,7 @@ class DetailsViewModel @Inject constructor(
         }
         val validSources = sources.filter { !it.url.isNullOrBlank() }
         if (validSources.isEmpty()) {
-            if (_uiState.value.streams.isEmpty() && vodAppendJob?.isActive != true) {
-                _uiState.value = _uiState.value.copy(isLoadingStreams = false)
-            }
+            stopStreamSpinnerIfNothingLeft(ignoring = homeServerAppendJob)
             return
         }
         val latest = _uiState.value.streams
@@ -3073,6 +3090,10 @@ class DetailsViewModel @Inject constructor(
         }
         val validVodSources = vodSources.filter { !it.url.isNullOrBlank() }
         if (validVodSources.isEmpty()) {
+            // Not a plain return: for a setup whose only provider is IPTV,
+            // nothing else ever sets the flag back, and the source picker kept
+            // its spinner for good on a provider that answered with nothing.
+            stopStreamSpinnerIfNothingLeft(ignoring = vodAppendJob)
             return
         }
         val latest = _uiState.value.streams
@@ -3092,7 +3113,64 @@ class DetailsViewModel @Inject constructor(
         )
         prewarmVisibleStreams(mergedStreams)
     }
+
+    /**
+     * Ends the "searching sources" state once the last source job came back
+     * empty-handed.
+     *
+     * The caller passes itself as [ignoring]: a job is still marked active
+     * while its own last lines run, and it must not read itself as a reason to
+     * keep waiting.
+     */
+    private fun stopStreamSpinnerIfNothingLeft(ignoring: kotlinx.coroutines.Job?) {
+        val state = _uiState.value
+        val stop = shouldStopStreamSpinner(
+            isLoadingStreams = state.isLoadingStreams,
+            hasStreams = state.streams.isNotEmpty(),
+            pluginScrapersLoading = state.pluginScrapersLoading,
+            otherSourceJobsActive = sequenceOf(loadStreamsJob, homeServerAppendJob, vodAppendJob)
+                .any { job -> job !== ignoring && job?.isActive == true }
+        )
+        if (!stop) return
+        _uiState.value = state.copy(isLoadingStreams = false)
+    }
 }
+
+/**
+ * Whether a source job that came back with nothing may switch the
+ * "searching sources" spinner off.
+ *
+ * It may not do so on its own account: the other supplemental job, the addon
+ * resolution and the plugin scrapers can all still be working, and a spinner
+ * taken away while sources are on their way reads as "nothing found". But
+ * someone has to do it - the IPTV path used to return silently, so a details
+ * screen whose only provider is IPTV kept its spinner for good once the
+ * provider answered with nothing, and the source picker never reached the
+ * empty state it was supposed to show.
+ */
+internal fun shouldStopStreamSpinner(
+    isLoadingStreams: Boolean,
+    hasStreams: Boolean,
+    pluginScrapersLoading: Boolean,
+    otherSourceJobsActive: Boolean
+): Boolean = isLoadingStreams &&
+    !hasStreams &&
+    !pluginScrapersLoading &&
+    !otherSourceJobsActive
+
+/**
+ * Whether this setup has any source of streams at all.
+ *
+ * Decides one thing only: which empty state the source picker shows. An IPTV
+ * playlist or portal counts like an addon or a home server does - left out, as
+ * it was, every user whose only provider is IPTV was told to go install a
+ * streaming addon whenever a search came back empty.
+ */
+internal fun hasAnyStreamProvider(
+    streamingAddonCount: Int,
+    hasHomeServerConnections: Boolean,
+    hasIptvVodProviders: Boolean
+): Boolean = streamingAddonCount > 0 || hasHomeServerConnections || hasIptvVodProviders
 
 private object DetailsVMRegexes {
     val reviewWhitespaceRegex = Regex("\\s+")
