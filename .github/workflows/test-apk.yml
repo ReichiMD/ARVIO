@@ -121,6 +121,18 @@ jobs:
           PY
           grep -q 'settings_iptv_catalog_not_loaded' app/src/main/res/values/strings.xml \
             || { echo "::error::the screen cannot tell 'not fetched yet' from 'no categories'"; exit 1; }
+          # The phone catalog list has to be the live TV list: same card, same
+          # hairline, same row. Without these it silently drifts back apart.
+          grep -q 'private fun MobileStalkerCatalogRow' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
+            || { echo "::error::the phone catalog row is gone - the page looks unlike live TV again"; exit 1; }
+          # Eleven German strings: without them an otherwise German app shows
+          # "Movies", "Series" and "Searched" on this page.
+          test "$(grep -c 'name="settings_iptv_catalog\|name="settings_iptv_tab' app/src/main/res/values-de/strings.xml)" = "11" \
+            || { echo "::error::the German translation of the categories page is incomplete"; exit 1; }
+          # A phone sub-page must swallow the taps its children did not take,
+          # or they reach the settings list behind it and open the language picker.
+          grep -q 'detectTapGestures { }' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
+            || { echo "::error::taps fall through a phone sub-page to the list behind it"; exit 1; }
           echo "category selection verified: fetch in the channel session, stored on disk, sieve before the cap, tab bar on both routes, live TV intact"
 
       - name: Compile and run unit tests
