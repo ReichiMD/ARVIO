@@ -1,4 +1,4 @@
-name: Test APK (Stalker catalog categories + TV preview)
+name: Test APK (Stalker source search + catalog categories + TV preview)
 
 # Test-branch only. This workflow and the committed keystore must never reach a
 # pull request against upstream - they exist so a Claude Code session can hand
@@ -134,6 +134,63 @@ jobs:
           grep -q 'detectTapGestures { }' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
             || { echo "::error::taps fall through a phone sub-page to the list behind it"; exit 1; }
           echo "category selection verified: fetch in the channel session, stored on disk, sieve before the cap, tab bar on both routes, live TV intact"
+
+      # The three fixes this round adds, each checked where it actually has to
+      # sit. All three are invisible in a finished APK: a build missing any one
+      # of them looks exactly like a good one and answers the wrong question.
+      - name: Verify the three source-search fixes are really in this build
+        run: |
+          python3 - <<'PY'
+          # 1) The portal drops an idle connection after ten seconds. The client
+          #    has to hand one back well before that, or the first search after a
+          #    pause is written into a socket that no longer exists and is lost -
+          #    with OkHttp's own retry switched off by the request guard.
+          api = open("app/src/main/kotlin/com/arflix/tv/data/api/StalkerApi.kt").read()
+          if ".connectionPool(" not in api:
+              raise SystemExit("::error::the Stalker client still uses OkHttp's 5-minute connection pool")
+          import re
+          m = re.search(r"IDLE_KEEP_ALIVE_SECONDS = (\d+)L", api)
+          if not m:
+              raise SystemExit("::error::the keep-alive constant is gone")
+          keep = int(m.group(1))
+          if keep >= 10:
+              raise SystemExit(f"::error::keep-alive {keep}s reaches the portal's 10s window - the bug is back")
+          print(f"idle connections handed back after {keep}s, portal closes at 10s")
+
+          vm = open("app/src/main/kotlin/com/arflix/tv/ui/screens/details/DetailsViewModel.kt").read()
+
+          # 2) An IPTV lookup that found nothing has to end the spinner. It used
+          #    to `return` bare, and for an IPTV-only setup nothing else ever
+          #    cleared the flag - the picker span for good.
+          if "private fun stopStreamSpinnerIfNothingLeft" not in vm:
+              raise SystemExit("::error::the spinner fix is missing entirely")
+          start = vm.index("private suspend fun appendVodSourceInBackground")
+          body = vm[start:vm.index("private fun stopStreamSpinnerIfNothingLeft", start)]
+          empty = body.index("if (validVodSources.isEmpty()) {")
+          # To the block's closing brace, not to the first "return": the
+          # comment inside the block mentions the word.
+          block = body[empty:body.index("\n        }", empty)]
+          if "stopStreamSpinnerIfNothingLeft" not in block:
+              raise SystemExit(
+                  "::error::the empty IPTV result returns without stopping the spinner - "
+                  "the source picker would spin for good"
+              )
+          print("an empty IPTV result stops the spinner")
+
+          # 3) IPTV providers have to count towards 'has any source at all', or
+          #    the empty state tells an IPTV-only user to install an addon.
+          if "hasIptvVodProviders" not in vm:
+              raise SystemExit("::error::IPTV providers are not counted on the details screen")
+          if vm.count("hasStreamingAddons = hasAnyStreamProvider(") != 4:
+              raise SystemExit(
+                  "::error::not every hasStreamingAddons site counts IPTV providers - "
+                  "one path still shows the wrong empty state"
+              )
+          player = open("app/src/main/kotlin/com/arflix/tv/ui/screens/player/PlayerViewModel.kt").read()
+          if "!hasIptvVodProviders" not in player:
+              raise SystemExit("::error::the player still blames missing addons for an IPTV-only setup")
+          print("IPTV providers count as a source on both screens")
+          PY
 
       - name: Compile and run unit tests
         run: |
