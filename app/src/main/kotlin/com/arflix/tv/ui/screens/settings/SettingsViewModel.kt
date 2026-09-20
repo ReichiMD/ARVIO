@@ -272,6 +272,13 @@ data class SettingsUiState(
     val iptvHiddenVodCategories: List<String> = emptyList(),
     val iptvHiddenSeriesCategories: List<String> = emptyList(),
     val isIptvStalkerCategoriesLoading: Boolean = false,
+    /**
+     * False while the open portal has no stored category names yet, which is
+     * not the same as a portal that answered with none. An empty list under
+     * false means "not fetched yet", under true it means "this portal has no
+     * categories" - two different sentences on screen.
+     */
+    val iptvStalkerCategoriesLoaded: Boolean = false,
     val vodSearchEnabled: Boolean = true,
     val epgVodActionsEnabled: Boolean = true,
     val fallbackChannelLogosEnabled: Boolean = false,
@@ -1018,7 +1025,8 @@ class SettingsViewModel @Inject constructor(
                 iptvSelectedIsStalkerPortal = false,
                 iptvCategoryTab = StalkerCategoryTab.LIVE,
                 iptvStalkerVodCategories = emptyList(),
-                iptvStalkerSeriesCategories = emptyList()
+                iptvStalkerSeriesCategories = emptyList(),
+                iptvStalkerCategoriesLoaded = false
             )
             return
         }
@@ -1032,7 +1040,8 @@ class SettingsViewModel @Inject constructor(
             iptvSelectedIsStalkerPortal = _uiState.value.iptvStalkerPortals.any { it.id == selectedPlaylistId },
             iptvCategoryTab = StalkerCategoryTab.LIVE,
             iptvStalkerVodCategories = emptyList(),
-            iptvStalkerSeriesCategories = emptyList()
+            iptvStalkerSeriesCategories = emptyList(),
+            iptvStalkerCategoriesLoaded = false
         )
         viewModelScope.launch {
             val groups = loadIptvGroupsForPlaylist(selectedPlaylistId)
@@ -1045,9 +1054,10 @@ class SettingsViewModel @Inject constructor(
     /**
      * Switch the categories page between live TV, movies and series.
      *
-     * The catalog lists are fetched the first time their tab is opened rather
-     * than when the page opens: a user who only ever hides channel groups
-     * should not pay two portal requests for it.
+     * Reading the stored names costs a file read, not a portal request, so the
+     * list is re-read every time a tab is opened: the ordinary channel load may
+     * have filled it in the meantime, and re-reading is how a page that opened
+     * a moment too early catches up without the user leaving it.
      */
     fun setIptvCategoryTab(tab: StalkerCategoryTab) {
         if (_uiState.value.iptvCategoryTab == tab) return
@@ -1055,20 +1065,23 @@ class SettingsViewModel @Inject constructor(
         val kind = tab.catalogKind() ?: return
         val portalId = _uiState.value.iptvSelectedPlaylistId.orEmpty()
         if (portalId.isBlank() || !_uiState.value.iptvSelectedIsStalkerPortal) return
-        if (stalkerCategoriesFor(kind).isNotEmpty()) return
 
         _uiState.value = _uiState.value.copy(isIptvStalkerCategoriesLoading = true)
         viewModelScope.launch {
-            val categories = runCatching { iptvRepository.stalkerCategories(portalId, kind) }
-                .getOrDefault(emptyList())
-            // The user can have walked on while the portal was answering.
+            val snapshot = runCatching { iptvRepository.stalkerCategories(portalId, kind) }
+                .getOrNull()
+            // The user can have walked on while the file was being read.
             if (_uiState.value.iptvSelectedPlaylistId != portalId) return@launch
+            val categories = snapshot?.categories.orEmpty()
             _uiState.value = when (kind) {
                 StalkerCatalogKind.MOVIES ->
                     _uiState.value.copy(iptvStalkerVodCategories = categories)
                 StalkerCatalogKind.SERIES ->
                     _uiState.value.copy(iptvStalkerSeriesCategories = categories)
-            }.copy(isIptvStalkerCategoriesLoading = false)
+            }.copy(
+                isIptvStalkerCategoriesLoading = false,
+                iptvStalkerCategoriesLoaded = snapshot?.loaded == true
+            )
         }
     }
 

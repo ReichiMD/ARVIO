@@ -420,11 +420,20 @@ class IptvRepository @Inject constructor(
      * returned. A portal that did not answer carries a null [api] and no
      * channels — that is what makes a failure visible per portal instead of
      * disappearing into a merged list.
+     *
+     * The two catalog category lists ride along for the same reason the live TV
+     * group names ride along on every channel: they are asked for inside this
+     * one open session, while the socket is warm, instead of when the settings
+     * screen happens to be opened. A portal that does not implement
+     * `get_categories` answers with an empty list; a null means it was never
+     * asked or never answered, and that is deliberately not the same thing.
      */
     internal data class StalkerPortalChannels(
         val portalId: String,
         val api: com.arflix.tv.data.api.StalkerApi?,
-        val channels: List<IptvChannel>
+        val channels: List<IptvChannel>,
+        val movieCategories: List<com.arflix.tv.data.api.StalkerApi.StalkerCategory>? = null,
+        val seriesCategories: List<com.arflix.tv.data.api.StalkerApi.StalkerCategory>? = null
     )
 
     /**
@@ -525,28 +534,40 @@ class IptvRepository @Inject constructor(
     private val stalkerSeriesSearchCache =
         ConcurrentHashMap<StalkerVodSearchCacheKey, StalkerSeriesSearchCacheEntry>()
 
-    private data class StalkerCategoryCacheKey(
-        val portalId: String,
-        val apiIdentity: String,
-        val kind: StalkerCatalogKind
+    /**
+     * One portal's two category lists, as they are held on disk.
+     *
+     * [fingerprint] is the portal's URL-and-MAC digest, so a portal that gets
+     * re-pointed at another server drops its stored names instead of showing
+     * the previous server's.
+     */
+    internal data class StalkerCategoryStoreEntry(
+        val fingerprint: String = "",
+        val fetchedAtMs: Long = 0L,
+        val movies: List<com.arflix.tv.data.api.StalkerApi.StalkerCategory> = emptyList(),
+        val series: List<com.arflix.tv.data.api.StalkerApi.StalkerCategory> = emptyList()
     )
 
-    private data class StalkerCategoryCacheEntry(
-        val fetchedAtMs: Long,
-        val categories: List<com.arflix.tv.data.api.StalkerApi.StalkerCategory>
+    private data class StalkerCategoryStorePayload(
+        val portals: Map<String, StalkerCategoryStoreEntry> = emptyMap()
     )
 
     /**
-     * Category names per portal and catalog kind, for the settings screen.
+     * Category names per portal, filled by the ordinary channel load and read
+     * by the settings screen.
      *
      * Only the names need the portal: the `category_id` a filter matches on is
-     * already part of every search answer. One request per portal and kind is
-     * therefore the entire cost of the whole category feature, and this cache
-     * keeps re-entering the screen from paying it again.
+     * already part of every search answer. So the names are fetched once, in
+     * the same session that fetches the channels, and kept next to the channel
+     * list they arrived with - the settings screen then opens without asking
+     * the portal anything at all, exactly as the live TV group list does.
+     *
+     * A portal that is absent from this map has not been loaded yet, which the
+     * screen must not show as "this portal has no categories".
      */
-    private val stalkerCategoryCache =
-        ConcurrentHashMap<StalkerCategoryCacheKey, StalkerCategoryCacheEntry>()
-    private val stalkerCategoryCacheTtlMs = 6 * 60 * 60_000L
+    @Volatile
+    private var stalkerCategoryStore: Map<String, StalkerCategoryStoreEntry>? = null
+    private val stalkerCategoryStoreLock = Any()
 
     private data class StalkerSeasonsCacheKey(
         val portalId: String,
@@ -877,10 +898,32 @@ class IptvRepository @Inject constructor(
             .awaitAll()
         val apis = LinkedHashMap<String, com.arflix.tv.data.api.StalkerApi>()
         val channels = ArrayList<IptvChannel>()
+        val categories = LinkedHashMap<String, StalkerCategoryStoreEntry>()
+        val portalsById = portals.associateBy { it.id }
+        val fetchedAt = System.currentTimeMillis()
         for (answer in answers) {
             channels.addAll(answer.channels)
             answer.api?.let { apis[answer.portalId] = it }
+            // Only a portal that actually answered writes an entry. Null means
+            // "no answer", and storing that as an empty list would tell the
+            // settings screen the portal has no categories.
+            val movies = answer.movieCategories
+            val series = answer.seriesCategories
+            if (movies == null && series == null) continue
+            val portal = portalsById[answer.portalId] ?: continue
+            val previous = readStalkerCategoryStore()[answer.portalId]
+            val fingerprint = stalkerPortalFingerprint(portal)
+            val stale = previous?.fingerprint != fingerprint
+            categories[answer.portalId] = StalkerCategoryStoreEntry(
+                fingerprint = fingerprint,
+                fetchedAtMs = fetchedAt,
+                // One of the two calls can fail on its own. Keep the list that
+                // is still good rather than dropping both.
+                movies = movies ?: if (stale) emptyList() else previous?.movies.orEmpty(),
+                series = series ?: if (stale) emptyList() else previous?.series.orEmpty()
+            )
         }
+        writeStalkerCategoryStore(categories)
         apis.toMap() to channels.toList()
     }
 
@@ -896,10 +939,20 @@ class IptvRepository @Inject constructor(
                 return@runCatching StalkerPortalChannels(portal.id, null, emptyList())
             }
             stalker.getProfile()
+            val channels = stalker.getChannels().map { it.copy(id = "stalker:${portal.id}:${it.id}") }
+            // Asked here, not from the settings screen. A portal keeps an idle
+            // connection for a matter of seconds, so a request sent minutes
+            // later travels a socket the portal has already closed and is lost
+            // without an answer - measured on this portal at ten seconds flat.
+            // Inside this session the connection is seconds old and warm, which
+            // is exactly why the live TV group names have always been reliable:
+            // they arrive on the channels fetched right above.
             StalkerPortalChannels(
                 portalId = portal.id,
                 api = stalker,
-                channels = stalker.getChannels().map { it.copy(id = "stalker:${portal.id}:${it.id}") }
+                channels = channels,
+                movieCategories = stalker.getVodCategories(),
+                seriesCategories = stalker.getSeriesCategories()
             )
         }.getOrElse { error ->
             if (error is CancellationException) throw error
@@ -4116,7 +4169,10 @@ class IptvRepository @Inject constructor(
         stalkerVodSearchCache.clear()
         stalkerSeriesSearchCache.clear()
         stalkerSeasonsCache.clear()
-        stalkerCategoryCache.clear()
+        // Only the in-memory mirror. The stored names stay on disk so the
+        // settings screen keeps working for the portals that did not change;
+        // a portal that did gets caught by the fingerprint check on read.
+        stalkerCategoryStore = null
         discoveredM3uEpgUrls.clear()
         xtreamVodCacheKey = null
         xtreamVodLoadedAtMs = 0L
@@ -6272,46 +6328,74 @@ class IptvRepository @Inject constructor(
      * cached matches without touching any other source.
      */
     /**
-     * The categories of one Stalker portal, for the settings screen.
+     * What the settings screen knows about one portal's categories.
      *
-     * Returns an empty list - never an error - when the portal does not
-     * implement `get_categories`: plenty of builds answer it with an HTML page
-     * under a plain HTTP 200, and a settings page that throws at those is
-     * worse than one that says "no categories". Only a real answer is cached,
-     * so a portal that was merely unreachable is asked again next time.
+     * [loaded] separates the two states an empty list used to blur together:
+     * false is "this portal has not been asked yet", true is "it was asked and
+     * reported nothing". Only the second one may be shown as "this portal has
+     * no categories" - the first is a screen opened before the first channel
+     * load finished, and saying the wrong one sends the user hunting for a
+     * setting that is merely not there yet.
+     */
+    data class StalkerCategorySnapshot(
+        val categories: List<com.arflix.tv.data.api.StalkerApi.StalkerCategory>,
+        val loaded: Boolean
+    )
+
+    /**
+     * The stored categories of one Stalker portal, for the settings screen.
+     *
+     * Reads the device only - this never touches the network. The names are
+     * fetched by the ordinary channel load, inside the same portal session that
+     * fetches the channels, and kept on disk from there on. That is what makes
+     * this screen open instantly and work with no connection at all, the same
+     * way the live TV group list already does.
      */
     suspend fun stalkerCategories(
         portalId: String,
         kind: StalkerCatalogKind
-    ): List<com.arflix.tv.data.api.StalkerApi.StalkerCategory> {
+    ): StalkerCategorySnapshot {
         val trimmedId = portalId.trim()
-        if (trimmedId.isEmpty()) return emptyList()
+        val missing = StalkerCategorySnapshot(emptyList(), loaded = false)
+        if (trimmedId.isEmpty()) return missing
         return withContext(Dispatchers.IO) {
             val config = observeConfig().first()
             // Every configured portal, not only the enabled ones: the settings
             // screen is exactly where a portal that is currently switched off
             // gets prepared for being switched on again.
             val portal = config.stalkerPortals.firstOrNull { it.id == trimmedId }
-                ?: return@withContext emptyList()
-            if (portal.portalUrl.isBlank() || portal.macAddress.isBlank()) return@withContext emptyList()
-            val fingerprint = stalkerPortalFingerprint(portal)
-            val key = StalkerCategoryCacheKey(portal.id, fingerprint, kind)
-            val now = System.currentTimeMillis()
-            stalkerCategoryCache[key]?.let { cached ->
-                if (now - cached.fetchedAtMs < stalkerCategoryCacheTtlMs) return@withContext cached.categories
-                stalkerCategoryCache.remove(key)
-            }
-            val api = getOrCreateStalkerApi(portal) ?: return@withContext emptyList()
-            val categories = when (kind) {
-                StalkerCatalogKind.MOVIES -> api.getVodCategories()
-                StalkerCatalogKind.SERIES -> api.getSeriesCategories()
-            }
-            // null is "the portal did not answer", and caching that would turn
-            // one bad moment into six hours of an empty settings page.
-            if (categories == null) return@withContext emptyList()
-            stalkerCategoryCache[key] = StalkerCategoryCacheEntry(now, categories)
-            categories
+                ?: return@withContext missing
+            if (portal.portalUrl.isBlank() || portal.macAddress.isBlank()) return@withContext missing
+            stalkerCategorySnapshotOf(
+                stored = readStalkerCategoryStore()[portal.id],
+                fingerprint = stalkerPortalFingerprint(portal),
+                kind = kind
+            )
         }
+    }
+
+    /**
+     * Turns one stored entry into what the screen shows.
+     *
+     * A portal re-pointed at another server or MAC keeps its id but earns a new
+     * fingerprint. Its old names describe a catalog that is no longer there, so
+     * they count as not loaded rather than being shown as this portal's.
+     */
+    internal fun stalkerCategorySnapshotOf(
+        stored: StalkerCategoryStoreEntry?,
+        fingerprint: String,
+        kind: StalkerCatalogKind
+    ): StalkerCategorySnapshot {
+        if (stored == null || stored.fingerprint != fingerprint) {
+            return StalkerCategorySnapshot(emptyList(), loaded = false)
+        }
+        return StalkerCategorySnapshot(
+            categories = when (kind) {
+                StalkerCatalogKind.MOVIES -> stored.movies
+                StalkerCatalogKind.SERIES -> stored.series
+            },
+            loaded = true
+        )
     }
 
     /**
@@ -10936,6 +11020,59 @@ class IptvRepository @Inject constructor(
         val dir = File(context.filesDir, "iptv_cache")
         if (!dir.exists()) dir.mkdirs()
         return File(dir, "${profileManager.getProfileIdSync()}_iptv_channels_cache.json")
+    }
+
+    private fun stalkerCategoryStoreFile(): File {
+        val dir = File(context.filesDir, "iptv_cache")
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, "${profileManager.getProfileIdSync()}_stalker_categories.json")
+    }
+
+    /**
+     * The stored category names, read from disk once per process.
+     *
+     * A file that cannot be read is treated as an empty store rather than as an
+     * error: the names are a convenience for the settings screen, and losing
+     * them must never keep the channel list from loading.
+     */
+    internal fun readStalkerCategoryStore(): Map<String, StalkerCategoryStoreEntry> {
+        stalkerCategoryStore?.let { return it }
+        return synchronized(stalkerCategoryStoreLock) {
+            stalkerCategoryStore?.let { return it }
+            val loaded = runCatching {
+                val file = stalkerCategoryStoreFile()
+                if (!file.exists()) return@runCatching emptyMap()
+                val payload = gson.fromJson(
+                    file.readText(StandardCharsets.UTF_8),
+                    StalkerCategoryStorePayload::class.java
+                )
+                payload?.portals.orEmpty()
+            }.getOrDefault(emptyMap())
+            stalkerCategoryStore = loaded
+            loaded
+        }
+    }
+
+    /**
+     * Writes what [portals] answered, leaving every other portal's entry alone.
+     *
+     * A portal that answered null - never asked, or asked and not answered - is
+     * skipped rather than stored as empty. Overwriting a good list with an
+     * empty one because a single refresh went wrong is the failure this whole
+     * change exists to remove.
+     */
+    internal fun writeStalkerCategoryStore(entries: Map<String, StalkerCategoryStoreEntry>) {
+        if (entries.isEmpty()) return
+        synchronized(stalkerCategoryStoreLock) {
+            val merged = readStalkerCategoryStore() + entries
+            stalkerCategoryStore = merged
+            runCatching {
+                stalkerCategoryStoreFile().writeText(
+                    gson.toJson(StalkerCategoryStorePayload(merged)),
+                    StandardCharsets.UTF_8
+                )
+            }
+        }
     }
 
     private fun cleanupStaleEpgTempFiles(maxAgeMs: Long = 3 * 60_000L) {

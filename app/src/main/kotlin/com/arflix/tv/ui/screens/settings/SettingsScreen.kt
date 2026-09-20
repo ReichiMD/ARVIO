@@ -2059,6 +2059,7 @@ fun SettingsScreen(
                                     null -> emptyList()
                                 },
                                 isCatalogLoading = uiState.isIptvStalkerCategoriesLoading,
+                                isCatalogLoaded = uiState.iptvStalkerCategoriesLoaded,
                                 onToggleCatalogCategory = { categoryId ->
                                     iptvCatalogKind?.let { kind ->
                                         viewModel.toggleIptvHiddenStalkerCategory(
@@ -4836,6 +4837,7 @@ private fun MobileSettingsSubPage(
                 null -> emptyList()
             },
             isCatalogLoading = uiState.isIptvStalkerCategoriesLoading,
+            isCatalogLoaded = uiState.iptvStalkerCategoriesLoaded,
             onToggleCatalogCategory = { categoryId ->
                 uiState.iptvCategoryTab.catalogKind()?.let { kind ->
                     viewModel.toggleIptvHiddenStalkerCategory(kind, categoriesPlaylistId, categoryId)
@@ -11906,6 +11908,9 @@ private fun IptvCategoriesSettings(
     catalogCategories: List<com.arflix.tv.data.api.StalkerApi.StalkerCategory> = emptyList(),
     hiddenCatalogCategories: List<String> = emptyList(),
     isCatalogLoading: Boolean = false,
+    // False until this portal's names have been stored by a channel load. An
+    // empty list then means "not fetched yet", not "this portal has none".
+    isCatalogLoaded: Boolean = false,
     onToggleCatalogCategory: (String) -> Unit = {},
     onBulkToggleCatalogCategories: (visible: Boolean) -> Unit = {},
     // Hold-and-move is a D-pad affair: the phone route renders rows without
@@ -11983,6 +11988,7 @@ private fun IptvCategoriesSettings(
                 categories = catalogCategories,
                 hiddenCategories = hiddenCatalogCategories,
                 isLoading = isCatalogLoading,
+                isLoaded = isCatalogLoaded,
                 focusedIndex = focusedIndex,
                 onToggleCategory = onToggleCatalogCategory,
                 onBulkToggle = onBulkToggleCatalogCategories,
@@ -12245,6 +12251,7 @@ private fun StalkerCatalogCategoryList(
     categories: List<com.arflix.tv.data.api.StalkerApi.StalkerCategory>,
     hiddenCategories: List<String>,
     isLoading: Boolean,
+    isLoaded: Boolean,
     focusedIndex: Int,
     onToggleCategory: (String) -> Unit,
     onBulkToggle: (visible: Boolean) -> Unit,
@@ -12323,9 +12330,16 @@ private fun StalkerCatalogCategoryList(
 
         if (categories.isEmpty()) {
             Text(
+                // Three states, not two. "Nothing stored yet" is a page opened
+                // before the first channel load finished and reads as such;
+                // only a portal that answered with no categories gets told it
+                // has none.
                 text = stringResource(
-                    if (isLoading) R.string.settings_iptv_catalog_loading
-                    else R.string.settings_iptv_catalog_unsupported
+                    when {
+                        isLoading -> R.string.settings_iptv_catalog_loading
+                        !isLoaded -> R.string.settings_iptv_catalog_not_loaded
+                        else -> R.string.settings_iptv_catalog_unsupported
+                    }
                 ),
                 style = ArflixTypography.body,
                 color = TextSecondary,
