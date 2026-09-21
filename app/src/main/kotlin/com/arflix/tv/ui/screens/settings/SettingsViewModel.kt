@@ -18,6 +18,7 @@ import com.arflix.tv.util.AppLogger
 import com.arflix.tv.util.DeviceIpAddress
 import com.arflix.tv.util.DiagnosticsManager
 import com.arflix.tv.util.QrCodeGenerator
+import com.arflix.tv.data.api.StalkerApi
 import com.arflix.tv.data.api.TraktDeviceCode
 import com.arflix.tv.data.model.Addon
 import com.arflix.tv.data.model.CatalogConfig
@@ -26,6 +27,7 @@ import com.arflix.tv.data.model.CatalogKind
 import com.arflix.tv.data.model.CatalogPackManifest
 import com.arflix.tv.data.model.Profile
 import com.arflix.tv.data.model.QualityFilterConfig
+import com.arflix.tv.data.model.StalkerCatalogKind
 import com.arflix.tv.data.repository.AuthRepository
 import com.arflix.tv.data.repository.AuthState
 import com.arflix.tv.data.repository.CatalogDiscoveryRepository
@@ -148,6 +150,22 @@ data class AiKeyServerState(
     val keyReceived: Boolean = false
 )
 
+/**
+ * The three lists the IPTV categories page can show.
+ *
+ * [LIVE] is the page as it always was - channel groups, hideable and
+ * reorderable. The other two exist only for a Stalker portal and pick the
+ * catalog categories its movie resp. series lookups are allowed to search.
+ */
+enum class StalkerCategoryTab { LIVE, MOVIES, SERIES }
+
+/** The catalog half a tab configures, or null for the live TV tab. */
+fun StalkerCategoryTab.catalogKind(): StalkerCatalogKind? = when (this) {
+    StalkerCategoryTab.LIVE -> null
+    StalkerCategoryTab.MOVIES -> StalkerCatalogKind.MOVIES
+    StalkerCategoryTab.SERIES -> StalkerCatalogKind.SERIES
+}
+
 data class SettingsUiState(
     val defaultSubtitle: String = "Off",
     val subtitleOptions: List<String> = emptyList(),
@@ -246,6 +264,21 @@ data class SettingsUiState(
     val iptvAvailableGroups: List<String> = emptyList(),
     val iptvHiddenGroups: List<String> = emptyList(),
     val iptvGroupOrder: List<String> = emptyList(),
+    /** True while the open categories page belongs to a Stalker portal. */
+    val iptvSelectedIsStalkerPortal: Boolean = false,
+    val iptvCategoryTab: StalkerCategoryTab = StalkerCategoryTab.LIVE,
+    val iptvStalkerVodCategories: List<StalkerApi.StalkerCategory> = emptyList(),
+    val iptvStalkerSeriesCategories: List<StalkerApi.StalkerCategory> = emptyList(),
+    val iptvHiddenVodCategories: List<String> = emptyList(),
+    val iptvHiddenSeriesCategories: List<String> = emptyList(),
+    val isIptvStalkerCategoriesLoading: Boolean = false,
+    /**
+     * False while the open portal has no stored category names yet, which is
+     * not the same as a portal that answered with none. An empty list under
+     * false means "not fetched yet", under true it means "this portal has no
+     * categories" - two different sentences on screen.
+     */
+    val iptvStalkerCategoriesLoaded: Boolean = false,
     val vodSearchEnabled: Boolean = true,
     val epgVodActionsEnabled: Boolean = true,
     val fallbackChannelLogosEnabled: Boolean = false,
@@ -501,6 +534,18 @@ class SettingsViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     iptvHiddenGroups = hidden,
                     iptvGroupOrder = order
+                )
+            }
+        }
+        viewModelScope.launch {
+            kotlinx.coroutines.flow.combine(
+                iptvRepository.observeHiddenStalkerCategories(StalkerCatalogKind.MOVIES),
+                iptvRepository.observeHiddenStalkerCategories(StalkerCatalogKind.SERIES)
+            ) { movies, series -> Pair(movies, series) }
+            .collect { (movies, series) ->
+                _uiState.value = _uiState.value.copy(
+                    iptvHiddenVodCategories = movies,
+                    iptvHiddenSeriesCategories = series
                 )
             }
         }
@@ -976,20 +1021,98 @@ class SettingsViewModel @Inject constructor(
         if (selectedPlaylistId.isBlank()) {
             _uiState.value = _uiState.value.copy(
                 iptvSelectedPlaylistId = null,
-                iptvAvailableGroups = emptyList()
+                iptvAvailableGroups = emptyList(),
+                iptvSelectedIsStalkerPortal = false,
+                iptvCategoryTab = StalkerCategoryTab.LIVE,
+                iptvStalkerVodCategories = emptyList(),
+                iptvStalkerSeriesCategories = emptyList(),
+                iptvStalkerCategoriesLoaded = false
             )
             return
         }
 
+        // The page always opens on live TV, whatever the last portal was left
+        // on: that is the list it has always shown, and the tab bar above it
+        // says where the other two are.
         _uiState.value = _uiState.value.copy(
             iptvSelectedPlaylistId = selectedPlaylistId,
-            iptvAvailableGroups = emptyList()
+            iptvAvailableGroups = emptyList(),
+            iptvSelectedIsStalkerPortal = _uiState.value.iptvStalkerPortals.any { it.id == selectedPlaylistId },
+            iptvCategoryTab = StalkerCategoryTab.LIVE,
+            iptvStalkerVodCategories = emptyList(),
+            iptvStalkerSeriesCategories = emptyList(),
+            iptvStalkerCategoriesLoaded = false
         )
         viewModelScope.launch {
             val groups = loadIptvGroupsForPlaylist(selectedPlaylistId)
             if (_uiState.value.iptvSelectedPlaylistId == selectedPlaylistId) {
                 _uiState.value = _uiState.value.copy(iptvAvailableGroups = groups)
             }
+        }
+    }
+
+    /**
+     * Switch the categories page between live TV, movies and series.
+     *
+     * Reading the stored names costs a file read, not a portal request, so the
+     * list is re-read every time a tab is opened: the ordinary channel load may
+     * have filled it in the meantime, and re-reading is how a page that opened
+     * a moment too early catches up without the user leaving it.
+     */
+    fun setIptvCategoryTab(tab: StalkerCategoryTab) {
+        if (_uiState.value.iptvCategoryTab == tab) return
+        _uiState.value = _uiState.value.copy(iptvCategoryTab = tab)
+        val kind = tab.catalogKind() ?: return
+        val portalId = _uiState.value.iptvSelectedPlaylistId.orEmpty()
+        if (portalId.isBlank() || !_uiState.value.iptvSelectedIsStalkerPortal) return
+
+        _uiState.value = _uiState.value.copy(isIptvStalkerCategoriesLoading = true)
+        viewModelScope.launch {
+            val snapshot = runCatching { iptvRepository.stalkerCategories(portalId, kind) }
+                .getOrNull()
+            // The user can have walked on while the file was being read.
+            if (_uiState.value.iptvSelectedPlaylistId != portalId) return@launch
+            val categories = snapshot?.categories.orEmpty()
+            _uiState.value = when (kind) {
+                StalkerCatalogKind.MOVIES ->
+                    _uiState.value.copy(iptvStalkerVodCategories = categories)
+                StalkerCatalogKind.SERIES ->
+                    _uiState.value.copy(iptvStalkerSeriesCategories = categories)
+            }.copy(
+                isIptvStalkerCategoriesLoading = false,
+                iptvStalkerCategoriesLoaded = snapshot?.loaded == true
+            )
+        }
+    }
+
+    private fun stalkerCategoriesFor(kind: StalkerCatalogKind): List<StalkerApi.StalkerCategory> =
+        when (kind) {
+            StalkerCatalogKind.MOVIES -> _uiState.value.iptvStalkerVodCategories
+            StalkerCatalogKind.SERIES -> _uiState.value.iptvStalkerSeriesCategories
+        }
+
+    /** Show or hide one catalog category of the open Stalker portal. */
+    fun toggleIptvHiddenStalkerCategory(kind: StalkerCatalogKind, portalId: String, categoryId: String) {
+        viewModelScope.launch {
+            iptvRepository.toggleHiddenStalkerCategory(kind, portalId, categoryId)
+        }
+    }
+
+    /** The bulk "show all / hide all" of the movies and series tabs. */
+    fun setAllIptvStalkerCategoriesVisible(
+        kind: StalkerCatalogKind,
+        portalId: String,
+        visible: Boolean
+    ) {
+        viewModelScope.launch {
+            val categories = stalkerCategoriesFor(kind)
+            if (categories.isEmpty()) return@launch
+            iptvRepository.setStalkerCategoriesHidden(
+                kind = kind,
+                portalId = portalId,
+                categoryIds = categories.map { it.id },
+                hidden = !visible
+            )
         }
     }
 

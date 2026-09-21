@@ -852,6 +852,17 @@
     <string name="settings_iptv_hide_all">Hide all</string>
     <string name="settings_iptv_show_all_desc">Unhide every category of this source</string>
     <string name="settings_iptv_hide_all_desc">Hide every category of this source</string>
+    <string name="settings_iptv_tab_live">Live TV</string>
+    <string name="settings_iptv_tab_movies">Movies</string>
+    <string name="settings_iptv_tab_series">Series</string>
+    <string name="settings_iptv_catalog_loading">Loading categories…</string>
+    <string name="settings_iptv_catalog_not_loaded">These categories arrive with this portal\'s next refresh. They are not needed to play anything — until then every category is searched.</string>
+    <string name="settings_iptv_catalog_unsupported">This portal did not report any categories. Nothing changes: every category is searched.</string>
+    <string name="settings_iptv_catalog_all_searched">Every category is searched</string>
+    <string name="settings_iptv_catalog_searched">Searched</string>
+    <string name="settings_iptv_catalog_skipped">Not searched</string>
+    <string name="settings_iptv_catalog_movies_desc">Categories this portal is searched in when a movie is played</string>
+    <string name="settings_iptv_catalog_series_desc">Categories this portal is searched in when an episode is played</string>
     <string name="settings_stalker_categories">Stalker categories</string>
     <string name="settings_stalker_configured">Configured</string>
     <string name="settings_stalker_not_configured">Not configured</string>
