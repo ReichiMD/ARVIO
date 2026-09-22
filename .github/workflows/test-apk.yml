@@ -1,0 +1,259 @@
+name: "Test APK (IPTV sources - quality badge and provider name)"
+
+# Test-branch only. This workflow and the committed keystore must never reach a
+# pull request against upstream - they exist so a Claude Code session can hand
+# the user an installable build. `workflow_dispatch` returns 403 from such a
+# session (the app token has no `actions: write`), so a push to this branch is
+# the trigger.
+
+on:
+  push:
+    branches:
+      - claude/iptvquellen-test-apk
+  workflow_dispatch:
+
+jobs:
+  build-test-apk:
+    name: Build sideload staging test APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # Without a real TMDB key the app starts as an empty browser and there is
+      # no title to open a source list on - which is the whole test.
+      - name: Prepare runtime configuration
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          cp secrets.defaults.properties secrets.properties
+          if [ -z "$TMDB_API_KEY" ]; then
+            echo "::error::TMDB_API_KEY secret is empty - the app would start as an empty browser"
+            exit 1
+          fi
+          sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+          if grep -qi '^TMDB_API_KEY=your-' secrets.properties; then
+            echo "::error::a placeholder survived in secrets.properties"
+            exit 1
+          fi
+          echo "key injected; TMDB_API_KEY length: ${#TMDB_API_KEY}"
+
+      # Sanity check: the TV preview must be in this build, and it must be the
+      # kind that only fires when the user forces TV mode on a touch device.
+      - name: Verify the TV preview patch is present
+        run: |
+          grep -q 'TvPreviewLetterbox' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview letterbox missing"; exit 1; }
+          grep -q 'deviceModeOverride == "tv" && hasTouchScreen' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview guard missing or changed"; exit 1; }
+
+      # Wish (a): the quality badge. Checked before a build is spent on it.
+      - name: Verify the quality word list reached the VOD path
+        run: |
+          R=app/src/main/kotlin/com/arflix/tv/data/repository/IptvRepository.kt
+          grep -q 'VOD_QUALITY_4K_REGEX' "$R" \
+            || { echo "::error::the VOD quality word list is missing"; exit 1; }
+          grep -q 'internal fun inferQualityFrom' "$R" \
+            || { echo "::error::the series-name-first helper is missing"; exit 1; }
+          # The bug was that the VOD path matched digits only. If this ever finds
+          # `lower.contains("4k")` again, the old matcher is back.
+          if grep -q 'lower.contains("4k")' "$R"; then
+            echo "::error::the old digit-only quality matcher is back"
+            exit 1
+          fi
+          # SD is out of the list on purpose - it is also the language code for
+          # Sindhi, and this user's portal prefixes titles with the language.
+          if grep -q 'VOD_QUALITY_SD_REGEX' "$R"; then
+            echo "::error::SD is back in the word list and would misread Sindhi"
+            exit 1
+          fi
+          # Both provider kinds have to be covered, not just Xtream.
+          grep -q 'quality = inferQualityFrom(seriesName, sourceName)' "$R" \
+            || { echo "::error::the Xtream series path does not ask the series name"; exit 1; }
+          grep -q 'quality = stalkerVodQuality(hd ?: show.hd, showName, name)' "$R" \
+            || { echo "::error::the Stalker episode path does not ask the show name"; exit 1; }
+          echo "wish a verified: word list without SD, series-name fallback, Xtream and Stalker both covered"
+
+      # An unknown quality must be blank AND must leave the badge out - a blank
+      # label that still reaches the badge row renders a pill with no word in it.
+      - name: Verify an unknown quality shows nothing at all
+        run: |
+          R=app/src/main/kotlin/com/arflix/tv/data/repository/IptvRepository.kt
+          S=app/src/main/kotlin/com/arflix/tv/ui/components/StreamSelector.kt
+          O=app/src/main/kotlin/com/arflix/tv/ui/components/SourceInfoOverlay.kt
+          if grep -q 'else -> "VOD"' "$R"; then
+            echo "::error::an unknown quality is still the word VOD"
+            exit 1
+          fi
+          grep -q 'else -> if (presentation.resolutionLabel.isNotBlank())' "$S" \
+            || { echo "::error::the badge row would render an empty pill"; exit 1; }
+          grep -q 'if (source.quality.isNotBlank())' "$O" \
+            || { echo "::error::the playback overlay would show a lone quality icon"; exit 1; }
+          echo "verified: blank quality, no empty badge, no orphan icon"
+
+      # Wish (b): the provider name. It must be stamped at every one of the four
+      # places a batch of sources leaves its provider - a missing one shows up as
+      # a nameless row only for that provider kind, which is easy to overlook.
+      - name: Verify the provider name is stamped on all four source paths
+        run: |
+          R=app/src/main/kotlin/com/arflix/tv/data/repository/IptvRepository.kt
+          grep -q 'internal fun StreamSource.withIptvProvider' "$R" \
+            || { echo "::error::the stamping helper is missing"; exit 1; }
+          grep -q 'behaviorHints = (behaviorHints ?: StreamBehaviorHints()).copy(provider = name)' "$R" \
+            || { echo "::error::the name is not written to the slot the source menu reads"; exit 1; }
+          # Xtream movies, Xtream series, Stalker movies, Stalker series.
+          test "$(grep -c 'withIptvProvider(provider.name)' "$R")" = "2" \
+            || { echo "::error::expected exactly 2 Xtream stamping sites"; exit 1; }
+          test "$(grep -c 'withIptvProvider(portal.name)' "$R")" = "2" \
+            || { echo "::error::expected exactly 2 Stalker stamping sites"; exit 1; }
+          # ...and the portal name must no longer lead the description line, or
+          # a Stalker row prints it twice.
+          if grep -q 'stalkerVodDescription(portal,' "$R"; then
+            echo "::error::the description still takes the portal and would repeat the name"
+            exit 1
+          fi
+          echo "wish b verified: helper present, 4 stamping sites, no duplicate on Stalker"
+
+      - name: Compile and run unit tests
+        run: |
+          # A second run is the office rule for the known order-dependent flakes
+          # (docs/34 5z): another ViewModel test can leave a coroutine on the Main
+          # dispatcher. Nothing is silenced - the build still fails if it stays red.
+          ./gradlew testSideloadDebugUnitTest --no-daemon \
+            || ./gradlew testSideloadDebugUnitTest --no-daemon --rerun-tasks
+
+      # The office wants the test count as a measured number, not a guess.
+      # Gradle does not print one, so it is summed out of the JUnit XML.
+      - name: Count the unit tests
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          for f in glob.glob("app/build/test-results/testSideloadDebugUnitTest/*.xml"):
+              r = ET.parse(f).getroot()
+              tests += int(r.get("tests", 0)); failures += int(r.get("failures", 0))
+              errors += int(r.get("errors", 0)); skipped += int(r.get("skipped", 0))
+          print(f"unit tests: {tests} | failures: {failures} | errors: {errors} | skipped: {skipped}")
+          PY
+
+      # The office rule is "detekt rule for rule unchanged", and the fork CI does
+      # not run detekt at all - so the count is taken here. It never fails the
+      # build: the comparison is the point, not a gate.
+      - name: Count detekt findings rule by rule
+        continue-on-error: true
+        run: |
+          ./gradlew detekt --no-daemon || true
+          for report in app/build/reports/detekt/*.xml; do
+            [ -f "$report" ] || continue
+            echo "== $report"
+            grep -o 'source="[^"]*"' "$report" | wc -l | sed 's/^/  findings: /'
+            grep -o '<error[^>]*source="[^"]*"' "$report" \
+              | sed -n 's/.*source="detekt\.\([^"]*\)".*/\1/p' | sort | uniq -c | sort -rn
+          done
+
+      # ⛔ TEST BRANCH ONLY - NEVER IN A PULL REQUEST ⛔
+      # `staging` inherits from `release` and with it the cloud-secret gate. The
+      # fork carries real SUPABASE/APP_ANON values since fbd8c23, but TRAKT and
+      # TELEGRAM are still placeholders there, so the gate still fails the build
+      # after ~19 s. It exists to stop such a build being PUBLISHED, not tested.
+      - name: "TEST ONLY: disable the release cloud-secret gate"
+        run: |
+          sed -i 's|dependsOn(validateReleaseCloudSecrets)|// CI test build only: cloud-secret gate disabled|' \
+            app/build.gradle.kts
+          if grep -q 'dependsOn(validateReleaseCloudSecrets)' app/build.gradle.kts; then
+            echo "::error::the cloud-secret gate is still wired and would fail the staging build"
+            exit 1
+          fi
+          echo "cloud-secret gate disabled for this test build only"
+
+      - name: Give the staging build its own package, name and a fixed signature
+        run: |
+          # Kennung "iptvquellen" - the identifier of this theme (docs/10,
+          # AGENTS.md rule 10). Unchanged from run 186 on purpose: same theme,
+          # so this UPDATES the tester's existing app and keeps its settings.
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">IPTV-Quellen</string>|' \
+            app/src/main/res/values/strings.xml
+          # staging differs from debug here: the `applicationIdSuffix` line is
+          # present and set to ".beta", so this REPLACES it instead of inserting
+          # one (docs/10, "Beim Wechsel der Sorte mitdenken").
+          sed -i 's|applicationIdSuffix = ".beta"|applicationIdSuffix = ".iptvquellen"|' app/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          # A sed that silently matches nothing is how this kind of workflow
+          # wastes a build cycle - check every edit.
+          grep -q '<string name="app_name">IPTV-Quellen</string>' app/src/main/res/values/strings.xml \
+            || { echo "::error::app_name patch did not apply"; exit 1; }
+          grep -q 'applicationIdSuffix = ".iptvquellen"' app/build.gradle.kts \
+            || { echo "::error::suffix patch did not apply"; exit 1; }
+          if grep -q 'applicationIdSuffix = ".beta"' app/build.gradle.kts; then
+            echo "::error::the .beta suffix survived - the package would be wrong"
+            exit 1
+          fi
+          grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts \
+            || { echo "::error::versionCode patch did not apply"; exit 1; }
+          cat >> app/build.gradle.kts <<'KTS'
+
+          // CI only: staging falls back to the signing config named "debug" when
+          // no release keystore is present, and on a runner that points at a
+          // freshly generated ~/.android/debug.keystore - every build would carry
+          // a different signature and could not be installed over the previous
+          // test APK. Pin it to the committed keystore.
+          android {
+              signingConfigs {
+                  getByName("debug") {
+                      storeFile = rootProject.file(".github/test-signing/debug.keystore")
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+          }
+          KTS
+
+      # Mess-APK (docs/10): built the way a real release is, with R8, because
+      # this build goes to a second tester who has not agreed to a sluggish
+      # debug build and would report the sluggishness as a bug. Costs about ten
+      # minutes more than the fast variant and answers the same questions.
+      - name: Build sideload staging APK
+        run: ./gradlew assembleSideloadStaging --no-daemon
+
+      - name: Verify APK signature against the committed keystore
+        run: |
+          EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
+            -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          # find, not ls: a filename with a space would break the glob (shellcheck SC2012).
+          APK=$(find app/build/outputs/apk/sideload/staging -name '*.apk' -type f | head -1)
+          ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          echo "APK:      $APK"
+          echo "expected: $EXPECTED"
+          echo "actual:   $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Signature mismatch - Gradle did not use the committed keystore."
+            exit 1
+          fi
+          echo "Signature verified against the committed keystore."
+
+      # Proves the suffix really landed on the built artifact, not just in the
+      # build file - the package name is what decides whether this updates the
+      # existing test APK or installs beside it.
+      - name: Show the package name of the finished APK
+        run: |
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort | tail -1)
+          APK=$(find app/build/outputs/apk/sideload/staging -name '*.apk' -type f | head -1)
+          "$AAPT" dump packagename "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arvio-iptvquellen-apk
+          path: app/build/outputs/apk/sideload/staging/*.apk
+          if-no-files-found: error
+          retention-days: 14
