@@ -139,7 +139,18 @@ jobs:
           grep -q 'stringResource(R.string.settings_activation_instruction_touch)' \
             app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
             || { echo "::error::the Trakt call site does not choose per device"; exit 1; }
-          echo "instructions verified: both strings in both languages, no service name, chosen per device"
+          # Wording decided by the user after testing round 2 on the device: no
+          # dash in these sentences, and German says "Schaltflaeche", not "Knopf".
+          if grep -E 'name="settings_activation_instruction_(tv|touch)"' \
+               app/src/main/res/values/strings.xml app/src/main/res/values-de/strings.xml \
+               | grep -q '—'; then
+            echo "::error::the instruction strings must not contain a dash"
+            exit 1
+          fi
+          grep -q 'name="settings_activation_instruction_touch">Tippe auf die Schaltfläche' \
+            app/src/main/res/values-de/strings.xml \
+            || { echo "::error::German must say Schaltfläche, not Knopf"; exit 1; }
+          echo "instructions verified: both strings in both languages, no service name, no dash, Schaltfläche, chosen per device"
 
       - name: Verify the success and expiry panels
         run: |
@@ -168,6 +179,28 @@ jobs:
             exit 1
           fi
           echo "panels verified: outcome enum, success, timeout-only expiry, retry wired, grey clock"
+
+      # ⛔ TEST BRANCH ONLY - NEVER IN A PULL REQUEST ⛔
+      # The user asked to watch the expiry without sitting out ten minutes, so
+      # this build cuts the activation window to one minute. BOTH places have to
+      # be patched: the value the dialog counts down, and the deadline the
+      # polling loop uses - patching only the first would run the bar to 0:00
+      # while the expired panel still waited the full ten minutes.
+      # Remove this step (or the whole test branch) to get real timing back.
+      - name: "TEST ONLY: shorten the activation window to one minute"
+        run: |
+          V=app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsViewModel.kt
+          test "$(grep -c 'deviceCode.expiresIn' "$V")" = "2" \
+            || { echo "::error::expected exactly 2 uses of deviceCode.expiresIn"; exit 1; }
+          sed -i 's/deviceCode\.expiresIn \* 1000L/60 * 1000L/' "$V"
+          sed -i 's/deviceCode\.expiresIn \* 1000)/60 * 1000)/' "$V"
+          # A sed that silently matches nothing is how this kind of workflow
+          # wastes a build cycle - prove both landed and none survived.
+          test "$(grep -c 'deviceCode.expiresIn' "$V")" = "0" \
+            || { echo "::error::a deviceCode.expiresIn survived the patch"; exit 1; }
+          test "$(grep -c '60 \* 1000' "$V")" = "2" \
+            || { echo "::error::the one-minute patch did not apply twice"; exit 1; }
+          echo "TEST BUILD: activation window is 60 s in both the countdown and the polling loop"
 
       - name: Compile and run unit tests
         run: |
