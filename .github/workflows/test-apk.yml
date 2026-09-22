@@ -1,4 +1,4 @@
-name: Test APK (Trakt login on phones + TV preview)
+name: "Test APK (Trakt activation round 2 - QR code, countdown, success, expiry)"
 
 # Test-branch only. This workflow and the committed keystore must never reach a
 # pull request against upstream - they exist so a Claude Code session can hand
@@ -9,7 +9,7 @@ name: Test APK (Trakt login on phones + TV preview)
 on:
   push:
     branches:
-      - claude/traktlogin-test-apk
+      - claude/traktlogin-k2-test-apk
   workflow_dispatch:
 
 jobs:
@@ -70,32 +70,104 @@ jobs:
           grep -q 'deviceModeOverride == "tv" && hasTouchScreen' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
             || { echo "::error::TV preview guard missing or changed"; exit 1; }
 
-      # The point of this round, checked before the build is spent on it. Asks
-      # for each part separately: the new label in both languages, the URL
-      # builder, the Trakt call site actually passing it, and - just as
-      # important - that Plex/Jellyfin did NOT lose their copy button, because
-      # their URL does not carry the code.
-      - name: Verify the Trakt login work is really in this build
+      # The point of THIS round, checked before a build is spent on it. Round 1's
+      # checks are kept where they still describe something this round must not
+      # break (the phone buttons, Plex keeping its copy button).
+      - name: Verify round 1 still stands
         run: |
-          grep -q 'name="settings_open_trakt_page">Open Trakt page<' app/src/main/res/values/strings.xml \
-            || { echo "::error::English button label missing"; exit 1; }
-          grep -q 'name="settings_open_trakt_page">Trakt-Seite' app/src/main/res/values-de/strings.xml \
-            || { echo "::error::German button label missing"; exit 1; }
           grep -q 'internal fun traktActivationUrl' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
             || { echo "::error::URL builder missing"; exit 1; }
-          grep -q 'traktActivationUrl(traktCode.verificationUrl, traktCode.userCode)' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
-            || { echo "::error::the Trakt call site does not open the code-carrying URL"; exit 1; }
           grep -q 'openUrlLabel = stringResource(R.string.settings_open_trakt_page)' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
-            || { echo "::error::the button would still read 'Open auth page'"; exit 1; }
-          # Exactly one call site may drop the copy button - Trakt. If this ever
-          # counts 2, Plex or Jellyfin lost a button they still need.
+            || { echo "::error::the phone button would read 'Open auth page' again"; exit 1; }
+          # Exactly one call site may drop the copy button - Trakt. If this counts
+          # 2, Plex or Jellyfin lost a button they still need.
           test "$(grep -c 'showCopyCode = false' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt)" = "1" \
             || { echo "::error::exactly one call site must set showCopyCode = false"; exit 1; }
-          # The TV branch must stay untouched: both phone buttons still hang off
-          # isMobile, so the QR path cannot have been reached by this change.
           grep -q 'if (isMobile && onOpenUrl != null)' app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
-            || { echo "::error::the isMobile gate is gone - the TV dialog may have changed"; exit 1; }
-          echo "trakt login patch verified: labels, URL builder, call site, copy button kept for Plex, TV gate intact"
+            || { echo "::error::the isMobile gate for the phone buttons is gone"; exit 1; }
+          echo "round 1 intact: url builder, phone label, copy button kept for Plex, isMobile gate"
+
+      - name: Verify the QR code now carries the user code
+        run: |
+          S=app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt
+          grep -q 'qrData: String? = null' "$S" \
+            || { echo "::error::the dialog has no qrData parameter"; exit 1; }
+          grep -q 'val qrPayload = qrData?.takeIf { it.isNotBlank() } ?: verificationUrl' "$S" \
+            || { echo "::error::the QR payload is not derived from qrData"; exit 1; }
+          grep -q 'data = qrPayload,' "$S" \
+            || { echo "::error::the QR image still renders the bare verification URL"; exit 1; }
+          # T19: ONLY Trakt may fill it. Plex's URL is a fragment URL and would
+          # break if a code were appended, so a second call site here is a bug.
+          test "$(grep -c 'qrData = ' "$S")" = "1" \
+            || { echo "::error::exactly one call site may pass qrData (T19)"; exit 1; }
+          grep -q 'val qrContainerSize = if (isMobile) 0.dp else 224.dp' "$S" \
+            || { echo "::error::the QR frame is not 224.dp - the denser code would shrink"; exit 1; }
+          echo "qr verified: payload carries the code, frame 224.dp, only Trakt fills it"
+
+      - name: Verify the remaining-time display
+        run: |
+          S=app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt
+          V=app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsViewModel.kt
+          grep -q 'val traktCodeExpiresAtMillis: Long? = null' "$V" \
+            || { echo "::error::the ui state carries no expiry"; exit 1; }
+          # Must be computed in the view model, not in the composable - otherwise
+          # every recomposition would reset the clock.
+          grep -q 'traktCodeExpiresAtMillis = System.currentTimeMillis()' "$V" \
+            || { echo "::error::the expiry is not computed in the view model"; exit 1; }
+          grep -q 'expiresAtMillis: Long? = null' "$S" \
+            || { echo "::error::the dialog takes no expiry"; exit 1; }
+          grep -q 'expiresAtMillis = uiState.traktCodeExpiresAtMillis' "$S" \
+            || { echo "::error::the Trakt call site does not pass the expiry"; exit 1; }
+          echo "countdown verified: expiry computed in the view model and handed to the dialog"
+
+      - name: Verify the two device-specific instruction texts
+        run: |
+          for f in app/src/main/res/values/strings.xml app/src/main/res/values-de/strings.xml; do
+            grep -q 'name="settings_activation_instruction_tv"' "$f" \
+              || { echo "::error::TV instruction missing in $f"; exit 1; }
+            grep -q 'name="settings_activation_instruction_touch"' "$f" \
+              || { echo "::error::touch instruction missing in $f"; exit 1; }
+          done
+          # Deliberately service-neutral (akte docs/50 section 7): the SIMKL PR
+          # reuses these, and the dialog title already names the service.
+          if grep -E 'name="settings_activation_instruction_(tv|touch)"' \
+               app/src/main/res/values/strings.xml app/src/main/res/values-de/strings.xml \
+               | grep -qi 'trakt'; then
+            echo "::error::the new instruction strings must not name Trakt"
+            exit 1
+          fi
+          grep -q 'stringResource(R.string.settings_activation_instruction_touch)' \
+            app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt \
+            || { echo "::error::the Trakt call site does not choose per device"; exit 1; }
+          echo "instructions verified: both strings in both languages, no service name, chosen per device"
+
+      - name: Verify the success and expiry panels
+        run: |
+          S=app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsScreen.kt
+          V=app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsViewModel.kt
+          grep -q 'enum class TraktAuthOutcome' "$V" \
+            || { echo "::error::TraktAuthOutcome is missing"; exit 1; }
+          grep -q 'traktAuthOutcome = TraktAuthOutcome.CONNECTED' "$V" \
+            || { echo "::error::success never reaches the dialog"; exit 1; }
+          grep -q 'traktAuthOutcome = TraktAuthOutcome.EXPIRED' "$V" \
+            || { echo "::error::expiry never reaches the dialog"; exit 1; }
+          # Only a plain timeout may take the expiry path; a real HTTP failure
+          # must keep its toast and close the dialog as before.
+          grep -q 'if (lastFailure == null) {' "$V" \
+            || { echo "::error::expiry is not limited to a plain timeout"; exit 1; }
+          grep -q 'outcome = uiState.traktAuthOutcome' "$S" \
+            || { echo "::error::the call site does not pass the outcome"; exit 1; }
+          grep -q 'onRetry = { viewModel.startTraktAuth() }' "$S" \
+            || { echo "::error::retry is not wired"; exit 1; }
+          # E13: running out of time is not an error, so no red anywhere in the
+          # expired panel - it is a grey clock.
+          grep -q 'Icons.Default.Schedule' "$S" \
+            || { echo "::error::the grey clock is missing"; exit 1; }
+          if grep -nE 'TraktAuthOutcome.EXPIRED' -A 4 "$S" | grep -qiE 'E74C3C|E53935|Color.Red'; then
+            echo "::error::the expired panel must not use an error colour (E13)"
+            exit 1
+          fi
+          echo "panels verified: outcome enum, success, timeout-only expiry, retry wired, grey clock"
 
       - name: Compile and run unit tests
         run: |
