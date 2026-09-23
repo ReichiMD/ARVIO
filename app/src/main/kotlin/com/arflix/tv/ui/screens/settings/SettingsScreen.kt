@@ -1,5 +1,6 @@
 package com.arflix.tv.ui.screens.settings
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.ui.text.font.FontWeight
 
 import androidx.activity.compose.BackHandler
 import com.arflix.tv.ui.components.LocalBottomBarInset
@@ -102,6 +103,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Tune
+import com.arflix.tv.data.model.StreamIntegrationType
+import com.arflix.tv.data.model.StreamSearchMode
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.ExitToApp
@@ -288,7 +292,7 @@ private val tvGeneralSectionIds = setOf(
 private fun tvGeneralRowsForSection(section: String): List<Int> {
     return when (section) {
         "language" -> listOf(0, 3, 1, 2)
-        "subtitles" -> listOf(4, 5, 6, 7, 42, 8, 38, 39, 9)
+        "subtitles" -> listOf(4, 5, 6, 7, 42, 8, 38, 39, 9, 45)
         "ai_subtitles" -> listOf(28, 29, 30, 31, 32, 33)
         "playback" -> listOf(10, 11, 12, 43, 44, 13, 14, 34, 16, 15, 40, 27)
         "appearance" -> listOf(17, 18, 20, 21, 24, 23, 22, 41, 36)
@@ -384,6 +388,19 @@ internal fun heldGroupMoveTarget(focusedIndex: Int, firstGroupIndex: Int, groupC
 internal fun centeredScrollOffset(viewportSize: Int, itemSize: Int): Int =
     if (viewportSize <= 0 || itemSize <= 0 || itemSize >= viewportSize) 0
     else -((viewportSize - itemSize) / 2)
+
+/**
+ * Builds the Trakt activation URL that already carries the user code, e.g.
+ * `https://trakt.tv/activate/AB12CD34`. Trakt redirects such a link to its sign-in page and keeps
+ * the code in `callbackURL`, so the user never has to type it. Falls back to the plain
+ * verification URL when no code is available yet.
+ */
+internal fun traktActivationUrl(verificationUrl: String, userCode: String): String {
+    val base = verificationUrl.trim().trimEnd('/')
+    val code = userCode.trim()
+    if (base.isEmpty()) return ""
+    return if (code.isEmpty()) base else "$base/$code"
+}
 
 private fun openExternalUrl(context: Context, url: String) {
     runCatching {
@@ -490,6 +507,7 @@ fun SettingsScreen(
             add("language")
             add("subtitles")
             add("ai_subtitles")
+            add("stream_integrations")
             add("iptv")
             add("stremio")
             add("catalogs")
@@ -543,6 +561,8 @@ fun SettingsScreen(
     var activeZone by remember { mutableStateOf(Zone.CONTENT) }
     var suppressSelectUntilMs by remember { mutableLongStateOf(0L) }
 
+    // Sub-focus for stream integration rows: 0 = toggle, 1 = up, 2 = down, 3 = configure
+    var integrationActionIndex by remember { mutableIntStateOf(0) }
     // Sub-focus for addon rows: 0 = toggle, 1 = delete
     var addonActionIndex by remember { mutableIntStateOf(0) }
     // Sub-focus for catalog rows: 0 = edit, 1 = up, 2 = down, 3 = layout, 4 = delete
@@ -638,8 +658,9 @@ fun SettingsScreen(
                 // + EPG actions + favorites-on-home + refresh + clear + fallback logos
                 7 + uiState.iptvPlaylists.size + uiState.iptvStalkerPortals.size
             }
+            "stream_integrations" -> uiState.streamProviderItems.size
             "home_server" -> uiState.homeServerConnections.size + 3
-            "catalogs" -> uiState.catalogs.size + 1 // Add + Import + catalogs
+            "catalogs" -> uiState.catalogs.size + 2 // Add + Import + Built-in collections toggle + catalogs
             "stremio" -> stremioAddons.size + 1 // rows + refresh + add button
             "plugins" -> pluginsMaxIndex
             "accounts" -> 16 // Includes About & Credits.
@@ -979,9 +1000,9 @@ fun SettingsScreen(
                     val focusedStremioAddonMaxAction = if (focusedStremioAddon == null) {
                         0
                     } else if (focusedStremioAddonCanDelete) {
-                        3
+                        1
                     } else {
-                        2
+                        0
                     }
 
                     val isRtl = isRtlLayoutDirection
@@ -1062,7 +1083,20 @@ fun SettingsScreen(
                                     val stalkerCount = uiState.iptvStalkerPortals.size
                                     val stalkerStart = m3uCount + 1
                                     val stalkerEnd = m3uCount + stalkerCount
-                                    if (currentSection == "stremio" && contentFocusIndex < stremioAddons.size && addonActionIndex > 0) {
+                                    if (currentSection == "stream_integrations") {
+                                        if (contentFocusIndex == 0 && integrationActionIndex > 0) {
+                                            integrationActionIndex--
+                                        } else if (contentFocusIndex > 0 && integrationActionIndex > 0) {
+                                            integrationActionIndex--
+                                        } else {
+                                            activeZone = Zone.SECTION
+                                            integrationActionIndex = 0
+                                            addonActionIndex = 0
+                                            iptvActionIndex = 0
+                                            iptvHeldGroup = null
+                                            catalogActionIndex = 0
+                                        }
+                                    } else if (currentSection == "stremio" && contentFocusIndex < stremioAddons.size && addonActionIndex > 0) {
                                         addonActionIndex--
                                     } else if (currentSection == "iptv" &&
                                         iptvActionIndex > 0 &&
@@ -1072,10 +1106,11 @@ fun SettingsScreen(
                                             )
                                     ) {
                                         iptvActionIndex--
-                                    } else if (currentSection == "catalogs" && contentFocusIndex > 1 && catalogActionIndex > 0) {
+                                    } else if (currentSection == "catalogs" && contentFocusIndex > 2 && catalogActionIndex > 0) {
                                         catalogActionIndex--
                                     } else {
                                         activeZone = Zone.SECTION
+                                        integrationActionIndex = 0
                                         addonActionIndex = 0
                                         iptvActionIndex = 0
                                         iptvHeldGroup = null
@@ -1102,6 +1137,11 @@ fun SettingsScreen(
                                 }
                                 Zone.SECTION -> {
                                     activeZone = Zone.CONTENT
+                                    integrationActionIndex = if (currentSection == "stream_integrations" && contentFocusIndex == 0) {
+                                        if (uiState.streamSearchMode == StreamSearchMode.SEQUENTIAL) 1 else 0
+                                    } else {
+                                        0
+                                    }
                                     addonActionIndex = 0
                                     iptvActionIndex = 0
                                     iptvHeldGroup = null
@@ -1113,7 +1153,16 @@ fun SettingsScreen(
                                     val stalkerCount = uiState.iptvStalkerPortals.size
                                     val stalkerStart = m3uCount + 1
                                     val stalkerEnd = m3uCount + stalkerCount
-                                    if (currentSection == "stremio" &&
+                                    if (currentSection == "stream_integrations") {
+                                        val maxAction = if (contentFocusIndex == 0) {
+                                            1
+                                        } else {
+                                            if (uiState.streamProviderItems.size > 1) 2 else 0
+                                        }
+                                        if (integrationActionIndex < maxAction) {
+                                            integrationActionIndex++
+                                        }
+                                    } else if (currentSection == "stremio" &&
                                         contentFocusIndex in 0 until stremioAddons.size &&
                                         addonActionIndex < focusedStremioAddonMaxAction
                                     ) {
@@ -1124,7 +1173,7 @@ fun SettingsScreen(
                                         iptvActionIndex++
                                     } else if (currentSection == "iptv" && !showIptvCategoriesSettings && stalkerCount > 0 && contentFocusIndex in stalkerStart..stalkerEnd && iptvActionIndex < iptvRowMaxAction()) {
                                         iptvActionIndex++
-                                    } else if (currentSection == "catalogs" && contentFocusIndex > 1 && catalogActionIndex < 5) {
+                                    } else if (currentSection == "catalogs" && contentFocusIndex > 2 && catalogActionIndex < 5) {
                                         catalogActionIndex++
                                     }
                                 }
@@ -1138,6 +1187,7 @@ fun SettingsScreen(
                                     if (sectionIndex > 0) {
                                         sectionIndex--
                                         contentFocusIndex = 0 // Reset content focus when changing section
+                                        integrationActionIndex = 0
                                         addonActionIndex = 0
                                         iptvActionIndex = 0
                                         iptvHeldGroup = null
@@ -1152,6 +1202,11 @@ fun SettingsScreen(
                                     if (!moveHeldIptvGroup(true)) {
                                         if (contentFocusIndex > 0) {
                                             contentFocusIndex--
+                                            integrationActionIndex = if (currentSection == "stream_integrations" && contentFocusIndex == 0) {
+                                                if (uiState.streamSearchMode == StreamSearchMode.SEQUENTIAL) 1 else 0
+                                            } else {
+                                                0
+                                            }
                                             addonActionIndex = 0 // Reset to toggle when changing rows
                                             iptvActionIndex = nextIptvActionIndex(contentFocusIndex)
                                             iptvHeldGroup = null
@@ -1180,6 +1235,7 @@ fun SettingsScreen(
                                     if (sectionIndex < sections.size - 1) {
                                         sectionIndex++
                                         contentFocusIndex = 0 // Reset content focus when changing section
+                                        integrationActionIndex = 0
                                         addonActionIndex = 0
                                         iptvActionIndex = 0
                                         iptvHeldGroup = null
@@ -1192,6 +1248,7 @@ fun SettingsScreen(
                                         val maxIndex = sectionMaxIndex(currentSection)
                                         if (contentFocusIndex < maxIndex) {
                                             contentFocusIndex++
+                                            integrationActionIndex = 0
                                             addonActionIndex = 0 // Reset to toggle when changing rows
                                             iptvActionIndex = nextIptvActionIndex(contentFocusIndex)
                                             iptvHeldGroup = null
@@ -1234,6 +1291,7 @@ fun SettingsScreen(
                                                 42 -> viewModel.cycleSubtitleFont()
                                                 8 -> viewModel.toggleSubtitleStylized()
                                                 9 -> viewModel.setFilterSubtitlesByLanguage(!uiState.filterSubtitlesByLanguage)
+                                                45 -> viewModel.setUseForcedSubtitles(!uiState.useForcedSubtitles)
                                                 10 -> viewModel.setAutoPlayNext(!uiState.autoPlayNext)
                                                 11 -> viewModel.setAutoPlaySingleSource(!uiState.autoPlaySingleSource)
                                                 12 -> viewModel.cycleAutoPlayMinQuality()
@@ -1395,6 +1453,26 @@ fun SettingsScreen(
                                                 }
                                             }
                                         }
+                                        "stream_integrations" -> {
+                                            if (contentFocusIndex == 0) {
+                                                val targetMode = if (integrationActionIndex == 0) {
+                                                    StreamSearchMode.PARALLEL
+                                                } else {
+                                                    StreamSearchMode.SEQUENTIAL
+                                                }
+                                                viewModel.setStreamSearchMode(targetMode)
+                                            } else {
+                                                val item = uiState.streamProviderItems.getOrNull(contentFocusIndex - 1)
+                                                if (item != null) {
+                                                    when (integrationActionIndex) {
+                                                        0 -> viewModel.toggleStreamProvider(item.id)
+                                                        1 -> viewModel.moveStreamProviderUp(item.id)
+                                                        2 -> viewModel.moveStreamProviderDown(item.id)
+                                                        else -> viewModel.toggleStreamProvider(item.id)
+                                                    }
+                                                }
+                                            }
+                                        }
                                         "home_server" -> {
                                             when (contentFocusIndex) {
                                        0 -> {
@@ -1426,8 +1504,10 @@ fun SettingsScreen(
                                                 showCatalogInput = true
                                             } else if (contentFocusIndex == 1) {
                                                 showCatalogPackInput = true
+                                            } else if (contentFocusIndex == 2) {
+                                                viewModel.toggleBuiltInCollections()
                                             } else {
-                                                val catalog = uiState.catalogs.getOrNull(contentFocusIndex - 2)
+                                                val catalog = uiState.catalogs.getOrNull(contentFocusIndex - 3)
                                                 if (catalog != null) {
                                                     when (catalogActionIndex) {
                                                         0 -> {
@@ -1467,9 +1547,7 @@ fun SettingsScreen(
                                                     val canDelete = !(addon.id == "opensubtitles" && addon.type == com.arflix.tv.data.model.AddonType.SUBTITLE)
                                                     when (addonActionIndex) {
                                                         0 -> viewModel.toggleAddon(addon.id)
-                                                        1 -> viewModel.moveAddonUp(addon.id)
-                                                        2 -> viewModel.moveAddonDown(addon.id)
-                                                        3 -> if (canDelete) {
+                                                        1 -> if (canDelete) {
                                                             viewModel.removeAddon(addon.id)
                                                             addonActionIndex = 0
                                                             if (contentFocusIndex >= stremioAddons.size && contentFocusIndex > 0) {
@@ -1708,6 +1786,7 @@ fun SettingsScreen(
                                     "appearance" -> Icons.Default.Palette
                                     "profiles" -> Icons.Default.SwitchAccount
                                     "network" -> Icons.Default.Settings
+                                    "stream_integrations" -> Icons.Default.Tune
                                     "iptv" -> Icons.Default.LiveTv
                                     "home_server" -> Icons.Default.Cloud
                                     "catalogs" -> Icons.Default.Widgets
@@ -1723,6 +1802,7 @@ fun SettingsScreen(
                                     "appearance" -> stringResource(R.string.interface_label)
                                     "profiles" -> stringResource(R.string.profiles)
                                     "network" -> stringResource(R.string.network)
+                                    "stream_integrations" -> stringResource(R.string.settings_stream_integrations)
                                     "iptv" -> stringResource(R.string.iptv)
                                     "home_server" -> stringResource(R.string.settings_home_server)
                                     "catalogs" -> stringResource(R.string.catalogs)
@@ -1735,6 +1815,7 @@ fun SettingsScreen(
                                 onClick = {
                                     sectionIndex = index
                                     contentFocusIndex = 0
+                                    integrationActionIndex = 0
                                     iptvActionIndex = 0
                                     iptvHeldGroup = null
                                     showIptvCategoriesSettings = false
@@ -1845,6 +1926,8 @@ fun SettingsScreen(
                             onSubtitleStylizedToggle = { viewModel.toggleSubtitleStylized() },
                             filterSubtitlesByLanguage = uiState.filterSubtitlesByLanguage,
                             onFilterSubtitlesByLanguageToggle = { viewModel.setFilterSubtitlesByLanguage(it) },
+                            useForcedSubtitles = uiState.useForcedSubtitles,
+                            onUseForcedSubtitlesToggle = { viewModel.setUseForcedSubtitles(it) },
                             qualityFilterValue = uiState.qualityFilterPresetLabel,
                             onQualityFiltersClick = { showQualityFiltersModal = true },
                             subtitleAiEnabled = uiState.subtitleAiEnabled,
@@ -1907,6 +1990,16 @@ fun SettingsScreen(
                             )
                         }
                         } // end "general" block
+                        "stream_integrations" -> StreamIntegrationsScreen(
+                            items = uiState.streamProviderItems,
+                            searchMode = uiState.streamSearchMode,
+                            onSearchModeChange = { viewModel.setStreamSearchMode(it) },
+                            focusedIndex = if (activeZone == Zone.CONTENT) contentFocusIndex else -1,
+                            focusedActionIndex = integrationActionIndex,
+                            onToggle = { viewModel.toggleStreamProvider(it.id) },
+                            onMoveUp = { viewModel.moveStreamProviderUp(it.id) },
+                            onMoveDown = { viewModel.moveStreamProviderDown(it.id) }
+                        )
                         "iptv" -> if (showIptvCategoriesSettings) {
                             IptvCategoriesSettings(
                                 playlistId = uiState.iptvSelectedPlaylistId ?: "",
@@ -2081,6 +2174,8 @@ fun SettingsScreen(
                             focusedActionIndex = catalogActionIndex,
                             onAddCatalog = { showCatalogInput = true },
                             onImportCatalogPack = { showCatalogPackInput = true },
+                            builtInCollectionsEnabled = uiState.builtInCollectionsEnabled,
+                            onToggleBuiltInCollections = { viewModel.toggleBuiltInCollections() },
                             onRenameCatalog = { catalog ->
                                 renameCatalogId = catalog.id
                                 renameCatalogTitle = catalog.title
@@ -2105,8 +2200,6 @@ fun SettingsScreen(
                             focusedIndex = if (activeZone == Zone.CONTENT) contentFocusIndex else -1,
                             focusedActionIndex = addonActionIndex,
                             onToggleAddon = { viewModel.toggleAddon(it) },
-                            onMoveAddonUp = { viewModel.moveAddonUp(it) },
-                            onMoveAddonDown = { viewModel.moveAddonDown(it) },
                             onDeleteAddon = { viewModel.removeAddon(it) },
                             onAddCustomAddon = { showCustomAddonInput = true },
                             onRefreshAddons = { viewModel.refreshAddons() }
@@ -2788,6 +2881,14 @@ fun SettingsScreen(
             TraktActivationModal(
                 verificationUrl = traktCode.verificationUrl,
                 userCode = traktCode.userCode,
+                onOpenUrl = {
+                    openExternalUrl(
+                        context,
+                        traktActivationUrl(traktCode.verificationUrl, traktCode.userCode)
+                    )
+                },
+                openUrlLabel = stringResource(R.string.settings_open_trakt_page),
+                showCopyCode = false,
                 onDismiss = { viewModel.cancelTraktAuth() }
             )
         }
@@ -3906,10 +4007,13 @@ private fun TraktActivationModal(
     onDismiss: () -> Unit,
     title: String? = null,
     instruction: String? = null,
-    onOpenUrl: (() -> Unit)? = null
+    onOpenUrl: (() -> Unit)? = null,
+    openUrlLabel: String? = null,
+    showCopyCode: Boolean = true
 ) {
     val resolvedTitle = title ?: stringResource(R.string.settings_connect_trakt)
     val resolvedInstruction = instruction ?: stringResource(R.string.settings_trakt_instruction, verificationUrl)
+    val resolvedOpenUrlLabel = openUrlLabel ?: stringResource(R.string.settings_open_auth_page)
     val accentColor = resolveAccentColor(fallback = Pink)
     val accentContentColor = contrastingContentColor(accentColor)
     val focusRequester = remember { FocusRequester() }
@@ -4022,28 +4126,30 @@ private fun TraktActivationModal(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = stringResource(R.string.settings_open_auth_page),
+                            text = resolvedOpenUrlLabel,
                             style = ArflixTypography.button,
                             color = accentContentColor
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    if (showCopyCode) {
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
-                            .clickable { clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(userCode)) }
-                            .padding(vertical = 12.dp, horizontal = 18.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(R.string.settings_copy_code),
-                            style = ArflixTypography.button,
-                            color = Color.White
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
+                                .clickable { clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(userCode)) }
+                                .padding(vertical = 12.dp, horizontal = 18.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_copy_code),
+                                style = ArflixTypography.button,
+                                color = Color.White
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -4342,7 +4448,8 @@ private fun MobileSettingsLayout(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                        .height(56.dp)
+                        .padding(horizontal = 24.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -4352,11 +4459,11 @@ private fun MobileSettingsLayout(
                         modifier = Modifier
                             .clickable { onNavigate(backTarget) }
                             .padding(end = 16.dp)
-                            .size(28.dp)
+                            .size(24.dp)
                     )
                     Text(
                         text = mobileCategoryTitle(displayedSubPage),
-                        style = ArflixTypography.heroTitle.copy(fontSize = 24.sp),
+                        style = ArflixTypography.heroTitle.copy(fontSize = 20.sp),
                         color = TextPrimary,
                         modifier = Modifier.weight(1f)
                     )
@@ -4403,6 +4510,7 @@ private fun MobileSettingsLayout(
  */
 @Composable
 private fun mobileCategoryTitle(page: String): String = when (page) {
+    "Stream Integrations" -> stringResource(R.string.settings_stream_integrations)
     "Playback & Controls" -> stringResource(R.string.settings_cat_playback_controls)
     "Audio & Subtitles" -> stringResource(R.string.settings_cat_audio_subtitles)
     "Appearance" -> stringResource(R.string.interface_label)
@@ -4487,6 +4595,7 @@ private fun MobileSettingsMainPage(
         item {
             MobileSettingsCategory(title = stringResource(R.string.settings_section_categories)) {
                 val categories = buildList {
+                    add("Stream Integrations" to Icons.Default.Tune)
                     add("Playback & Controls" to Icons.Default.PlayArrow)
                     add("Audio & Subtitles" to Icons.Default.Speaker)
                     add("Appearance" to Icons.Default.Palette)
@@ -4685,6 +4794,16 @@ private fun MobileSettingsSubPage(
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         when (page) {
+            "Stream Integrations" -> {
+                StreamIntegrationsScreen(
+                    items = uiState.streamProviderItems,
+                    searchMode = uiState.streamSearchMode,
+                    onSearchModeChange = { viewModel.setStreamSearchMode(it) },
+                    onToggle = { viewModel.toggleStreamProvider(it.id) },
+                    onMoveUp = { viewModel.moveStreamProviderUp(it.id) },
+                    onMoveDown = { viewModel.moveStreamProviderDown(it.id) }
+                )
+            }
             "Playback & Controls" -> {
                 MobileSettingsCategory(title = stringResource(R.string.settings_section_playback)) {
                     MobileSettingsRow(
@@ -4875,8 +4994,18 @@ private fun MobileSettingsSubPage(
                         toggleChecked = uiState.filterSubtitlesByLanguage,
                         isToggle = true,
                         isFocused = false,
-                        showDivider = false,
                         onClick = { viewModel.setFilterSubtitlesByLanguage(!uiState.filterSubtitlesByLanguage) }
+                    )
+                    MobileSettingsRow(
+                        icon = Icons.Default.Subtitles,
+                        title = stringResource(R.string.use_forced_subtitles),
+                        subtitle = stringResource(R.string.use_forced_subtitles_desc),
+                        value = stringResource(if (uiState.useForcedSubtitles) R.string.on else R.string.off),
+                        toggleChecked = uiState.useForcedSubtitles,
+                        isToggle = true,
+                        isFocused = false,
+                        showDivider = false,
+                        onClick = { viewModel.setUseForcedSubtitles(!uiState.useForcedSubtitles) }
                     )
                 }
                 MobileSettingsCategory(title = stringResource(R.string.ai_subtitles_section)) {
@@ -5036,8 +5165,6 @@ private fun MobileSettingsSubPage(
                     focusedIndex = -1,
                     focusedActionIndex = 0,
                     onToggleAddon = { viewModel.toggleAddon(it) },
-                    onMoveAddonUp = { viewModel.moveAddonUp(it) },
-                    onMoveAddonDown = { viewModel.moveAddonDown(it) },
                     onDeleteAddon = { viewModel.removeAddon(it) },
                     onAddCustomAddon = onAddCustomAddonClick,
                     onRefreshAddons = { viewModel.refreshAddons() }
@@ -5062,6 +5189,8 @@ private fun MobileSettingsSubPage(
                     focusedActionIndex = 0,
                     onAddCatalog = onAddCatalogClick,
                     onImportCatalogPack = onImportCatalogPackClick,
+                    builtInCollectionsEnabled = uiState.builtInCollectionsEnabled,
+                    onToggleBuiltInCollections = { viewModel.toggleBuiltInCollections() },
                     onRenameCatalog = onRenameCatalogClick,
                     onMoveCatalogUp = { viewModel.moveCatalogUp(it.id) },
                     onMoveCatalogDown = { viewModel.moveCatalogDown(it.id) },
@@ -5555,7 +5684,7 @@ private fun tvSettingsSidebarGroup(section: String): String {
     return when (section) {
         "accounts", "profiles" -> stringResource(R.string.settings_group_profile)
         "playback", "language", "subtitles", "ai_subtitles" -> stringResource(R.string.playback)
-        "iptv", "stremio", "catalogs", "home_server" -> stringResource(R.string.sources)
+        "iptv", "stremio", "catalogs", "home_server", "stream_integrations" -> stringResource(R.string.sources)
         else -> stringResource(R.string.settings_group_system)
     }
 }
@@ -5656,9 +5785,13 @@ private fun TvSettingsSectionHeader(
             verticalAlignment = Alignment.Bottom
         ) {
             Column(modifier = Modifier.weight(1f)) {
+                val isStreamIntegrations = section == "stream_integrations"
                 Text(
                     text = tvSettingsSectionTitle(section),
-                    style = ArflixTypography.sectionTitle.copy(fontSize = 24.sp),
+                    style = ArflixTypography.sectionTitle.copy(
+                        fontSize = if (isStreamIntegrations) 28.sp else 24.sp,
+                        fontWeight = if (isStreamIntegrations) FontWeight.Bold else FontWeight.SemiBold
+                    ),
                     color = TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -5666,7 +5799,9 @@ private fun TvSettingsSectionHeader(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = tvSettingsSectionDescription(section),
-                    style = ArflixTypography.caption.copy(fontSize = 13.sp),
+                    style = ArflixTypography.caption.copy(
+                        fontSize = if (isStreamIntegrations) 14.sp else 13.sp
+                    ),
                     color = TextSecondary.copy(alpha = 0.74f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -5833,6 +5968,7 @@ private fun tvSettingsSectionTitle(section: String): String {
         "appearance" -> stringResource(R.string.interface_label)
         "profiles" -> stringResource(R.string.profiles)
         "network" -> stringResource(R.string.network)
+        "stream_integrations" -> stringResource(R.string.settings_stream_integrations)
         "iptv" -> stringResource(R.string.iptv)
         "home_server" -> stringResource(R.string.settings_home_server)
         "catalogs" -> stringResource(R.string.catalogs)
@@ -5852,6 +5988,7 @@ private fun tvSettingsSectionDescription(section: String): String {
         "appearance" -> stringResource(R.string.settings_desc_appearance)
         "profiles" -> stringResource(R.string.settings_desc_profiles)
         "network" -> stringResource(R.string.settings_desc_network)
+        "stream_integrations" -> stringResource(R.string.settings_desc_stream_integrations)
         "iptv" -> stringResource(R.string.settings_desc_iptv)
         "home_server" -> stringResource(R.string.settings_desc_home_server)
         "catalogs" -> stringResource(R.string.settings_desc_catalogs)
@@ -5890,6 +6027,15 @@ private fun tvSettingsSectionPills(
         )
         "profiles" -> listOf(if (uiState.skipProfileSelection) stringResource(R.string.settings_pill_skip_on) else stringResource(R.string.settings_pill_picker_on))
         "network" -> listOf(stringResource(R.string.settings_pill_dns, uiState.dnsProvider), if (uiState.showLoadingStats) stringResource(R.string.settings_pill_stats_on) else stringResource(R.string.settings_pill_stats_off))
+        "stream_integrations" -> listOf(
+            if (uiState.streamSearchMode == StreamSearchMode.SEQUENTIAL) {
+                stringResource(R.string.settings_stream_search_mode_sequential)
+            } else {
+                stringResource(R.string.settings_stream_search_mode_parallel)
+            },
+            stringResource(R.string.settings_pill_integrations, uiState.streamProviderItems.count { it.isEnabled }),
+            stringResource(R.string.settings_profile_scoped)
+        )
         "iptv" -> listOf(
             stringResource(R.string.settings_pill_playlists, uiState.iptvPlaylists.size),
             stringResource(R.string.settings_pill_channels, formatCompactCount(uiState.iptvChannelCount)),
@@ -5947,6 +6093,15 @@ private fun tvSettingsPanelFacts(
             stringResource(R.string.settings_fact_loading_stats) to if (uiState.showLoadingStats) stringResource(R.string.on) else stringResource(R.string.off),
             stringResource(R.string.settings_fact_user_agent) to formatUserAgentPreview(uiState.customUserAgent, 40)
         )
+        "stream_integrations" -> listOf(
+            stringResource(R.string.settings_stream_search_mode) to if (uiState.streamSearchMode == StreamSearchMode.SEQUENTIAL) {
+                stringResource(R.string.settings_stream_search_mode_sequential)
+            } else {
+                stringResource(R.string.settings_stream_search_mode_parallel)
+            },
+            stringResource(R.string.settings_fact_integrations) to uiState.streamProviderItems.count { it.isEnabled }.toString(),
+            stringResource(R.string.settings_fact_scope) to stringResource(R.string.settings_current_profile)
+        )
         "iptv" -> listOf(
             stringResource(R.string.settings_fact_playlists) to "${uiState.iptvPlaylists.size}/$MAX_IPTV_PLAYLISTS",
             stringResource(R.string.settings_fact_channels) to formatCompactCount(uiState.iptvChannelCount),
@@ -6003,6 +6158,16 @@ private fun tvSettingsFocusedHelp(section: String, focusedIndex: Int): TvSetting
         "appearance" -> TvSettingsHelp(stringResource(R.string.interface_label), stringResource(R.string.settings_help_interface_desc))
         "profiles" -> TvSettingsHelp(stringResource(R.string.profiles), stringResource(R.string.settings_help_profiles_desc))
         "network" -> TvSettingsHelp(stringResource(R.string.network), stringResource(R.string.settings_desc_network))
+        "stream_integrations" -> when (focusedIndex) {
+            0 -> TvSettingsHelp(
+                stringResource(R.string.settings_stream_search_mode),
+                stringResource(R.string.settings_stream_search_mode_sequential_desc)
+            )
+            else -> TvSettingsHelp(
+                stringResource(R.string.settings_stream_integrations),
+                stringResource(R.string.settings_desc_stream_integrations)
+            )
+        }
         "iptv" -> when (focusedIndex) {
             0 -> TvSettingsHelp(stringResource(R.string.settings_help_add_playlist), stringResource(R.string.settings_help_add_playlist_desc))
             1 -> TvSettingsHelp(stringResource(R.string.settings_help_stalker), stringResource(R.string.settings_help_stalker_desc))
@@ -6106,6 +6271,8 @@ private fun TvGeneralSettingsRows(
     onSubtitleStylizedToggle: () -> Unit = {},
     filterSubtitlesByLanguage: Boolean = true,
     onFilterSubtitlesByLanguageToggle: (Boolean) -> Unit = {},
+    useForcedSubtitles: Boolean = false,
+    onUseForcedSubtitlesToggle: (Boolean) -> Unit = {},
     onTrailerAutoPlayToggle: (Boolean) -> Unit = {},
     onTrailerSoundEnabledToggle: (Boolean) -> Unit = {},
     trailerInCards: Boolean = true,
@@ -6181,6 +6348,7 @@ private fun TvGeneralSettingsRows(
                 42 -> SettingsRow(Icons.Default.Subtitles, stringResource(R.string.subtitle_font), stringResource(R.string.subtitle_font_desc), subtitleFont, focusedIndex == localIndex, onSubtitleFontClick, Modifier.settingsFocusSlot(localIndex))
                 8 -> SettingsToggleRow(stringResource(R.string.subtitle_stylized), stringResource(R.string.subtitle_stylized_desc), subtitleStylized, focusedIndex == localIndex, { onSubtitleStylizedToggle() }, Modifier.settingsFocusSlot(localIndex))
                 9 -> SettingsToggleRow(stringResource(R.string.filter_subtitles), stringResource(R.string.filter_subtitles_desc), filterSubtitlesByLanguage, focusedIndex == localIndex, onFilterSubtitlesByLanguageToggle, Modifier.settingsFocusSlot(localIndex))
+                45 -> SettingsToggleRow(stringResource(R.string.use_forced_subtitles), stringResource(R.string.use_forced_subtitles_desc), useForcedSubtitles, focusedIndex == localIndex, onUseForcedSubtitlesToggle, Modifier.settingsFocusSlot(localIndex))
                 10 -> SettingsToggleRow(stringResource(R.string.auto_play_next_title), stringResource(R.string.auto_play_desc), autoPlayNext, focusedIndex == localIndex, onAutoPlayToggle, Modifier.settingsFocusSlot(localIndex))
                 11 -> SettingsToggleRow(stringResource(R.string.autoplay), stringResource(R.string.autoplay_desc), autoPlaySingleSource, focusedIndex == localIndex, onAutoPlaySingleSourceToggle, Modifier.settingsFocusSlot(localIndex))
                 12 -> SettingsRow(Icons.Default.HighQuality, stringResource(R.string.auto_play_min_quality), stringResource(R.string.auto_play_quality_desc), autoPlayMinQuality, focusedIndex == localIndex, onAutoPlayMinQualityClick, Modifier.settingsFocusSlot(localIndex))
@@ -8600,6 +8768,8 @@ private fun CatalogsSettings(
     focusedActionIndex: Int,
     onAddCatalog: () -> Unit,
     onImportCatalogPack: () -> Unit,
+    builtInCollectionsEnabled: Boolean,
+    onToggleBuiltInCollections: () -> Unit,
     onRenameCatalog: (CatalogConfig) -> Unit,
     onMoveCatalogUp: (CatalogConfig) -> Unit,
     onMoveCatalogDown: (CatalogConfig) -> Unit,
@@ -8629,12 +8799,13 @@ private fun CatalogsSettings(
             }
             MobileSettingsCategory(title = stringResource(R.string.settings_section_add_catalog)) {
                 MobileSettingsRow(icon = Icons.Default.Add, title = stringResource(R.string.add_catalog), subtitle = stringResource(R.string.add_catalog_desc), value = "", isFocused = false, showDivider = true, onClick = onAddCatalog)
-                MobileSettingsRow(icon = Icons.Default.Widgets, title = stringResource(R.string.settings_catalog_pack_import_title), subtitle = stringResource(R.string.settings_catalog_pack_import_desc), value = "", isFocused = false, showDivider = false, onClick = onImportCatalogPack)
+                MobileSettingsRow(icon = Icons.Default.Widgets, title = stringResource(R.string.settings_catalog_pack_import_title), subtitle = stringResource(R.string.settings_catalog_pack_import_desc), value = "", isFocused = false, showDivider = true, onClick = onImportCatalogPack)
+                MobileSettingsRow(icon = if (builtInCollectionsEnabled) Icons.Default.Visibility else Icons.Default.VisibilityOff, title = stringResource(R.string.settings_builtin_collections_title), subtitle = stringResource(R.string.settings_builtin_collections_desc), value = stringResource(if (builtInCollectionsEnabled) R.string.on else R.string.off), isFocused = false, showDivider = false, onClick = onToggleBuiltInCollections)
             }
             if (catalogs.isNotEmpty()) {
                 MobileSettingsCategory(title = stringResource(R.string.settings_section_my_catalogs)) {
                     catalogs.forEachIndexed { index, catalog ->
-                        val title = if (catalog.isPreinstalled) { when (catalog.kind) { CatalogKind.COLLECTION -> stringResource(R.string.settings_title_builtin_collection, catalog.title); CatalogKind.COLLECTION_RAIL -> stringResource(R.string.settings_title_builtin_rail, catalog.title); else -> stringResource(R.string.settings_title_builtin, catalog.title) } } else catalog.title
+                        val title = if (catalog.isPreinstalled && catalog.collectionRailKey == null) { when (catalog.kind) { CatalogKind.COLLECTION -> stringResource(R.string.settings_title_builtin_collection, catalog.title); CatalogKind.COLLECTION_RAIL -> stringResource(R.string.settings_title_builtin_rail, catalog.title); else -> stringResource(R.string.settings_title_builtin, catalog.title) } } else catalog.title
                         val currentPackId = catalog.packId
                         val prevPackId = if (index > 0) catalogs[index - 1].packId else null
                         val showPackHeader = currentPackId != null && currentPackId != prevPackId && catalog.isBulkDeletablePack
@@ -8643,7 +8814,7 @@ private fun CatalogsSettings(
                         val subtitle = run {
                             val baseSubtitle = when {
                                 catalog.kind == CatalogKind.COLLECTION_RAIL -> {
-                                    val group = catalog.collectionGroup?.name?.lowercase()?.replaceFirstChar { it.uppercase() } ?: collectionFallback
+                                    val group = (if (catalog.collectionRailKey != null) catalog.packName else catalog.collectionGroup?.name?.lowercase()?.replaceFirstChar { it.uppercase() }) ?: collectionFallback
                                     stringResource(R.string.settings_group_rail, group)
                                 }
                                 catalog.kind == CatalogKind.COLLECTION -> {
@@ -8763,8 +8934,10 @@ private fun CatalogsSettings(
             Spacer(modifier = Modifier.height(16.dp))
             SettingsRow(icon = Icons.Default.Widgets, title = stringResource(R.string.settings_catalog_pack_import_title), subtitle = stringResource(R.string.settings_catalog_pack_import_desc), value = stringResource(R.string.settings_catalog_pack_import_badge), isFocused = focusedIndex == 1, onClick = onImportCatalogPack, modifier = Modifier.settingsFocusSlot(1))
             Spacer(modifier = Modifier.height(16.dp))
+            SettingsRow(icon = if (builtInCollectionsEnabled) Icons.Default.Visibility else Icons.Default.VisibilityOff, title = stringResource(R.string.settings_builtin_collections_title), subtitle = stringResource(R.string.settings_builtin_collections_desc), value = stringResource(if (builtInCollectionsEnabled) R.string.on else R.string.off), isFocused = focusedIndex == 2, onClick = onToggleBuiltInCollections, modifier = Modifier.settingsFocusSlot(2))
+            Spacer(modifier = Modifier.height(16.dp))
             catalogs.forEachIndexed { index, catalog ->
-                val rowFocusIndex = index + 2; val isRowFocused = focusedIndex == rowFocusIndex
+                val rowFocusIndex = index + 3; val isRowFocused = focusedIndex == rowFocusIndex
                 val currentPackId = catalog.packId
                 val prevPackId = if (index > 0) catalogs[index - 1].packId else null
                 val showPackHeader = currentPackId != null && currentPackId != prevPackId && catalog.isBulkDeletablePack
@@ -8793,13 +8966,13 @@ private fun CatalogsSettings(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                val title = if (catalog.isPreinstalled) { when (catalog.kind) { CatalogKind.COLLECTION -> stringResource(R.string.settings_title_builtin_collection, catalog.title); CatalogKind.COLLECTION_RAIL -> stringResource(R.string.settings_title_builtin_rail, catalog.title); else -> stringResource(R.string.settings_title_builtin, catalog.title) } } else catalog.title
+                val title = if (catalog.isPreinstalled && catalog.collectionRailKey == null) { when (catalog.kind) { CatalogKind.COLLECTION -> stringResource(R.string.settings_title_builtin_collection, catalog.title); CatalogKind.COLLECTION_RAIL -> stringResource(R.string.settings_title_builtin_rail, catalog.title); else -> stringResource(R.string.settings_title_builtin, catalog.title) } } else catalog.title
                 val collectionFallback = stringResource(R.string.settings_collection_fallback)
                 val addonFallback = stringResource(R.string.settings_source_addon)
                 val subtitle = run {
                     val baseSubtitle = when {
                         catalog.kind == CatalogKind.COLLECTION_RAIL -> {
-                            val group = catalog.collectionGroup?.name?.lowercase()?.replaceFirstChar { it.uppercase() } ?: collectionFallback
+                            val group = (if (catalog.collectionRailKey != null) catalog.packName else catalog.collectionGroup?.name?.lowercase()?.replaceFirstChar { it.uppercase() }) ?: collectionFallback
                             stringResource(R.string.settings_group_rail, group)
                         }
                         catalog.kind == CatalogKind.COLLECTION -> {
@@ -8924,8 +9097,6 @@ private fun StremioAddonsSettings(
     focusedIndex: Int = -1,
     focusedActionIndex: Int = 0,
     onToggleAddon: (String) -> Unit = {},
-    onMoveAddonUp: (String) -> Unit = {},
-    onMoveAddonDown: (String) -> Unit = {},
     onDeleteAddon: (String) -> Unit = {},
     onAddCustomAddon: () -> Unit = {},
     onRefreshAddons: () -> Unit = {}
@@ -8968,8 +9139,6 @@ private fun StremioAddonsSettings(
                 } else {
                     addons.forEachIndexed { index, addon ->
                         val canDelete = !(addon.id == "opensubtitles" && addon.type == com.arflix.tv.data.model.AddonType.SUBTITLE)
-                        val canMoveUp = index > 0
-                        val canMoveDown = index < addons.lastIndex
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable { onToggleAddon(addon.id) }.padding(horizontal = 16.dp, vertical = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -8984,36 +9153,6 @@ private fun StremioAddonsSettings(
                             // Toggle switch
                             Box(modifier = Modifier.width(44.dp).height(24.dp).background(color = if (addon.isEnabled) SuccessGreen else Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(13.dp)).padding(3.dp), contentAlignment = if (addon.isEnabled) Alignment.CenterEnd else Alignment.CenterStart) {
                                 Box(modifier = Modifier.size(18.dp).background(color = Color.White, shape = RoundedCornerShape(10.dp)))
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clickable(enabled = canMoveUp) { onMoveAddonUp(addon.id) }
-                                    .background(Color.White.copy(alpha = if (canMoveUp) 0.1f else 0.04f), RoundedCornerShape(8.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.ArrowUpward,
-                                    contentDescription = stringResource(R.string.settings_cd_move_addon_up),
-                                    tint = TextSecondary.copy(alpha = if (canMoveUp) 1f else 0.35f),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clickable(enabled = canMoveDown) { onMoveAddonDown(addon.id) }
-                                    .background(Color.White.copy(alpha = if (canMoveDown) 0.1f else 0.04f), RoundedCornerShape(8.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.ArrowDownward,
-                                    contentDescription = stringResource(R.string.settings_cd_move_addon_down),
-                                    tint = TextSecondary.copy(alpha = if (canMoveDown) 1f else 0.35f),
-                                    modifier = Modifier.size(18.dp)
-                                )
                             }
                             if (canDelete) {
                                 Spacer(modifier = Modifier.width(12.dp))
@@ -9044,8 +9183,6 @@ private fun StremioAddonsSettings(
                         focusedAction = if (focusedIndex == index) focusedActionIndex else -1,
                         canDelete = canDelete,
                         onToggle = { onToggleAddon(addon.id) },
-                        onMoveUp = { onMoveAddonUp(addon.id) },
-                        onMoveDown = { onMoveAddonDown(addon.id) },
                         onDelete = { onDeleteAddon(addon.id) },
                         modifier = Modifier.settingsFocusSlot(index)
                     )
@@ -9126,15 +9263,11 @@ private fun AddonRow(
     focusedAction: Int = -1,
     canDelete: Boolean = true,
     onToggle: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isToggleFocused = isFocused && focusedAction == 0
-    val isMoveUpFocused = isFocused && focusedAction == 1
-    val isMoveDownFocused = isFocused && focusedAction == 2
-    val isDeleteFocused = canDelete && isFocused && focusedAction == 3
+    val isDeleteFocused = canDelete && isFocused && focusedAction == 1
     val isEnabled = addon.isEnabled
     val focusRingColor = resolveAccentColor(fallback = Pink)
 
@@ -9240,18 +9373,6 @@ private fun AddonRow(
                     )
                 }
             }
-
-            CatalogActionChip(
-                icon = Icons.Default.ArrowUpward,
-                isFocused = isMoveUpFocused,
-                onClick = onMoveUp
-            )
-
-            CatalogActionChip(
-                icon = Icons.Default.ArrowDownward,
-                isFocused = isMoveDownFocused,
-                onClick = onMoveDown
-            )
 
             if (canDelete) {
                 CatalogActionChip(

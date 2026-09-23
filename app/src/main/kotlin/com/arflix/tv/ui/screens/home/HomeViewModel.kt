@@ -19,6 +19,7 @@ import com.arflix.tv.data.model.CatalogConfig
 import com.arflix.tv.data.model.CatalogKind
 import com.arflix.tv.data.model.CatalogSourceType
 import com.arflix.tv.data.model.CollectionGroupKind
+import com.arflix.tv.data.model.collectionRailKeyOrGroup
 import com.arflix.tv.data.model.MediaItem
 import com.arflix.tv.data.model.MediaType
 import com.arflix.tv.data.model.SportsAddonCapabilities
@@ -149,8 +150,8 @@ internal fun orderCategoriesBySavedCatalogs(
     for (cfg in savedCatalogs) {
         if (cfg.kind == CatalogKind.COLLECTION) continue
         val catId = if (cfg.kind == CatalogKind.COLLECTION_RAIL) {
-            val group = cfg.collectionGroup ?: continue
-            "collection_row_${group.name.lowercase(Locale.US)}"
+            val railKey = cfg.collectionRailKeyOrGroup ?: continue
+            "collection_row_${railKey.lowercase(Locale.US)}"
         } else {
             cfg.id
         }
@@ -968,8 +969,8 @@ class HomeViewModel @Inject constructor(
         categoryId == SportsAddonCapabilities.SPORTS_CATEGORY_ROW_ID ||
             categoryId == SportsAddonCapabilities.POPULAR_LIVE_TV_ROW_ID
 
-    private fun collectionRowId(group: CollectionGroupKind): String {
-        return "collection_row_${group.name.lowercase(Locale.US)}"
+    private fun collectionRowId(railKey: String): String {
+        return "collection_row_${railKey.lowercase(Locale.US)}"
     }
 
     private fun hasRealItems(category: Category?): Boolean {
@@ -2826,14 +2827,14 @@ class HomeViewModel @Inject constructor(
                         if (!isCollectionRailConfig(cfg) || !CollectionTemplateManifest.isValidCollectionConfig(cfg)) {
                             return@mapNotNull null
                         }
-                        val group = cfg.collectionGroup ?: return@mapNotNull null
+                        val railKey = cfg.collectionRailKeyOrGroup ?: return@mapNotNull null
                         val items = collectionConfigs
-                            .filter { it.collectionGroup == group }
+                            .filter { it.collectionRailKeyOrGroup == railKey }
                         if (items.isEmpty()) {
                             null
                         } else {
                             HomeCollectionRow(
-                                id = collectionRowId(group),
+                                id = collectionRowId(railKey),
                                 title = cfg.title,
                                 items = items
                             )
@@ -2846,8 +2847,8 @@ class HomeViewModel @Inject constructor(
                     when {
                         isCollectionTileConfig(cfg) -> null
                         isCollectionRailConfig(cfg) -> {
-                            val group = cfg.collectionGroup ?: return@mapNotNull null
-                            collectionCategoryById[collectionRowId(group)]?.let { toCollectionCategory(it) }
+                            val railKey = cfg.collectionRailKeyOrGroup ?: return@mapNotNull null
+                            collectionCategoryById[collectionRowId(railKey)]?.let { toCollectionCategory(it) }
                         }
                         else -> categoryById[cfg.id]
                     }
@@ -3299,10 +3300,10 @@ class HomeViewModel @Inject constructor(
         val collectionRows = savedCatalogs.mapNotNull { cfg ->
             if (!isCollectionRailConfig(cfg) || !CollectionTemplateManifest.isValidCollectionConfig(cfg)) null
             else {
-                val group = cfg.collectionGroup ?: return@mapNotNull null
-                val items = collectionConfigs.filter { it.collectionGroup == group }
+                val railKey = cfg.collectionRailKeyOrGroup ?: return@mapNotNull null
+                val items = collectionConfigs.filter { it.collectionRailKeyOrGroup == railKey }
                 if (items.isEmpty()) null
-                else HomeCollectionRow(id = collectionRowId(group), title = cfg.title, items = items)
+                else HomeCollectionRow(id = collectionRowId(railKey), title = cfg.title, items = items)
             }
         }
         _uiState.value = _uiState.value.copy(collectionRows = collectionRows)
@@ -3821,7 +3822,7 @@ class HomeViewModel @Inject constructor(
             rows.add(
                 Category(
                     id = if (isCollectionRailConfig(cfg)) {
-                        collectionRowId(cfg.collectionGroup ?: return@forEach)
+                        collectionRowId(cfg.collectionRailKeyOrGroup ?: return@forEach)
                     } else {
                         cfg.id
                     },
@@ -4002,18 +4003,20 @@ class HomeViewModel @Inject constructor(
      * This is the critical fix for the "addon added on phone but not on TV" symptom:
      * when the TV comes back from background, the WebSocket may be dead, so we do
      * an explicit pull to catch any account_sync_state changes that were missed.
-     * Throttled to at most once per 10 seconds to avoid excessive pulls on rapid
+     * Throttled to at most once per 30 seconds to avoid excessive pulls on rapid
      * activity transitions (e.g., player back → home → details → home).
      */
     @Volatile
     private var lastCloudPullTimestamp = 0L
-    private val cloudPullThrottleMs = 10_000L
+    private val cloudPullThrottleMs = 30_000L
+    private var cloudPullJob: Job? = null
 
     fun pullCloudStateOnResume() {
-        val now = System.currentTimeMillis()
-        if (now - lastCloudPullTimestamp < cloudPullThrottleMs) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (cloudPullJob?.isActive == true) return
+        if (lastCloudPullTimestamp != 0L && now - lastCloudPullTimestamp < cloudPullThrottleMs) return
         lastCloudPullTimestamp = now
-        viewModelScope.launch(Dispatchers.IO) {
+        cloudPullJob = viewModelScope.launch(Dispatchers.IO) {
             // Give the local Home/CW snapshots first access to IO and the main
             // thread. Cloud payloads can exceed 1 MB and used to starve startup.
             if (_uiState.value.categories.isEmpty() || isStartupSettling()) {
@@ -4047,6 +4050,7 @@ class HomeViewModel @Inject constructor(
                     restartContinueWatchingFetch()
                 }
             }.onFailure {
+                if (it is CancellationException) throw it
                 android.util.Log.w("HomeViewModel", "ON_RESUME cloud pull failed: ${it.message}")
             }
         }

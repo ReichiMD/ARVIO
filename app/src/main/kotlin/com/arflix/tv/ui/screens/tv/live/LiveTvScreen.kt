@@ -43,6 +43,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -558,6 +559,10 @@ fun LiveTvScreen(
     // the instant the user backs out — matters on a long-running IPTV flow
     // where the ViewModel pushes EPG refreshes every few seconds.
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val installedSportsAddons by viewModel.sportsAddons.installedAddons.collectAsStateWithLifecycle(initialValue = emptyList())
+    val sportsAddonInstallations = remember(installedSportsAddons) {
+        installedSportsAddons.filter { com.arflix.tv.data.model.sportsEventCatalogs(it).isNotEmpty() }
+    }
     val currentUiState by rememberUpdatedState(state)
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
@@ -568,14 +573,6 @@ fun LiveTvScreen(
     val deviceType = LocalDeviceType.current
     val isTouchDevice = deviceType.isTouchDevice()
     val useTouchRail = isTouchDevice && configuration.smallestScreenWidthDp < 600
-    val miniPlayerLayout = liveTvMiniPlayerLayout(
-        isTouchDevice = isTouchDevice,
-        smallestScreenWidthDp = configuration.smallestScreenWidthDp,
-        screenWidthDp = configuration.screenWidthDp,
-        screenHeightDp = configuration.screenHeightDp,
-    )
-    val compactTouchLayout = isTouchDevice && configuration.screenWidthDp < 900
-    val landscapeCompactMiniPlayer = miniPlayerLayout == LiveTvMiniPlayerLayout.LANDSCAPE_COMPACT
     val showTopBar = !isTouchDevice
     val contentTopPadding = if (showTopBar) LiveDims.ContentTopInset else 0.dp
     val coroutineScope = rememberCoroutineScope()
@@ -1910,6 +1907,12 @@ fun LiveTvScreen(
 
     var categoryDrawerOpen by rememberSaveable { mutableStateOf(true) }
     var sportsSelected by rememberSaveable(currentProfile?.id) { mutableStateOf(false) }
+    LaunchedEffect(sportsAddonInstallations, state.isConfigured) {
+        if (!state.isConfigured && sportsAddonInstallations.isNotEmpty()) {
+            sportsSelected = true
+            if (isTouchDevice) currentMode = LiveTvStartup.LiveTvMode.Guide
+        }
+    }
     val currentOnSubScreenChanged by rememberUpdatedState(onSubScreenChanged)
     val isTvSubScreen = isTouchDevice && (currentMode != LiveTvStartup.LiveTvMode.GroupHome || sportsSelected)
     LaunchedEffect(isTvSubScreen) {
@@ -1934,6 +1937,21 @@ fun LiveTvScreen(
     var sportsCatalogueLoading by remember { mutableStateOf(false) }
     var sportsError by remember { mutableStateOf(false) }
     var sportsRefresh by remember { mutableIntStateOf(0) }
+    var addonEvents by remember(currentProfile?.id, sportsAddonInstallations) { mutableStateOf(emptyList<com.arflix.tv.data.model.SportsAddonEvent>()) }
+    var addonLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(currentProfile?.id, sportsAddonInstallations, sportsRefresh) {
+        while (sportsAddonInstallations.isNotEmpty()) {
+            addonLoading = true
+            try {
+                val refreshing = addonEvents.isNotEmpty()
+                val refreshed = viewModel.sportsAddons.load(sportsAddonInstallations) {
+                    if (!refreshing) addonEvents = it
+                }
+                addonEvents = refreshed
+            } finally { addonLoading = false }
+            delay(120_000)
+        }
+    }
     var completedSportsScan by remember(currentProfile?.id, selectedProviderId, hiddenGroupSet, restrictedGroupSet) {
         mutableStateOf<List<Any>?>(null)
     }
@@ -1943,11 +1961,10 @@ fun LiveTvScreen(
             sportsMetadataLoading = true
             try {
             var metadata = viewModel.cachedSportsMetadata()
-            var addonArtwork = sportsArtwork.filter { !it.isScheduleMetadata }
+            val addonArtwork = emptyList<com.arflix.tv.data.model.SportsEventArtwork>()
             sportsArtwork = metadata + addonArtwork
             kotlinx.coroutines.coroutineScope {
                 launch { metadata = viewModel.loadSportsMetadata(); sportsArtwork = metadata + addonArtwork }
-                launch { addonArtwork = viewModel.loadSportsAddonArtwork(); sportsArtwork = metadata + addonArtwork }
             }
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (_: Exception) { }
@@ -1992,10 +2009,10 @@ fun LiveTvScreen(
             System.err.println("[Sports-Restore] events=${restoredSportsCatalogue.size} elapsed=${android.os.SystemClock.elapsedRealtime() - started}ms")
         }
     }
-    LaunchedEffect(sportsEvents, sportsArtwork, broadcastCandidates) {
+    LaunchedEffect(sportsEvents, sportsArtwork, broadcastCandidates, addonEvents) {
         sportsCatalogueLoading = true
         try { illustratedSportsEvents = withContext(Dispatchers.Default) {
-            buildSportsCatalogue(sportsEvents, sportsArtwork, broadcastCandidates, guideClockMillis)
+            attachSportsAddonSources(buildSportsCatalogue(sportsEvents, sportsArtwork, broadcastCandidates, guideClockMillis), addonEvents, guideClockMillis, sportsArtwork)
         }
         System.err.println("[Sports-Catalogue] guide=${sportsEvents.size} metadata=${sportsArtwork.size} broadcasters=${broadcastCandidates.size} available=${illustratedSportsEvents.count { it.hasChannels(guideClockMillis) }} illustrated=${illustratedSportsEvents.count { it.hasChannels(guideClockMillis) && it.hasEventArtwork }}")
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
@@ -2142,9 +2159,13 @@ fun LiveTvScreen(
     // Show the guide as soon as the schedule scan has data. Metadata, channel
     // matching and artwork are enrichment passes and must not keep a usable
     // schedule behind a full-page spinner.
-    val sportsWorkLoading = sportsLoading || sportsMetadataLoading || sportsBroadcastLoading || sportsCatalogueLoading
-    val sportsDisplayEvents = if (restoredSportsCatalogue.isNotEmpty() && (sportsWorkLoading || completedSportsScan == null)) restoredSportsCatalogue
+    val sportsWorkLoading = sportsLoading || sportsMetadataLoading || sportsBroadcastLoading || sportsCatalogueLoading || addonLoading
+    val sportsDisplayEventsRaw = if (restoredSportsCatalogue.isNotEmpty() && (sportsWorkLoading || completedSportsScan == null) && illustratedSportsEvents.isEmpty()) restoredSportsCatalogue
         else illustratedSportsEvents.ifEmpty { sportsEvents }
+    val sportsDisplayEvents = remember(sportsDisplayEventsRaw, sportsAddonInstallations) {
+        val allowed = sportsAddonInstallations.map { com.arflix.tv.data.model.sportsAddonInstallation(it) }.toSet()
+        sportsDisplayEventsRaw.map { it.copy(addonSources = it.addonSources.filter { source -> source.installation in allowed }) }
+    }
     val sportsCatalogueComplete = completedSportsScan != null && !sportsLoading && !sportsBroadcastLoading && !sportsCatalogueLoading
     LaunchedEffect(illustratedSportsEvents, sportsCatalogueComplete, sportsScheduleKey) {
         if (sportsCatalogueComplete && illustratedSportsEvents.any { it.hasChannels(guideClockMillis) }) {
@@ -2788,6 +2809,18 @@ fun LiveTvScreen(
         hudPokeSignal++
     }
 
+    fun playAddonSource(event: com.arflix.tv.data.model.SportsAddonEvent, stream: com.arflix.tv.data.repository.SportsAddonStream) {
+        if (sportsAddonInstallations.none { com.arflix.tv.data.model.sportsAddonInstallation(it) == event.installation }) return
+        if (stream.external) {
+            runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(stream.url))) }
+            return
+        }
+        val channel = IptvChannel("sports-addon:${event.key}", event.title, stream.url, event.addonName,
+            logo = event.artwork, requestHeaders = stream.headers).enrichForFastStartup(0)
+        retainedPlayingChannel = channel
+        playLiveFullscreen(channel)
+    }
+
     /**
      * Get the current live programme for a channel, using the same guide data
      * the EPG grid is already displaying. This is the direct source — no identity-
@@ -3413,7 +3446,7 @@ fun LiveTvScreen(
             resolvedMimeType = target.mimeType,
         )
         // Persist "recent" as soon as playback starts.
-        playingChannelId?.let { id ->
+        playingChannelId?.takeUnless { it.startsWith("sports-addon:") }?.let { id ->
             val set = LinkedHashSet(recents.value)
             set.remove(id); set.add(id)
             while (set.size > 40) set.remove(set.first())
@@ -3606,8 +3639,8 @@ fun LiveTvScreen(
         }
     }
 
-    LaunchedEffect(state.isConfigured, visibleEnrichedState.value) {
-        if (!isTouchDevice && !state.isConfigured && visibleEnrichedState.value === EnrichedChannels.Empty) {
+    LaunchedEffect(state.isConfigured, visibleEnrichedState.value, sportsAddonInstallations) {
+        if (!isTouchDevice && !state.isConfigured && sportsAddonInstallations.isEmpty() && visibleEnrichedState.value === EnrichedChannels.Empty) {
             delay(100L)
             runCatching { emptyStateButtonFocus.requestFocus() }
         }
@@ -3674,7 +3707,7 @@ fun LiveTvScreen(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(LiveColors.Bg)
@@ -3796,7 +3829,7 @@ fun LiveTvScreen(
                                         true
                                     }
                                     Key.DirectionDown -> {
-                                        if (!state.isConfigured && state.snapshot.channels.isEmpty()) {
+                                        if (!state.isConfigured && state.snapshot.channels.isEmpty() && sportsAddonInstallations.isEmpty()) {
                                             focusZone = LiveTvFocusZone.CATEGORY_LIST
                                             runCatching { emptyStateButtonFocus.requestFocus() }
                                         } else {
@@ -3834,13 +3867,21 @@ fun LiveTvScreen(
                 }
             )
     ) {
+        val miniPlayerLayout = liveTvMiniPlayerLayout(
+            isTouchDevice = isTouchDevice,
+            availableWidthDp = maxWidth.value.toInt(),
+            availableHeightDp = maxHeight.value.toInt(),
+        )
+        val compactTouchLayout = isTouchDevice && maxWidth < 900.dp
+        val landscapeCompactMiniPlayer =
+            miniPlayerLayout == LiveTvMiniPlayerLayout.LANDSCAPE_COMPACT
         LiveTvRenderBoundary {
             // Content area starts below the translucent top bar so it doesn't get
             // overwritten.
             if (isFullScreen) {
                 // Full-screen playback only — no grid rendered so the single
                 // PlayerView owns ExoPlayer.
-            } else if (!state.isConfigured && state.snapshot.channels.isEmpty()) {
+            } else if (!state.isConfigured && state.snapshot.channels.isEmpty() && sportsAddonInstallations.isEmpty()) {
             EmptyStatePane(
                 message = stringResource(R.string.live_empty_no_playlist),
                 actionLabel = stringResource(R.string.live_btn_open_settings),
@@ -3953,7 +3994,7 @@ fun LiveTvScreen(
                         focusedChannelId = null
                         epgPrefetchAnchorId = null
                     },
-                    compactLayout = true,
+                    compactLayout = miniPlayerLayout != LiveTvMiniPlayerLayout.STANDARD,
                     landscapeCompact = landscapeCompactMiniPlayer,
                     playerActive = miniPlayerActive,
                     variantCount = playingChannel?.let { variantCountFor(it, variantGroups) } ?: 1,
@@ -4040,7 +4081,7 @@ fun LiveTvScreen(
                                 onFullscreenClick = openFullScreenPlayer,
                                 variantCount = playingChannel?.let { variantCountFor(it, variantGroups) } ?: 1,
                                 onOpenVariants = playingChannel?.let { channel -> { openVariantPicker(channel) } },
-                                compact = true,
+                                compact = miniPlayerLayout != LiveTvMiniPlayerLayout.STANDARD,
                                 landscapeCompact = landscapeCompactMiniPlayer,
                                 playerActive = miniPlayerActive,
                                 modifier = Modifier.fillMaxWidth(),
@@ -4057,6 +4098,8 @@ fun LiveTvScreen(
                             currentMode = LiveTvStartup.LiveTvMode.GroupHome
                         },
                         onPlay = { channel -> playLiveFullscreen(channel.enrich(0)) },
+                        resolveAddon = viewModel.sportsAddons::resolve,
+                        onPlayAddon = ::playAddonSource,
                         sidebarOpen = false,
                         showHeader = false,
                         onOpenSearch = { searchOpen = true },
@@ -4217,6 +4260,8 @@ fun LiveTvScreen(
                         onContentFocused = { focusZone = LiveTvFocusZone.SPORTS; categoryDrawerOpen = false },
                         onOpenCategories = { openCategoryDrawer() },
                         onPlay = { channel -> playLiveFullscreen(channel.enrich(0)) },
+                        resolveAddon = viewModel.sportsAddons::resolve,
+                        onPlayAddon = ::playAddonSource,
                         modifier = Modifier.weight(1f),
                         sidebarOpen = sidebarExpanded,
                     ) else EpgGrid(

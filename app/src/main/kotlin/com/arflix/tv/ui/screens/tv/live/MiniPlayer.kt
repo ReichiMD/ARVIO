@@ -71,6 +71,21 @@ internal enum class LiveTvMiniPlayerLayout {
     LANDSCAPE_COMPACT,
 }
 
+internal enum class MiniPlayerVideoSizeMode {
+    STANDARD,
+    FULL_WIDTH_16_9,
+    LANDSCAPE_COMPACT,
+}
+
+internal fun miniPlayerVideoSizeMode(
+    compact: Boolean,
+    landscapeCompact: Boolean,
+): MiniPlayerVideoSizeMode = when {
+    landscapeCompact -> MiniPlayerVideoSizeMode.LANDSCAPE_COMPACT
+    compact -> MiniPlayerVideoSizeMode.FULL_WIDTH_16_9
+    else -> MiniPlayerVideoSizeMode.STANDARD
+}
+
 internal data class LandscapePhoneMiniPlayerSpec(
     val videoWidthDp: Int,
     val videoHeightDp: Int,
@@ -92,14 +107,22 @@ internal fun landscapePhoneMiniPlayerSpec(): LandscapePhoneMiniPlayerSpec =
 
 internal fun liveTvMiniPlayerLayout(
     isTouchDevice: Boolean,
-    smallestScreenWidthDp: Int,
-    screenWidthDp: Int,
-    screenHeightDp: Int,
+    availableWidthDp: Int,
+    availableHeightDp: Int,
 ): LiveTvMiniPlayerLayout = when {
-    !isTouchDevice || smallestScreenWidthDp >= 600 -> LiveTvMiniPlayerLayout.STANDARD
-    screenWidthDp > screenHeightDp -> LiveTvMiniPlayerLayout.LANDSCAPE_COMPACT
-    else -> LiveTvMiniPlayerLayout.PORTRAIT_STACKED
+    !isTouchDevice -> LiveTvMiniPlayerLayout.STANDARD
+    availableWidthDp > availableHeightDp && availableHeightDp < 600 ->
+        LiveTvMiniPlayerLayout.LANDSCAPE_COMPACT
+    availableWidthDp < 600 -> LiveTvMiniPlayerLayout.PORTRAIT_STACKED
+    else -> LiveTvMiniPlayerLayout.STANDARD
 }
+
+internal fun landscapeCompactGuideHeightDp(
+    availableHeightDp: Int,
+    screenHeaderHeightDp: Int = 60,
+    miniPlayerContainerPaddingDp: Int = 16,
+): Int = (availableHeightDp - screenHeaderHeightDp - miniPlayerContainerPaddingDp -
+    landscapePhoneMiniPlayerSpec().totalHeightDp).coerceAtLeast(0)
 
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -255,6 +278,7 @@ private fun VideoCard(
     val deviceType = LocalDeviceType.current
     val isTouchDevice = deviceType.isTouchDevice()
     val landscapeSpec = if (landscapeCompact) landscapePhoneMiniPlayerSpec() else null
+    val sizeMode = miniPlayerVideoSizeMode(compact, landscapeCompact)
 
     val playerAlpha by animateFloatAsState(
         targetValue = if (playerActive) 1f else 0f,
@@ -266,11 +290,12 @@ private fun VideoCard(
         modifier = modifier
             .then(
                 when {
-                    compact -> Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                    landscapeSpec != null -> Modifier.size(
-                        landscapeSpec.videoWidthDp.dp,
+                    sizeMode == MiniPlayerVideoSizeMode.LANDSCAPE_COMPACT -> Modifier.size(
+                        requireNotNull(landscapeSpec).videoWidthDp.dp,
                         landscapeSpec.videoHeightDp.dp,
                     )
+                    sizeMode == MiniPlayerVideoSizeMode.FULL_WIDTH_16_9 ->
+                        Modifier.fillMaxWidth().aspectRatio(16f / 9f)
                     else -> Modifier.size(LiveDims.MiniPlayerWidth, LiveDims.MiniPlayerHeight)
                 }
             )

@@ -10,6 +10,7 @@ context.
 |---|---|
 | Scan orchestration, selection flows, caches, settings gating | `app/src/main/kotlin/com/arflix/tv/ui/screens/player/PlayerViewModel.kt` (`findBestSubtitleMatch`, `runFindBestMatch`, `measureOffsetWithAi`, `activateAiSubtitle`, `applyPreferredSubtitle`, `MATCH_*` constants) |
 | Cue download/parse + timing/word scoring | `.../player/subtitles/SubtitleSyncMatcher.kt` |
+| Container Cues-index reference (EBML/Matroska parse; HTTP range transport) | `.../player/subtitles/MatroskaSubtitleIndex.kt`, `.../player/subtitles/MatroskaIndexSource.kt` |
 | Buffered-cue reflection (the sync reference, AI pre-translation lookahead) | `.../player/engine/exoplayer/BufferedCueReader.kt` |
 | Timing correction model (constant offset) | `.../player/subtitles/SubtitleAutoSync.kt` |
 | Subtitle menu, selection application, media item rebuild, startup watchdog | `.../player/PlayerScreen.kt` |
@@ -133,6 +134,43 @@ Resuming mid-file it typically has 12 reference cues within a second.
   cannot. It migrates the AI interim onto the reference rather than switching it off.
 - **Music/SFX cues are dropped** from the reference (`isSdhOnly`): `♪ …` and `(DOOR SLAMS)` have no
   counterpart in a dialogue translation and score a hard 0 for every candidate.
+
+**Container index (Sept 2026) — tried first wherever the in-player path would run.** Matroska
+stores a Cues index, and muxers are recommended to index every subtitle frame, so on a normal
+remux the embedded track's *authored* cue times for the whole file are readable with a handful of
+HTTP range requests against the stream already playing — no playback, no seeking, no demuxing.
+`collectIndexedReferenceCues` sits at the top of `runInPlayerReference`, so all three of its call
+sites (thin buffer, self-match, no AI) get it, **and the AI buffer path upgrades to it too**: the
+buffer's cues stay as `referenceCues` (so AI verification still runs) while the index supplies
+`referenceRefs`. That upgrade exists because the buffer describes only the seconds around the
+playhead — From S02E04 (Sept 2026) decided a whole episode from 7 cues spanning 16 s, corroborating
+a +7.3 s shift that the AI pairing disagreed with (`6365, 6407, 7199, 7324, 8325`) — so the pick was
+selected but not remembered. The index describes the whole file instead.
+
+Mixing the two is only sound for the *same* track, and track number plus language is not proof of
+that (SDH vs dialogue, two dubs in one language). So when the caller passes observed cues, the
+index must line up with them — `MatroskaSubtitleIndex.agreesWithObserved`, ≥half within 250 ms,
+checked against the full cue list before downsampling — or it is rejected and the buffer stands. Where it hits, it dominates the alternatives: the
+optimistic pick **stays on screen** (the text track is never taken), the reference spans the film
+instead of the next few seconds, and a scan that used to spend minutes collecting realtime cues
+decides immediately. Budget: 7 s, ≤16 range requests, ≤16 MB, and a server that answers `200`
+to a `Range` request disables the source rather than stream the file.
+
+- **Timings only — there is no text in a Cues index.** AI verification (§2d) stays gated on
+  `referenceCues` and therefore does not run for this path; the timing evidence is complete but
+  the identity arbiter is absent, so this path leans on the sweep's own guards. Candidates stay
+  lazy (`escalate()` still loads the rest only on failure).
+- Cue *ends* are usually absent (`CueDuration` is optional and rarely authored) — a nominal 2 s is
+  used, the same assumption `BufferedCueReader` already makes, since the start carries the signal.
+- Downsampled to `MATCH_INDEX_MAX_REFS` (60) evenly-spread windows: a feature-length index holds
+  hundreds to thousands of cues and the offset sweep re-scores every window at ~80 steps per
+  candidate.
+- Returns nothing for MP4/HLS/DASH, servers without range support, and the common muxer that
+  indexed only the video track — all fall through to the paths below, unchanged.
+- The parser is player- and network-independent (`MatroskaSubtitleIndex`, an injected
+  `ByteRangeSource`) and unit-tested on synthetic EBML in `MatroskaSubtitleIndexTest`. It carries
+  no `android.util.Log` on purpose: diagnostics come back through an `onDiagnostic` callback the
+  ViewModel wires to the `SubMatch` trail, so the JVM tests need no unmocked-Android relaxation.
 
 **No AI.** The in-player reference (see *Timing scan* below) — the behaviour that predates this
 feature: the reference track is selected on the visible player and subtitles are hidden for the
@@ -264,6 +302,12 @@ The reason is the cost/benefit, not the maths:
   −2471 ms @ 21:00, fitting +4271 ms at t=0).
 
 So the cost was certain and paid on every match, and the benefit never materialised once.
+
+> **This premise changed in Sept 2026.** The container-index reference (§2a) supplies anchors from
+> across the whole file for a few range requests, which is exactly the "trigger that costs nothing
+> when there is no drift" this section asks for — the reason drift was dropped was the price of
+> far-ahead anchors, not the mathematics. Reopening it should still require three collinear
+> anchors and the FPS-ratio guard, and should apply only where the index actually resolved.
 `SubtitleAutoSync` is a constant offset only. If this comes back, it needs a trigger that costs
 nothing when there is no drift — e.g. noticing that a *verified* subtitle has gone out of sync later
 in the same file — rather than speculative probing on every match.
@@ -512,6 +556,13 @@ default is SRT for extensionless URLs.
 - Batch translation pre-fetch (`triggerPreTranslation`/`preTranslateWindow`) is gated on
   `translationManager.isEnabled` — without this it spends API requests whenever any track renders
   (the 401-toast-with-AI-off bug).
+- **Media3 calls BOTH cue callbacks for the same cue** — the deprecated `onCues(List<Cue>)` first,
+  then `onCues(CueGroup)` ~2 ms later (The Office S01E03, Sept 2026: the same line logged at
+  `.754` and `.755`). The deprecated one used to pass the originals through, so every line not yet
+  cached painted the SOURCE language on screen a moment before the modern path hid it and
+  requested the translation — reported as "AI translated but I saw English". It now hides instead:
+  the CueGroup path owns translation and delivers the translated cue. Do not "fix" the deprecated
+  overload by showing originals again; a blank is what the in-flight branch beside it already does.
 - **AI translation source is a built-in (embedded) ENGLISH track ONLY** (`findAiSourceSubtitle`,
   July 15 2026). Never an external addon sub, never a non-English embedded track. So "no embedded
   English ⇒ no AI translation": on such a source the AI interim doesn't activate, which (a) matches

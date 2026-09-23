@@ -13,6 +13,22 @@ const settings = (patch = {}) => ({
 });
 const auth = { session: { userId: 'account', accessToken: 'fixture' }, isNetlifySession: true, accessToken: async () => 'fixture' };
 
+test('custom collections round-trip per profile and cleared imports do not resurrect legacy catalogs', async () => {
+  const imported = [{ id: 'collection_rail_custom_usercol_fixture_studios', title: 'Studios', name: 'Studios',
+    sourceType: 'preinstalled', isPreinstalled: false, kind: 'COLLECTION_RAIL', collectionRailKey: 'custom_usercol_fixture_studios', packId: 'usercol_fixture' },
+    { id: 'collection_custom_usercol_fixture_studios_pixar', title: 'Pixar', name: 'Pixar', sourceType: 'preinstalled',
+      isPreinstalled: false, kind: 'COLLECTION', collectionRailKey: 'custom_usercol_fixture_studios', packId: 'usercol_fixture',
+      collectionSources: [{ kind: 'TMDB_DISCOVER', mediaType: 'movie', discoverParams: { with_companies: '3' } }] }];
+  const f = fixture({ catalogs: imported, catalogsByProfile: { child: [] } });
+  const baseline = settings();
+  const changed = settings({ catalogs: imported });
+  await f.cloud.saveCloudSettings(auth, changed, [], 'arvind', [], baseline);
+  assert.deepEqual(JSON.parse(JSON.stringify((await f.cloud.pullCloudPayload(auth, 'arvind')).settings.catalogs)), imported);
+  assert.equal((await f.cloud.pullCloudPayload(auth, 'child')).settings.catalogs.length, 0);
+  await f.cloud.saveCloudSettings(auth, baseline, [], 'arvind', [], changed);
+  assert.equal((await f.cloud.pullCloudPayload(auth, 'arvind')).settings.catalogs.length, 0);
+});
+
 test('Group order round-trips with Android schema, is profile-scoped and can be cleared', async () => {
   const f = fixture({ iptvByProfile: { arvind: { groupOrder: ['list_1|B', 'list_1|A'], groupOrderSchema: 3 }, child: { groupOrder: ['kids|Cartoons'], groupOrderSchema: 3 } } });
   const pulled = await f.cloud.pullCloudPayload(auth, 'arvind');

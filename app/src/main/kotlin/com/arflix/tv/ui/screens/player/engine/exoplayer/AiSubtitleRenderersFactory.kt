@@ -303,7 +303,16 @@ private class TranslatingTextOutput(
         when {
             cached != null -> delegate.onCues(applyTranslatedLinesToCues(cues, cached))
             manager.isInFlight(text) -> delegate.onCues(emptyList())
-            else -> delegate.onCues(cues)
+            // Hide, never pass the source language through. Media3's TextRenderer invokes BOTH
+            // callbacks for the same cue — this deprecated one first, then onCues(CueGroup) about
+            // 2 ms later (From S02E04, Sept 2026: "Wait a second…" logged at .951 here and .953
+            // there). Passing the originals through therefore painted English on screen for every
+            // line that was not already cached, a moment before the modern path hid it and
+            // requested the translation. That flash is the "AI translated but I saw English"
+            // report. Hiding costs nothing: the CueGroup path owns translation and will deliver
+            // the translated cue — and if it somehow does not, a blank is the same outcome the
+            // in-flight branch above already accepts.
+            else -> delegate.onCues(emptyList())
         }
     }
 

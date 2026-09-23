@@ -27,6 +27,8 @@ import com.arflix.tv.data.repository.MediaRepository
 import com.arflix.tv.data.repository.MdbExternalRating
 import com.arflix.tv.data.repository.MdbListRepository
 import com.arflix.tv.data.repository.ProfileManager
+import com.arflix.tv.data.model.StreamIntegrationType
+import com.arflix.tv.data.repository.StreamIntegrationRepository
 import com.arflix.tv.data.repository.StreamRepository
 import com.arflix.tv.data.repository.providerScopedStreamIdentity
 import com.arflix.tv.data.repository.TraktRepository
@@ -217,7 +219,8 @@ class DetailsViewModel @Inject constructor(
     private val watchHistoryRepository: WatchHistoryRepository,
     private val watchlistRepository: WatchlistRepository,
     private val cloudSyncRepository: CloudSyncRepository,
-    private val launcherContinueWatchingRepository: LauncherContinueWatchingRepository
+    private val launcherContinueWatchingRepository: LauncherContinueWatchingRepository,
+    private val streamIntegrationRepository: StreamIntegrationRepository
 ) : ViewModel() {
 
     companion object {
@@ -1816,9 +1819,7 @@ class DetailsViewModel @Inject constructor(
                 else -> null
             }
 
-            val orderedAddonIds = streamRepository.installedAddons.first()
-                .filter { it.isVodStreamingAddon() }
-                .map { it.id }
+            val unifiedOrderedIds = streamIntegrationRepository.getUnifiedSourceOrderedIds().first()
             _uiState.value = _uiState.value.copy(
                 isLoadingStreams = true,
                 completedAddons = 0,
@@ -1826,7 +1827,7 @@ class DetailsViewModel @Inject constructor(
                 streams = emptyList(),
                 streamsEpisodeIdentity = identity,
                 subtitles = emptyList(),
-                addonOrderedIds = orderedAddonIds,
+                addonOrderedIds = unifiedOrderedIds,
                 streamSearchStartTime = System.currentTimeMillis(),
                 pluginScrapersLoading = false
             )
@@ -1847,37 +1848,44 @@ class DetailsViewModel @Inject constructor(
                 val canonicalSeason = identity?.tmdbSeason
                 val canonicalEpisode = identity?.tmdbEpisode
                 val animeQueryOverride = identity?.kitsuQuery
-                val hasHomeServerConnections = streamRepository.hasHomeServerConnections()
-                // Start VOD append in background - runs parallel to addon stream fetch
-                homeServerAppendJob = viewModelScope.launch {
-                    appendHomeServerSourcesInBackground(
-                        imdbId = resolvedImdbId,
-                        season = canonicalSeason,
-                        episode = canonicalEpisode,
-                        timeoutMs = 20_000L,
-                        requestId = requestId,
-                        requestMediaType = requestMediaType,
-                        requestMediaId = requestMediaId
-                    )
+                val homeServerEnabled = streamIntegrationRepository.isIntegrationEnabled(StreamIntegrationType.HOME_SERVER)
+                val hasHomeServerConnections = homeServerEnabled && streamRepository.hasHomeServerConnections()
+                if (hasHomeServerConnections) {
+                    homeServerAppendJob = viewModelScope.launch {
+                        appendHomeServerSourcesInBackground(
+                            imdbId = resolvedImdbId,
+                            season = canonicalSeason,
+                            episode = canonicalEpisode,
+                            timeoutMs = 20_000L,
+                            requestId = requestId,
+                            requestMediaType = requestMediaType,
+                            requestMediaId = requestMediaId
+                        )
+                    }
                 }
                 vodAppendJob?.cancel()
-                vodAppendJob = viewModelScope.launch {
-                    // VOD lookups use disk-cached catalogs (near-instant on warm starts).
-                    // On rare true cold starts, catalog download can take 15-30s for large providers.
-                    val vodTimeout = if (currentMediaType == MediaType.MOVIE) 30_000L else 45_000L
-                    appendVodSourceInBackground(
-                        imdbId = resolvedImdbId,
-                        season = canonicalSeason,
-                        episode = canonicalEpisode,
-                        timeoutMs = vodTimeout,
-                        requestId = requestId,
-                        requestMediaType = requestMediaType,
-                        requestMediaId = requestMediaId
-                    )
+                val vodEnabled = streamIntegrationRepository.isIntegrationEnabled(StreamIntegrationType.IPTV_VOD)
+                if (vodEnabled) {
+                    vodAppendJob = viewModelScope.launch {
+                        // VOD lookups use disk-cached catalogs (near-instant on warm starts).
+                        // On rare true cold starts, catalog download can take 15-30s for large providers.
+                        val vodTimeout = if (currentMediaType == MediaType.MOVIE) 30_000L else 45_000L
+                        appendVodSourceInBackground(
+                            imdbId = resolvedImdbId,
+                            season = canonicalSeason,
+                            episode = canonicalEpisode,
+                            timeoutMs = vodTimeout,
+                            requestId = requestId,
+                            requestMediaType = requestMediaType,
+                            requestMediaId = requestMediaId
+                        )
+                    }
                 }
 
                 var pluginScraperJob: kotlinx.coroutines.Job? = null
-                pluginScraperJob = viewModelScope.launch {
+                val pluginsEnabled = streamIntegrationRepository.isIntegrationEnabled(StreamIntegrationType.PLUGINS)
+                if (pluginsEnabled) {
+                    pluginScraperJob = viewModelScope.launch {
                     try {
                         _uiState.value = _uiState.value.copy(pluginScrapersLoading = true)
                         val tmdbIdStr = requestMediaId.toString()
@@ -1886,7 +1894,8 @@ class DetailsViewModel @Inject constructor(
                             tmdbId = tmdbIdStr,
                             mediaType = pluginMediaType,
                             season = if (requestMediaType != MediaType.MOVIE) (canonicalSeason ?: 1) else null,
-                            episode = if (requestMediaType != MediaType.MOVIE) (canonicalEpisode ?: 1) else null
+                            episode = if (requestMediaType != MediaType.MOVIE) (canonicalEpisode ?: 1) else null,
+                            allowedProviderIds = streamIntegrationRepository.enabledProviderIds(StreamIntegrationType.PLUGINS)
                         ).collect { pair ->
                             val scraperInfo = pair.first
                             val results: List<LocalScraperResult>? = pair.second
@@ -1935,8 +1944,9 @@ class DetailsViewModel @Inject constructor(
                         )
                     }
                 }
+            }
 
-                val result = if (currentMediaType == MediaType.MOVIE) {
+            val result = if (currentMediaType == MediaType.MOVIE) {
                     val enabledAddons = streamRepository.installedAddons.first()
                         .filter { it.isVodStreamingAddon() }
                     val enabledStreamingAddons = enabledAddons.size

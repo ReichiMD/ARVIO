@@ -136,6 +136,8 @@
     <string name="secondary_subtitle_desc">שפת כתוביות חלופית כאשר הראשונה אינה זמינה</string>
     <string name="filter_subtitles">סנן כתוביות לפי שפה</string>
     <string name="filter_subtitles_desc">הצג רק כתוביות בשפה המועדפת</string>
+    <string name="use_forced_subtitles">כתוביות מאולצות</string>
+    <string name="use_forced_subtitles_desc">העדף כתוביות מאולצות כאשר שפת השמע תואמת לשפת הכתוביות; אם אין כזו, לא תיבחר אף אחת</string>
     <string name="auto_play_next">הפעלה אוטומטית של הבא</string>
     <string name="next_episode">הפרק הבא</string>
     <string name="continue_watching">המשך צפייה</string>
@@ -244,4 +246,8 @@
     <string name="settings_telegram_desc">חפש קובצי וידאו בערוצים ובקבוצות שלך</string>
     <string name="home_top10_movies_today">10 הסרטים הנצפים היום</string>
     <string name="home_top10_shows_today">10 הסדרות הנצפות היום</string>
+    <string name="settings_builtin_collections_title">אוספים מובנים</string>
+    <string name="settings_builtin_collections_desc">הצג את שורות האוספים המובנות של ARVIO (שירותים / ז׳אנרים / זיכיונות). כבה כדי להשתמש רק באוספים שייבאת</string>
+    <string name="settings_collections_installed">אוספים הותקנו: %1$s (%2$d שורות)</string>
+    <string name="catalog_collections_invalid">זה לא קובץ אוספים תקין (נדרש JSON של ייצוא אוספים מ-Nuvio)</string>
 </resources>

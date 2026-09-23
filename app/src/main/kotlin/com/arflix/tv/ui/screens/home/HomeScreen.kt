@@ -3,6 +3,7 @@
 package com.arflix.tv.ui.screens.home
 
 import com.arflix.tv.ui.components.LocalBottomBarInset
+import com.arflix.tv.ui.components.LocalBottomBarHeight
 import androidx.activity.compose.BackHandler
 import android.content.Context
 import android.graphics.Bitmap
@@ -152,6 +153,8 @@ import com.arflix.tv.ui.components.SkeletonPosterCard
 import com.arflix.tv.ui.components.SkeletonMediaCard
 import androidx.compose.material3.TextButton
 import com.arflix.tv.ui.components.MobileHeroBanner
+import com.arflix.tv.ui.components.MobileHeroLayoutSpec
+import com.arflix.tv.ui.components.resolveMobileHeroLayout
 import com.arflix.tv.ui.components.ProfileAvatarVisual
 import com.arflix.tv.util.LocalDeviceType
 import com.arflix.tv.ui.components.MediaContextMenu
@@ -2157,6 +2160,7 @@ private fun MobileHeroOverlay(
 @Composable
 private fun MobileHeroCarousel(
     categories: List<Category>,
+    heroLayout: MobileHeroLayoutSpec,
     cardLogoUrls: Map<String, String> = emptyMap(),
     cardImdbRatings: Map<String, String> = emptyMap(),
     currentProfile: com.arflix.tv.data.model.Profile? = null,
@@ -2235,9 +2239,16 @@ private fun MobileHeroCarousel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 64.dp)
+                    .height(heroLayout.cardHeightDp.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                SkeletonMobileHeroBanner()
+                SkeletonMobileHeroBanner(
+                    compactContent = heroLayout.compactContent,
+                    modifier = Modifier.size(
+                        heroLayout.cardWidthDp.dp,
+                        heroLayout.cardHeightDp.dp,
+                    ),
+                )
             }
         }
         return
@@ -2303,10 +2314,12 @@ private fun MobileHeroCarousel(
         // Banner card pager — circular, peeks at adjacent cards on both sides
         HorizontalPager(
             state = pagerState,
-            contentPadding = PaddingValues(horizontal = 64.dp),
+            contentPadding = PaddingValues(horizontal = heroLayout.carouselHorizontalPaddingDp.dp),
             pageSpacing = 18.dp,
             beyondBoundsPageCount = 1,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(heroLayout.cardHeightDp.dp),
         ) { page ->
             val item = heroItems[page % heroItems.size]
             val genres = remember(item.id, item.genreIds, context) {
@@ -2344,19 +2357,24 @@ private fun MobileHeroCarousel(
                 }
             }
 
-            MobileHeroBanner(
-                imageUrl = item.backdrop ?: item.image ?: "",
-                title = item.title,
-                genres = genres,
-                year = year,
-                rating = rating,
-                logoUrl = logoUrl,
-                onClick = { onNavigateToDetails(item.mediaType, item.id, null, null) },
-                modifier = Modifier.graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-            )
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                MobileHeroBanner(
+                    imageUrl = item.backdrop ?: item.image ?: "",
+                    title = item.title,
+                    genres = genres,
+                    year = year,
+                    rating = rating,
+                    logoUrl = logoUrl,
+                    onClick = { onNavigateToDetails(item.mediaType, item.id, null, null) },
+                    compactContent = heroLayout.compactContent,
+                    modifier = Modifier
+                        .size(heroLayout.cardWidthDp.dp, heroLayout.cardHeightDp.dp)
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                )
+            }
         }
 
         // Animated pill indicators — centered below the pager
@@ -2966,16 +2984,25 @@ private fun MobileHomeRowsLayer(
     onCategoryVisiblePosition: (String, Int) -> Unit = { _, _ -> }
 ) {
     val mobileItemSpacing = 14.dp
+    val bottomBarHeight = LocalBottomBarHeight.current
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 16.dp + LocalBottomBarInset.current),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val heroLayout = remember(maxWidth, maxHeight, bottomBarHeight) {
+            resolveMobileHeroLayout(
+                availableWidthDp = maxWidth.value,
+                availableHeightDp = (maxHeight - bottomBarHeight).coerceAtLeast(1.dp).value,
+            )
+        }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 16.dp + LocalBottomBarInset.current),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
         // Hero carousel — profile/search row + banner card pager
         item(key = "mobile_hero", contentType = "mobile_hero") {
             MobileHeroCarousel(
                 categories = categories,
+                heroLayout = heroLayout,
                 cardLogoUrls = cardLogoUrls,
                 cardImdbRatings = cardImdbRatings,
                 currentProfile = currentProfile,
@@ -3211,6 +3238,7 @@ private fun MobileHomeRowsLayer(
                     }
                 }
             }
+        }
         }
     }
 }

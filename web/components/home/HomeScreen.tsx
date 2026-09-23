@@ -9,6 +9,7 @@ import { genreNamesFromIds, getCardMeta, getLogoUrl } from "@/lib/tmdb";
 import { getImdbRating } from "@/lib/imdbRatings";
 import { useApp } from "@/lib/store";
 import { LazyRail } from "@/components/media/LazyRail";
+import { CustomCollectionRail } from "@/components/media/CustomCollectionRail";
 import { MediaRail } from "@/components/media/MediaRail";
 import type { Category, MediaItem } from "@/lib/types";
 
@@ -187,7 +188,10 @@ export function HomeScreen() {
       {dedupedCategories.map((category) => (
         <MediaRail key={category.id} category={category} onOpen={openDetails} onFocus={onCardFocus} posterMode={posterMode} />
       ))}
-      {catalogConfigs.map((catalog, index) => (
+      {catalogConfigs.filter(c => !c.collectionRailKey || String(c.kind).toUpperCase() !== "COLLECTION").map((catalog, index) => (
+        catalog.collectionRailKey && String(catalog.kind).toUpperCase() === "COLLECTION_RAIL" ?
+        <CustomCollectionRail key={catalog.id} catalog={catalog} onOpen={openDetails}
+          folders={catalogConfigs.filter(c => c.collectionRailKey === catalog.collectionRailKey && String(c.kind).toUpperCase() === "COLLECTION")} /> :
         <LazyRail
           key={catalog.id}
           catalog={catalog}

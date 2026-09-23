@@ -11,6 +11,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AutoplayLimitsTest {
+    @Test fun sequentialSearchContinuesUntilProviderMeetsAutoplayLimits() {
+        val candidates = SequentialStreamCandidates(3, AutoplayLimits(maximumSizeGb = 2))
+        assertFalse(candidates.accept(emptyList()))
+        assertFalse(candidates.accept(listOf(stream("720p"))))
+        assertFalse(candidates.accept(listOf(stream("1080p", "10 GB"))))
+        val playable = stream("1080p", "1 GB")
+        assertTrue(candidates.accept(listOf(playable)))
+        assertEquals(listOf(playable), candidates.streams)
+    }
+
+    @Test fun sequentialSearchRetainsRejectedSourcesForManualSelection() {
+        val candidates = SequentialStreamCandidates(3, AutoplayLimits())
+        val low = stream("720p")
+        assertFalse(candidates.accept(listOf(low)))
+        assertFalse(candidates.accept(emptyList()))
+        assertEquals(listOf(low), candidates.streams)
+    }
+
     private fun stream(quality: String = "1080p", size: String = "2 GB") = StreamSource(
         source = "Example", addonName = "Example", addonId = "example", quality = quality,
         size = size, url = "https://example.com/video"

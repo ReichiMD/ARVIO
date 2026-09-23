@@ -152,7 +152,13 @@ export interface CatalogConfig {
   addonCatalogType?: string | null;
   addonCatalogId?: string | null;
   addonName?: string | null;
+  addonGenre?: string | null;
   collectionGroup?: string | null;
+  collectionRailKey?: string | null;
+  collectionCoverImageUrl?: string | null;
+  collectionHeroImageUrl?: string | null;
+  packId?: string | null;
+  packName?: string | null;
   collectionDescription?: string | null;
   collectionTileShape?: "LANDSCAPE" | "POSTER" | "landscape" | "poster";
   collectionHideTitle?: boolean;
@@ -161,6 +167,7 @@ export interface CatalogConfig {
 }
 
 export interface CollectionSourceConfig {
+  addonGenre?: string | null;
   kind: string;
   mediaType?: string | null;
   addonId?: string | null;
@@ -168,6 +175,7 @@ export interface CollectionSourceConfig {
   addonCatalogId?: string | null;
   tmdbGenreId?: number | null;
   tmdbPersonId?: number | null;
+  tmdbCreditRole?: string | null;
   tmdbCollectionId?: number | null;
   tmdbKeywordId?: number | null;
   tmdbWatchProviderId?: number | null;
@@ -175,6 +183,9 @@ export interface CollectionSourceConfig {
   sortBy?: string | null;
   curatedRefs?: string[] | null;
   mdblistSlug?: string | null;
+  discoverParams?: Record<string, string> | null;
+  tmdbListId?: number | null;
+  traktListId?: string | null;
   homeServerId?: string | null;
   homeServerLibraryKey?: string | null;
 }

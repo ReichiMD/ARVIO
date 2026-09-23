@@ -5586,6 +5586,16 @@ class IptvRepository @Inject constructor(
         }
     }
 
+    internal fun streamProviderConfig(config: IptvConfig, allowedProviderIds: Set<String>?): IptvConfig {
+        if (allowedProviderIds == null) return config
+        // Clear the legacy URL too, otherwise an empty filtered list resurrects it.
+        return config.copy(
+            m3uUrl = "",
+            playlists = activePlaylists(config).filter { "iptv_playlist:${it.id}" in allowedProviderIds },
+            stalkerPortals = config.stalkerPortals.filter { "iptv_stalker:${it.id}" in allowedProviderIds }
+        )
+    }
+
     internal fun activeVodPlaylists(config: IptvConfig): List<IptvPlaylistEntry> =
         activePlaylists(config).filter { it.importVod ?: true }
 
@@ -5633,11 +5643,12 @@ class IptvRepository @Inject constructor(
         imdbId: String? = null,
         tmdbId: Int? = null,
         allowNetwork: Boolean = true,
-        originalTitle: String? = null
+        originalTitle: String? = null,
+        allowedProviderIds: Set<String>? = null
     ): List<StreamSource> {
         return withContext(Dispatchers.IO) {
             if (!isVodSearchEnabled()) return@withContext emptyList()
-            val config = observeConfig().first()
+            val config = streamProviderConfig(observeConfig().first(), allowedProviderIds)
             val xtreamSources = xtreamCredentialsForVodImport(config)
                 .flatMap { creds ->
                     runCatching {
@@ -6503,11 +6514,12 @@ class IptvRepository @Inject constructor(
         tmdbId: Int? = null,
         allowNetwork: Boolean = true,
         originalTitle: String? = null,
-        onSources: (List<StreamSource>) -> Unit = {}
+        onSources: (List<StreamSource>) -> Unit = {},
+        allowedProviderIds: Set<String>? = null
     ): List<StreamSource> {
         return withContext(Dispatchers.IO) {
             if (!isVodSearchEnabled()) return@withContext emptyList()
-            val config = observeConfig().first()
+            val config = streamProviderConfig(observeConfig().first(), allowedProviderIds)
             val xtreamSources = xtreamCredentialsForSeriesImport(config)
                 .flatMap { creds ->
                     runCatching {

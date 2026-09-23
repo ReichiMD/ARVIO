@@ -8,6 +8,7 @@ import { externalLaunchMode, openExternalPlayer } from "@/lib/externalPlayers";
 import { accessibleChannels, groupKey, loadXtreamCatchup, type CatchupProgram } from "@/lib/iptv";
 import { VirtualList } from "@/components/ui/VirtualList";
 import { SportsGuidePane } from "@/components/livetv/SportsGuidePane";
+import { sportsEventCatalogs } from "@/lib/sportsAddons";
 import { ChannelLogo } from "@/components/livetv/ChannelLogo";
 import { channelIdentityIndex, normalizeTvSession, resolveChannelReferences } from "@/lib/iptvSession";
 import { IPTV_SNAPSHOT_TTL_MS, iptvPlaylistSignature } from "@/lib/iptv";
@@ -71,6 +72,10 @@ export function LiveTvScreen() {
   const [url, setUrl] = useState("");
   const [epgUrl, setEpgUrl] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
+  const hasSportsAddons = addons.some(addon => sportsEventCatalogs(addon).length > 0);
+  useEffect(() => {
+    if (hasSportsAddons && !settings.iptvPlaylists.length) setActiveCategory("sports");
+  }, [hasSportsAddons, settings.iptvPlaylists.length]);
   const [query, setQuery] = useState("");
   // Re-open Live TV where the user left off (requested: "start at the last
   // channel you left"). Persisted per device; falls back to the first channel
@@ -324,7 +329,7 @@ export function LiveTvScreen() {
 
   return (
     <div className="screen livetv-shell" onPointerDownCapture={() => { pointerNavigation.current = true; }} onKeyDownCapture={() => { pointerNavigation.current = false; }}>
-      {channels.length === 0 && <header className="livetv-topbar">
+      {channels.length === 0 && !hasSportsAddons && <header className="livetv-topbar">
         <div className="livetv-heading">
           <h2>{translateUi("Live TV")}</h2>
           <span>{translateUi("No channels loaded")}</span>
@@ -394,7 +399,7 @@ export function LiveTvScreen() {
         </div>
       )}
 
-      {!playlists.length && !channels.length && !managing && (
+      {!playlists.length && !channels.length && !managing && !hasSportsAddons && (
         <section className="livetv-empty">
           <Tv size={44} />
           <h3>{translateUi("Add your IPTV playlist")}</h3>
@@ -403,7 +408,7 @@ export function LiveTvScreen() {
         </section>
       )}
 
-      {channels.length > 0 && (
+      {(channels.length > 0 || hasSportsAddons) && (
         <div className={`livetv-columns tv-guide-workspace ${activeCategory === "sports" ? "sports-active" : ""} ${groupsOpen ? "" : "groups-collapsed"}`}>
           {groupsOpen && <button className="tv-drawer-scrim" type="button" aria-label={translateUi("Close categories")} onClick={() => setGroupsOpen(false)} />}
           <nav className="livetv-cats" aria-label={translateUi("Channel categories")} inert={!groupsOpen} onKeyDown={event => {
@@ -439,7 +444,7 @@ export function LiveTvScreen() {
           }}>
             {activeCategory === "sports" ? <SportsGuidePane key={activeProfile?.id ?? "local"} clockFormat={settings.clockFormat} channels={channels} guide={iptvSnapshot.nowNext} addons={addons}
               providerNames={Object.fromEntries(playlists.map((playlist) => [playlist.id, playlist.name]))}
-              onPlay={watchChannel} onEnter={() => { if (!pointerNavigation.current) setGroupsOpen(false); }}
+              onPlay={channel => channel.id.startsWith("sports-addon:") ? playChannel(channel) : watchChannel(channel)} onEnter={() => { if (!pointerNavigation.current) setGroupsOpen(false); }}
               onOpenCategories={() => { setGroupsOpen(true); requestAnimationFrame(() => document.querySelector<HTMLElement>(".livetv-cats button.is-active")?.focus()); }} /> : <>
             <div className="livetv-list-head">
               <button type="button" className="livetv-chipbtn" title={translateUi("Toggle categories")} aria-label={translateUi("Toggle categories")} aria-expanded={groupsOpen} onClick={() => setGroupsOpen(!groupsOpen)}><PanelLeft size={20} /></button>
@@ -575,7 +580,7 @@ export function LiveTvScreen() {
         </div>
       )}
 
-      {playlists.length > 0 && !channels.length && !hasWarnings && (
+      {playlists.length > 0 && !channels.length && !hasWarnings && activeCategory !== "sports" && (
         <section className="livetv-empty">
           <ChevronDown size={36} className={isLoadingTv ? "is-spinning" : ""} />
           <h3>{isLoadingTv ? translateUi("Loading channels…") : translateUi("No channels yet")}</h3>

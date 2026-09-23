@@ -80,6 +80,9 @@ internal fun LiveCategoryTree.withSportsDestination(): LiveCategoryTree = copy(
         // liveCategoryLabel() localizes it at render time (same pattern as the other categories).
         if (category.id == "all") listOf(category, LiveCategory(SPORTS_GUIDE_CATEGORY, "Sports", 0, CategoryIcon.Sport))
         else listOf(category)
+    }.let { categories ->
+        if (categories.any { it.id == SPORTS_GUIDE_CATEGORY }) categories
+        else categories + LiveCategory(SPORTS_GUIDE_CATEGORY, "Sports", 0, CategoryIcon.Sport)
     },
 )
 
@@ -100,6 +103,8 @@ internal fun SportsGuidePane(
     clockFormat: String? = null,
     showHeader: Boolean = true,
     onOpenSearch: (() -> Unit)? = null,
+    resolveAddon: suspend (com.arflix.tv.data.model.SportsAddonEvent) -> List<com.arflix.tv.data.repository.SportsAddonStream> = { emptyList() },
+    onPlayAddon: (com.arflix.tv.data.model.SportsAddonEvent, com.arflix.tv.data.repository.SportsAddonStream) -> Unit = { _, _ -> },
 ) {
     // Only a schedule refresh consumes this order. Focus alone must not rebuild
     // every catalogue and invalidate all visible lazy rows.
@@ -418,11 +423,11 @@ internal fun SportsGuidePane(
                                     Text(listOfNotNull(event.sport.title, event.competition).joinToString(" · "), color = LiveColors.FgDim, fontSize = 10.sp, lineHeight = 13.sp,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                     val count = remember(event, now) {
-                                        ((if (event.isOnAir(now)) event.availableChannels(now) else event.channels) + event.possibleChannels).distinctBy { it.id }.size
+                                        ((if (event.isOnAir(now)) event.availableChannels(now) else event.channels) + event.possibleChannels).distinctBy { it.id }.size + event.addonSources.size
                                     }
                                     if (count > 0) {
                                         Icon(Icons.Default.Tv, null, tint = LiveColors.FgDim, modifier = Modifier.size(13.dp))
-                                        Text(channelCount(count), color = LiveColors.FgDim, fontSize = 9.sp, lineHeight = 12.sp,
+                                        Text(if (event.addonSources.isEmpty()) channelCount(count) else stringResource(R.string.live_sports_source_count, count), color = LiveColors.FgDim, fontSize = 9.sp, lineHeight = 12.sp,
                                             modifier = Modifier.padding(start = 6.dp))
                                     }
                                 }
@@ -472,7 +477,7 @@ internal fun SportsGuidePane(
                 var closeFocused by remember { mutableStateOf(false) }
                 Icon(Icons.Default.Close, stringResource(R.string.close), tint = LiveColors.Fg,
                     modifier = Modifier.size(44.dp)
-                        .then(if (sourceChannels.isEmpty()) Modifier.focusRequester(initialFocus) else Modifier)
+                        .then(if (sourceChannels.isEmpty() && event?.addonSources.orEmpty().isEmpty()) Modifier.focusRequester(initialFocus) else Modifier)
                         .onFocusChanged { closeFocused = it.isFocused }
                         .liveFocusOutline(closeFocused, 4.dp)
                         .clickable(onClick = ::dismiss).padding(10.dp))
@@ -487,12 +492,13 @@ internal fun SportsGuidePane(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 9.dp, bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (onAir) stringResource(R.string.live_sports_channels) else stringResource(R.string.live_sports_scheduled_channels), fontSize = 14.sp, color = LiveColors.Fg,
+                Text(if (event?.addonSources.orEmpty().isNotEmpty()) stringResource(R.string.sources) else if (onAir) stringResource(R.string.live_sports_channels) else stringResource(R.string.live_sports_scheduled_channels), fontSize = 14.sp, color = LiveColors.Fg,
                     fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                Text(channelCount(sourceChannels.size), fontSize = 11.sp, color = LiveColors.FgDim)
+                Text(if (event?.addonSources.orEmpty().isEmpty()) channelCount(sourceChannels.size)
+                    else stringResource(R.string.live_sports_source_count, sourceChannels.size + event?.addonSources.orEmpty().size), fontSize = 11.sp, color = LiveColors.FgDim)
             }
             val channelKeys = remember(sourceChannels) { disambiguatedLazyKeys(sourceChannels) { it.id } }
-            LazyColumn(Modifier.heightIn(max = (if (narrow) 49.dp else 41.dp) * sourceChannels.size.coerceIn(1, 20))) {
+            LazyColumn(Modifier.weight(1f, fill = false).heightIn(max = configuration.screenHeightDp.dp * .55f)) {
                 itemsIndexed(sourceChannels, key = { index, _ -> channelKeys[index] }) { index, channel ->
                     var focused by remember { mutableStateOf(false) }
                     Row(Modifier.fillMaxWidth().heightIn(min = if (narrow) 48.dp else 40.dp).clip(RoundedCornerShape(4.dp))
@@ -523,12 +529,69 @@ internal fun SportsGuidePane(
                     }
                     Box(Modifier.fillMaxWidth().height(1.dp).background(LiveColors.Divider))
                 }
+                items(event?.addonSources.orEmpty(), key = { "addon:${it.key}" }) { source ->
+                    SportsAddonSourceRow(source, (canOpenChannel || source.isLive(now)) && (source.startsAt == null || source.startsAt <= now), resolveAddon,
+                        if (sourceChannels.isEmpty() && source == event?.addonSources?.firstOrNull()) initialFocus else null) { stream ->
+                        onPlayAddon(source, stream)
+                        dismiss()
+                    }
+                }
             }
-            if (sourceChannels.isEmpty()) Text(stringResource(R.string.live_sports_no_matching_channels), color = LiveColors.FgDim,
+            if (sourceChannels.isEmpty() && event?.addonSources.orEmpty().isEmpty()) Text(stringResource(R.string.live_sports_no_matching_channels), color = LiveColors.FgDim,
                 fontSize = 12.sp, modifier = Modifier.padding(vertical = 20.dp))
             if (event == null) Text(stringResource(R.string.live_sports_event_gone), color = LiveColors.FgDim)
         }
     }
+    }
+}
+
+@Composable
+private fun SportsAddonSourceRow(
+    event: com.arflix.tv.data.model.SportsAddonEvent,
+    canPlay: Boolean,
+    resolve: suspend (com.arflix.tv.data.model.SportsAddonEvent) -> List<com.arflix.tv.data.repository.SportsAddonStream>,
+    initialFocus: FocusRequester?,
+    onPlay: (com.arflix.tv.data.repository.SportsAddonStream) -> Unit,
+) {
+    var sources by remember(event.key) { mutableStateOf<List<com.arflix.tv.data.repository.SportsAddonStream>?>(null) }
+    var loading by remember(event.key) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    Column {
+        var focused by remember { mutableStateOf(false) }
+        Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).then(initialFocus?.let { Modifier.focusRequester(it) } ?: Modifier).liveFocusOutline(focused, 4.dp)
+            .onFocusChanged { focused = it.isFocused }.clickable {
+                if (!loading) scope.launch {
+                    loading = true
+                    try { sources = resolve(event) }
+                    catch (_: kotlinx.coroutines.TimeoutCancellationException) { sources = emptyList() }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { sources = emptyList() }
+                    finally { loading = false }
+                }
+            }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Tv, null, tint = LiveColors.Fg, modifier = Modifier.size(22.dp))
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(event.addonName, color = LiveColors.Fg, fontSize = 13.sp)
+                Text(stringResource(if (sources?.isEmpty() == true) R.string.live_sports_addon_retry else R.string.live_sports_addon_sources),
+                    color = LiveColors.FgDim, fontSize = 10.sp)
+            }
+            if (loading) CircularProgressIndicator(Modifier.size(18.dp), color = LiveColors.Fg, strokeWidth = 2.dp)
+            else Icon(Icons.Outlined.ChevronRight, null, tint = LiveColors.Fg, modifier = Modifier.size(20.dp))
+        }
+        sources.orEmpty().forEach { stream ->
+            var focused by remember(stream) { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).liveFocusOutline(focused, 4.dp)
+                .onFocusChanged { focused = it.isFocused }.clickable(enabled = !loading && (canPlay || stream.external)) { onPlay(stream) }
+                .focusable(enabled = !canPlay && !stream.external).padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stream.name, color = LiveColors.Fg, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    stream.description?.let { Text(it, color = LiveColors.FgDim, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                    if (stream.external) Text(stringResource(R.string.live_sports_external_source), color = LiveColors.FgDim, fontSize = 10.sp)
+                }
+                Icon(Icons.Default.PlayArrow, null, tint = LiveColors.Fg, modifier = Modifier.size(20.dp))
+            }
+        }
     }
 }
 

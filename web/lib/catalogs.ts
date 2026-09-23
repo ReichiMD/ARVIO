@@ -89,9 +89,14 @@ export function mergeCatalogs(saved: CatalogConfig[] | undefined, hiddenIds: str
     ))
     .filter((catalog) => !isLegacyServiceCatalog(catalog));
   if (cleaned.length) {
+    const hiddenRails = new Set(cleaned.filter(c => String(c.kind).toUpperCase() === "COLLECTION_RAIL" && !c.collectionRailKey &&
+      (hiddenIds.includes(c.id) || c.enabled === false)).map(c => String(c.collectionGroup).toUpperCase()));
     return cleaned.map((catalog) => ({
       ...catalog,
-      enabled: !hiddenIds.includes(catalog.id) && catalog.enabled !== false
+      enabled: !hiddenIds.includes(catalog.id) && catalog.enabled !== false &&
+        !(String(catalog.kind).toUpperCase() === "COLLECTION" && !catalog.collectionRailKey &&
+          (hiddenRails.has(String(catalog.collectionGroup).toUpperCase()) ||
+            hiddenIds.includes(`collection_row_${String(catalog.collectionGroup).toLowerCase()}`)))
     }));
   }
   const savedById = new Map(cleaned.map((catalog) => [catalog.id, catalog]));

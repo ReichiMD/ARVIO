@@ -10,13 +10,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,9 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.sp
-import com.arflix.tv.util.DeviceType
 import com.arflix.tv.util.LocalDeviceType
 import androidx.tv.foundation.lazy.list.TvLazyRow
 
@@ -333,15 +335,17 @@ fun SkeletonDetailsPage(
     modifier: Modifier = Modifier
 ) {
     if (isMobile) {
-        val configuration = LocalConfiguration.current
+        BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val navigationBottomPadding = WindowInsets.navigationBars
+            .asPaddingValues()
+            .calculateBottomPadding()
         val backdropHeight = resolveDetailsBackdropHeightDp(
-            screenWidthDp = configuration.screenWidthDp,
-            screenHeightDp = configuration.screenHeightDp,
-            isPhone = LocalDeviceType.current == DeviceType.PHONE,
+            availableWidthDp = maxWidth.value,
+            availableHeightDp = (maxHeight - navigationBottomPadding).coerceAtLeast(1.dp).value,
         ).dp
 
         Column(
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
         ) {
@@ -459,6 +463,7 @@ fun SkeletonDetailsPage(
                 SkeletonCategoryRow(cardCount = 4, cardType = SkeletonCardType.CAST, isMobile = true)
             }
         }
+        }
     } else {
         Column(modifier = modifier.padding(start = 24.dp)) {
             SkeletonDetailsHero()
@@ -497,17 +502,16 @@ fun SkeletonHomePage(
 }
 
 /**
- * Skeleton for mobile hero banner (3:4 aspect ratio with rounded corners)
+ * Skeleton for the mobile hero banner. The caller supplies the resolved card size.
  */
 @Composable
 fun SkeletonMobileHeroBanner(
+    compactContent: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val bannerShape = RoundedCornerShape(24.dp)
     Box(
         modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(3f / 4f)
             .clip(bannerShape)
             .background(Color(0xFF141419))
             .border(width = 1.dp, color = Color(0xFF2B2B2B), shape = bannerShape)
@@ -521,15 +525,15 @@ fun SkeletonMobileHeroBanner(
             modifier = Modifier
                 .align(androidx.compose.ui.Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
+                .padding(horizontal = if (compactContent) 14.dp else 20.dp)
+                .padding(bottom = if (compactContent) 12.dp else 28.dp),
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(if (compactContent) 5.dp else 10.dp)
         ) {
             SkeletonBox(
                 modifier = Modifier
                     .fillMaxWidth(0.65f)
-                    .height(32.dp),
+                    .height(if (compactContent) 24.dp else 32.dp),
                 shape = RoundedCornerShape(6.dp)
             )
             SkeletonBox(

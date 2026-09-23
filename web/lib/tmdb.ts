@@ -8,6 +8,8 @@ import { loadStored, saveStored } from "./storage";
 import type { CatalogConfig, Category, CollectionSourceConfig, EpisodeInfo, HomeServerConfig, InstalledAddon, MediaItem, MediaType, PersonDetails, ReviewInfo } from "./types";
 
 type TmdbItem = {
+  job?: string;
+  popularity?: number;
   id: number;
   title?: string;
   name?: string;
@@ -17,6 +19,7 @@ type TmdbItem = {
   poster_path?: string | null;
   backdrop_path?: string | null;
   vote_average?: number;
+  vote_count?: number;
   release_date?: string;
   first_air_date?: string;
   media_type?: string;
@@ -345,6 +348,24 @@ async function loadCollectionSource(
 ) {
   const kind = String(source.kind ?? "").toUpperCase();
   const mediaType = sourceMediaType(source);
+  if (kind === "TMDB_DISCOVER") {
+    const type = mediaType === "tv" ? "tv" : "movie";
+    const sort = (source.sortBy || "popularity.desc")
+      .replace(type === "tv" ? "primary_release_date" : "first_air_date",
+        type === "tv" ? "first_air_date" : "primary_release_date");
+    return loadTmdbCatalogPages({
+      id: "custom-discover", name: "Collection", sourceType: "tmdb", enabled: true,
+      endpoint: `discover/${type}`, mediaType: type,
+      params: { ...source.discoverParams, language, sort_by: sort }
+    }, language).then(items => items.map(item => mapTmdbItem(item, type)));
+  }
+  if (kind === "TMDB_LIST" && source.tmdbListId) {
+    const response = await tmdb<{ items?: TmdbItem[] }>(`list/${source.tmdbListId}`, { language });
+    return (response.items ?? []).map(item => mapTmdbItem(item, item.media_type === "tv" ? "tv" : "movie"));
+  }
+  if (kind === "TRAKT_LIST" && source.traktListId) {
+    return hydrateRefs(await loadTraktPublicList(`https://trakt.tv/lists/${encodeURIComponent(source.traktListId)}`), language);
+  }
   if (kind === "CURATED_IDS") {
     const refs = (source.curatedRefs ?? [])
       .map(parseCuratedRef)
@@ -368,6 +389,22 @@ async function loadCollectionSource(
   }
   if (kind === "TMDB_PERSON" && source.tmdbPersonId) {
     const response = await tmdb<TmdbCombinedCredits>(`person/${source.tmdbPersonId}/combined_credits`, { language });
+    if (source.tmdbCreditRole) {
+      const credits = source.tmdbCreditRole === "Director" ? (response.crew ?? []).filter(item => item.job === "Director") : response.cast ?? [];
+      const matching = credits.filter(item => !item.adult && item.media_type === (mediaType === "tv" ? "tv" : "movie"));
+      const sort = source.sortBy || "popularity.desc";
+      const value = (item: TmdbItem): string | number => {
+        switch (sort.split('.')[0]) {
+          case "primary_release_date": case "first_air_date": case "release_date": return item.release_date || item.first_air_date || "";
+          case "vote_average": return item.vote_average || 0;
+          case "vote_count": return item.vote_count || 0;
+          case "title": case "original_title": return item.title || item.name || "";
+          default: return item.popularity || 0;
+        }
+      };
+      matching.sort((a, b) => (value(a) < value(b) ? -1 : value(a) > value(b) ? 1 : 0) * (sort.endsWith('.asc') ? 1 : -1));
+      return dedupeItems(matching.map(item => mapTmdbItem(item, mediaType === "tv" ? "tv" : "movie")));
+    }
     return dedupeItems([...(response.cast ?? []), ...(response.crew ?? [])]
       .filter((item) => item.media_type === "movie" || item.media_type === "tv")
       .map((item) => mapTmdbItem(item, item.media_type === "tv" ? "tv" : "movie")));
@@ -419,14 +456,18 @@ async function loadCollectionSource(
     }, language).then((items) => items.map((item) => mapTmdbItem(item, mediaType === "tv" ? "tv" : "movie")));
   }
   if (kind === "ADDON_CATALOG") {
+    const installed = addons.find(a => a.enabled !== false && a.id === source.addonId) ??
+      addons.find(a => a.enabled !== false && a.catalogs?.some(c => c.id === source.addonCatalogId && c.type === source.addonCatalogType));
+    if (!installed) return [];
     return loadAddonCatalog({
       id: `collection-addon-${source.addonId}-${source.addonCatalogId}`,
       name: source.addonCatalogId || "Addon catalog",
       sourceType: "addon",
       mediaType,
-      addonId: source.addonId,
+      addonId: installed.id,
       addonCatalogType: source.addonCatalogType,
       addonCatalogId: source.addonCatalogId,
+      addonGenre: source.addonGenre,
       enabled: true
     }, addons, language);
   }
@@ -565,7 +606,8 @@ async function loadAddonCatalog(catalog: CatalogConfig, addons: InstalledAddon[]
   const catalogId = catalog.addonCatalogId || catalog.sourceRef || catalog.id;
   if (!manifestUrl || !catalogId) return [];
   const base = manifestUrl.replace(/\/manifest\.json$/, "").replace(/\/+$/, "");
-  const url = proxiedUrl(`${base}/catalog/${encodeURIComponent(catalogType)}/${encodeURIComponent(catalogId)}.json`);
+  const extra = catalog.addonGenre ? `/genre=${encodeURIComponent(catalog.addonGenre)}` : "";
+  const url = proxiedUrl(`${base}/catalog/${encodeURIComponent(catalogType)}/${encodeURIComponent(catalogId)}${extra}.json`);
   const payload = await jsonRequest<{ metas?: StremioMeta[] }>(url);
   const metas = payload.metas ?? [];
   const hydrated = await Promise.all(metas.map((meta) => hydrateAddonMeta(meta, catalog.mediaType, language).catch(() => null)));

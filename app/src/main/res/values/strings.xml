@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="live_sports_source_count">Sources: %1$d</string>
+    <string name="live_sports_addon_sources">Broadcast listed by add-on</string>
+    <string name="live_sports_addon_retry">No sources returned. Select to retry.</string>
+    <string name="live_sports_external_source">Opens in browser</string>
     <string name="library_sort_release_newest">Release date: newest first</string>
     <string name="library_sort_release_oldest">Release date: oldest first</string>
     <string name="app_name">ARVIO</string>
@@ -77,6 +81,8 @@
     <string name="secondary_subtitle_desc">Fallback subtitle language when primary is unavailable</string>
     <string name="filter_subtitles">Filter Subtitles by Language</string>
     <string name="filter_subtitles_desc">Show only subtitles in your preferred language</string>
+    <string name="use_forced_subtitles">Forced Subtitles</string>
+    <string name="use_forced_subtitles_desc">Prefer forced subtitles when the audio matches the subtitle language; if there is none, select nothing</string>
 
     <!-- Playback -->
     <string name="auto_play_next">Auto-Play Next</string>
@@ -377,10 +383,10 @@
     <string name="settings_ph_server_url_discover">Leave empty to discover automatically</string>
     <string name="settings_edit_tv_playlist">Edit TV Playlist</string>
     <string name="settings_add_tv_playlist">Add TV Playlist</string>
-    <string name="settings_catalog_pack_import_title">Import Catalog Pack</string>
-    <string name="settings_catalog_pack_import_desc">Import a bundle of catalogs from a JSON manifest URL</string>
+    <string name="settings_catalog_pack_import_title">Import Catalog Pack / Collections</string>
+    <string name="settings_catalog_pack_import_desc">Import a catalog pack or a collections file (e.g. a Nuvio collections export) from a URL or pasted JSON</string>
     <string name="settings_catalog_pack_import_badge">IMPORT</string>
-    <string name="settings_catalog_pack_url_label">Pack URL</string>
+    <string name="settings_catalog_pack_url_label">Pack / collections URL or JSON</string>
     <string name="settings_catalog_pack_loading">Loading catalog pack details...</string>
     <string name="settings_catalog_pack_import_failed">Import Failed</string>
     <string name="settings_catalog_pack_author">Author: %1$s • v%2$s</string>
@@ -440,6 +446,7 @@
     <string name="settings_trakt_instruction">Go to %1$s and enter this code</string>
     <string name="settings_waiting_for_authorization">Waiting for authorization</string>
     <string name="settings_open_auth_page">Open auth page</string>
+    <string name="settings_open_trakt_page">Open Trakt page</string>
     <string name="settings_copy_code">Copy code</string>
     <string name="settings_cat_playback_controls">Playback &amp; Controls</string>
     <string name="settings_cat_audio_subtitles">Audio &amp; Subtitles</string>
@@ -1137,6 +1144,15 @@
     <string name="player_match_remembered_offset">Matched: %1$s (remembered) (auto-offset %2$s)</string>
     <string name="player_match_exact_release_name">Matched: %1$s (exact release name)</string>
     <string name="player_match_sync_unverified">Selected %1$s (sync unverified)</string>
+    <!-- Reference taken from the container's own subtitle index (Matroska Cues), not from a
+         decoded track or from audio. Distinct from "built-in" and "hearing" so the match toast
+         never claims a hearing scan that did not run. -->
+    <string name="player_match_source_index">container index</string>
+    <!-- Shown when the scan could not verify anything but a subtitle in the preferred language is
+         on screen anyway. Saying "no subtitle found" there is false: one was chosen and is
+         playing; only the verification failed. -->
+    <string name="player_match_kept_unverified">Keeping %1$s — sync could not be verified</string>
+    <string name="player_match_kept_unverified_score">Keeping %1$s — sync unconfirmed (best %2$d%%)</string>
     <string name="player_match_scored">Matched: %1$s · %2$d%% (%3$s)</string>
     <string name="player_match_scored_offset">Matched: %1$s · %2$d%% (%3$s) (auto-offset %4$s)</string>
     <!-- Marks a subtitle row whose timing auto-match corrected: it is no longer the file as the
@@ -1730,4 +1746,41 @@
     <string name="live_sources_failed">Could not load sources. Please try again.</string>
     <string name="settings_iptv_fallback_logos">Fallback channel logos</string>
     <string name="settings_iptv_fallback_logos_desc">Use alternative artwork only when the provider logo is missing or fails to load.</string>
+
+    <!-- Stream Integrations & Priority -->
+    <string name="settings_stream_integrations">Stream Integrations</string>
+    <string name="settings_desc_stream_integrations">Reorder integrations to control playback and loading priority.</string>
+    <string name="settings_stream_integrations_list_title">Integrations</string>
+    <string name="settings_stream_integrations_helper">Higher integrations are searched first.</string>
+    <string name="settings_no_stream_integrations_configured">No stream integrations configured. Add addons, plugins, home servers, IPTV playlists, or Telegram to set their playback order.</string>
+    <string name="stream_integration_home_server">Home Server</string>
+    <string name="stream_integration_home_server_desc">Local and personal media servers (Jellyfin, Emby, Plex).</string>
+    <string name="stream_integration_stremio">Stremio Addons</string>
+    <string name="stream_integration_stremio_desc">Installed community streaming and debrid addons.</string>
+    <string name="stream_integration_plugins">Plugins &amp; Extensions</string>
+    <string name="stream_integration_plugins_desc">Custom scraper extensions and runtime plugins.</string>
+    <string name="stream_integration_telegram">Telegram</string>
+    <string name="stream_integration_telegram_desc">Direct streaming from your connected Telegram chats and channels.</string>
+    <string name="stream_integration_iptv_vod">IPTV VOD</string>
+    <string name="stream_integration_iptv_vod_desc">Video-on-demand movies and series from your IPTV playlists.</string>
+    <string name="stream_integration_move_up">Move up</string>
+    <string name="stream_integration_move_down">Move down</string>
+    <string name="stream_integration_toggle_enabled">Pull streams</string>
+    <string name="stream_integration_priority">Priority #%1$d</string>
+    <string name="stream_integration_open_settings">Configure</string>
+    <string name="stream_integration_reorder">Reorder</string>
+    <string name="settings_pill_integrations">%1$d active</string>
+    <string name="settings_fact_integrations">Active integrations</string>
+    <string name="settings_stream_search_mode">Search Mode</string>
+    <string name="settings_stream_search_mode_parallel">Parallel</string>
+    <string name="settings_stream_search_mode_parallel_desc">Search all integrations simultaneously.</string>
+    <string name="settings_stream_search_mode_sequential">Sequential</string>
+    <string name="settings_stream_search_mode_sequential_desc">Search integrations by priority.</string>
+    <string name="settings_stream_switch_to_parallel">Switch to Parallel</string>
+    <string name="settings_stream_switch_to_sequential">Switch to Sequential</string>
+    <string name="settings_builtin_collections_title">Built-in Collections</string>
+    <string name="settings_builtin_collections_desc">Show the built-in ARVIO Services / Genres / Franchises rails. Turn off to use only your own imported collections</string>
+    <string name="settings_collections_installed">Installed collections: %1$s (%2$d rails)</string>
+    <string name="catalog_collections_invalid">This is not a valid collections file (Nuvio collections export JSON expected)</string>
 </resources>
+

@@ -28,7 +28,15 @@ internal data class CollectionTemplateEntry(
     val hideTitle: Boolean,
     val heroVideoUrl: String?,
     val sources: List<CollectionSourceConfig>,
-    val listMetadata: List<CollectionSourceListMetadata>
+    val listMetadata: List<CollectionSourceListMetadata>,
+    // Only set for user-imported collections (see CustomCollections).
+    val railKey: String? = null,
+    val description: String? = null,
+    val heroImageUrl: String? = null,
+    val focusGifUrl: String? = null,
+    val clearLogoUrl: String? = null,
+    val packId: String? = null,
+    val packName: String? = null
 )
 
 internal object CollectionTemplateManifest {
@@ -43,13 +51,21 @@ internal object CollectionTemplateManifest {
         "nu" + "viotemplate/refs/heads/main/images/"
     private val UPLOADED_COVER_BASE = "https://" + "nu" + "vioapp.space/uploads/covers/"
 
-    val railOrder = listOf(
+    private val builtInRailOrder = listOf(
         CollectionGroupKind.SERVICE,
         CollectionGroupKind.GENRE,
         CollectionGroupKind.FRANCHISE
     )
 
-    val entries: List<CollectionTemplateEntry> = listOf(
+    /** Profile visibility is applied by CatalogRepository, not this shared manifest. */
+    val railOrder: List<CollectionGroupKind>
+        get() = builtInRailOrder
+
+    /** Imported entries live in profile catalogs instead of these shared defaults. */
+    val entries: List<CollectionTemplateEntry>
+        get() = builtInEntries
+
+    private val builtInEntries: List<CollectionTemplateEntry> = listOf(
         entry(
             title = "Latest Movies",
             group = CollectionGroupKind.FEATURED,
@@ -946,11 +962,12 @@ internal object CollectionTemplateManifest {
         )
     )
 
-    private val entriesById: Map<String, CollectionTemplateEntry> = entries.associateBy { it.id }
-    private val entryIds: Set<String> = entriesById.keys
-    private val validRailGroups: Set<CollectionGroupKind> = railOrder.toSet()
+    private val builtInEntriesById: Map<String, CollectionTemplateEntry> = builtInEntries.associateBy { it.id }
 
-    fun entryForCatalog(catalogId: String?): CollectionTemplateEntry? = catalogId?.let(entriesById::get)
+    fun entryForCatalog(catalogId: String?): CollectionTemplateEntry? {
+        val id = catalogId ?: return null
+        return builtInEntriesById[id]
+    }
 
     fun listMetadataFor(catalogId: String?): List<CollectionSourceListMetadata> =
         entryForCatalog(catalogId)?.listMetadata.orEmpty()
@@ -967,13 +984,19 @@ internal object CollectionTemplateManifest {
     }
 
     fun hasEntriesFor(group: CollectionGroupKind): Boolean =
-        entries.any { it.group == group }
+        builtInEntries.any { it.group == group }
 
     fun isValidCollectionConfig(config: CatalogConfig): Boolean = when (config.kind) {
-        CatalogKind.COLLECTION -> entryIds.contains(config.id)
+        CatalogKind.COLLECTION -> entryForCatalog(config.id) != null ||
+            (CustomCollections.isCustom(config) && config.collectionSources.isNotEmpty())
         CatalogKind.COLLECTION_RAIL -> {
-            val group = config.collectionGroup ?: return false
-            group in validRailGroups && hasEntriesFor(group)
+            val railKey = config.collectionRailKey
+            if (railKey != null) {
+                CustomCollections.isCustom(config)
+            } else {
+                val group = config.collectionGroup ?: return false
+                group in railOrder && hasEntriesFor(group)
+            }
         }
         else -> true
     }

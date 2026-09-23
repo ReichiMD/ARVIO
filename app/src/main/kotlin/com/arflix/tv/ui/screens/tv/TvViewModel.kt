@@ -121,6 +121,7 @@ class TvViewModel @Inject constructor(
     private val cloudSyncRepository: CloudSyncRepository,
     private val mediaRepository: com.arflix.tv.data.repository.MediaRepository,
     private val sportsRepository: com.arflix.tv.data.repository.SportsRepository,
+    val sportsAddons: com.arflix.tv.data.repository.SportsAddonRepository,
     private val profileManager: com.arflix.tv.data.repository.ProfileManager,
 ) : ViewModel() {
 
@@ -151,7 +152,7 @@ class TvViewModel @Inject constructor(
     private val sportsCatalogueDisk by lazy {
         // Internal UI model field names may change between signed builds.
         val installedAt = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
-        com.arflix.tv.ui.screens.tv.live.SportsCatalogueDiskCache(java.io.File(context.cacheDir, "sports-catalogue-$installedAt.json.gz"))
+        com.arflix.tv.ui.screens.tv.live.SportsCatalogueDiskCache(java.io.File(context.cacheDir, "sports-catalogue-v2-$installedAt.json.gz"))
     }
     internal suspend fun restoreSportsCatalogue(key: com.arflix.tv.ui.screens.tv.live.SportsScheduleKey) =
         withContext(Dispatchers.IO) { sportsCatalogueDisk.read(key) }

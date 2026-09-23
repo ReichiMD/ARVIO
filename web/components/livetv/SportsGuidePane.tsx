@@ -7,7 +7,8 @@ import { X, Tv, PanelLeft, ChevronRight, Play, RefreshCw } from "lucide-react";
 import { guideSports, isOnAir, isConfirmedLive, hasSportsChannels, availableEventChannels, sportsPresentationRows, sportsChannelSummary, type SportsGuideEvent } from "@/lib/sportsGuide";
 import { sportsChannelKey, sportsBroadcasterKeys } from "@/lib/sportsCatalogue";
 import type { InstalledAddon, IptvChannel, IptvNowNext } from "@/lib/types";
-import { cachedSportsMetadata, loadSportsGuideArtwork, loadSportsMetadata, type SportsEventArtwork } from "@/lib/sportsArtwork";
+import { cachedSportsMetadata, loadSportsMetadata, type SportsEventArtwork } from "@/lib/sportsArtwork";
+import { attachSportsAddonSources, loadSportsAddonEvents, resolveSportsAddon, type SportsAddonEvent, type SportsAddonStream } from "@/lib/sportsAddons";
 import { VirtualList } from "@/components/ui/VirtualList";
 import { ChannelLogo } from "@/components/livetv/ChannelLogo";
 
@@ -23,6 +24,28 @@ export function SportsGuidePane({ channels, guide, onPlay, onEnter, onOpenCatego
   const [artwork, setArtwork] = useState<SportsEventArtwork[]>([]);
   const [metadataLoading, setMetadataLoading] = useState(true);
   const [retry, setRetry] = useState(0);
+  const [addonEvents, setAddonEvents] = useState<SportsAddonEvent[]>([]);
+  const [addonLoading, setAddonLoading] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setAddonEvents([]);
+    let running = false;
+    let loaded = false;
+    const load = async () => {
+      if (running) return;
+      running = true; setAddonLoading(true);
+      try {
+        const refreshed = await loadSportsAddonEvents(addons, controller.signal, items => {
+          if (!loaded) setAddonEvents(items);
+        });
+        if (!controller.signal.aborted) { setAddonEvents(refreshed); loaded = true; }
+      }
+      finally { running = false; if (!controller.signal.aborted) setAddonLoading(false); }
+    };
+    void load();
+    const timer = setInterval(() => { if (!document.hidden) void load(); }, 120_000);
+    return () => { controller.abort(); clearInterval(timer); };
+  }, [addons, retry]);
   useEffect(() => {
     let active = true;
     let addonArt: SportsEventArtwork[] = [], metadataArt: SportsEventArtwork[] = cachedSportsMetadata();
@@ -31,7 +54,6 @@ export function SportsGuidePane({ channels, guide, onPlay, onEnter, onOpenCatego
     const load = () => {
       setMetadataLoading(true);
       void Promise.allSettled([
-        loadSportsGuideArtwork(addons).then(items => { addonArt = items; publish(); }),
         loadSportsMetadata().then(items => { metadataArt = items; publish(); }),
       ]).then(() => { if (active) setMetadataLoading(false); });
     };
@@ -69,10 +91,11 @@ export function SportsGuidePane({ channels, guide, onPlay, onEnter, onOpenCatego
   }, [channels, guide, scanDay, retry, artwork]);
   const accessibleIds = useMemo(() => new Set(channels.map((ch) => ch.id)), [channels]);
   // Hide revoked/hidden sources immediately, including during a worker refresh.
-  const visibleEvents = useMemo(() => events.map((event) => ({ ...event, channels: event.channels.filter((ch) => accessibleIds.has(ch.id)),
+  const visibleEvents = useMemo(() => attachSportsAddonSources(events.map((event) => ({ ...event, channels: event.channels.filter((ch) => accessibleIds.has(ch.id)),
     possibleChannels: event.possibleChannels?.filter(ch => accessibleIds.has(ch.id)),
     schedules: event.schedules ? Object.fromEntries(Object.entries(event.schedules).filter(([id]) => accessibleIds.has(id))) : undefined }))
-    .filter((event) => event.fixture || event.channels.length && Object.values(event.schedules ?? { fallback: event.programme }).some(p => p.endUtcMillis > now)), [events, accessibleIds, now]);
+    .filter((event) => event.fixture || event.channels.length && Object.values(event.schedules ?? { fallback: event.programme }).some(p => p.endUtcMillis > now)),
+    addonEvents.filter(e => addons.some(a => a.enabled !== false && a.manifestUrl === e.installation)), now, artwork), [events, accessibleIds, now, addonEvents, addons, artwork]);
   const [failedArtwork, setFailedArtwork] = useState<Set<string>>(() => new Set());
   useEffect(() => { setFailedArtwork(new Set()); }, [artwork, retry]);
   const rows = useMemo(() => sportsPresentationRows(visibleEvents, now, failedArtwork).map(row => {
@@ -113,7 +136,7 @@ export function SportsGuidePane({ channels, guide, onPlay, onEnter, onOpenCatego
   };
   return <section ref={root} className="tv-sports" aria-label={translateUi("Sports")}>
     <h2><button className="tv-sports-drawer" type="button" aria-label={translateUi("Categories")} onClick={onOpenCategories}><PanelLeft size={22} /></button>{translateUi("Sports")}</h2>
-    {!rows.length && <div className="tv-sports-empty" role="status"><Tv size={32} /><p>{loading || metadataLoading ? translateUi("Reading sports schedule") : failed ? translateUi("Schedule unavailable") : visibleEvents.some(e => hasSportsChannels(e, now) && (isOnAir(e, now) || e.programme.startUtcMillis > now)) ? translateUi("Event artwork unavailable") : translateUi("No sports events matched to your channels")}</p>
+    {!rows.length && <div className="tv-sports-empty" role="status"><Tv size={32} /><p>{loading || metadataLoading || addonLoading ? translateUi("Reading sports schedule") : failed ? translateUi("Schedule unavailable") : visibleEvents.some(e => hasSportsChannels(e, now) && (isOnAir(e, now) || e.programme.startUtcMillis > now)) ? translateUi("Event artwork unavailable") : translateUi("No sources found yet.")}</p>
       {!loading && !metadataLoading && <button type="button" className="secondary" onClick={() => setRetry(value => value + 1)}><RefreshCw size={18} />{translateUi("Retry")}</button>}
       <button type="button" className="secondary" onClick={onOpenCategories}><PanelLeft size={18} />{translateUi("Categories")}</button></div>}
     {rows.map((row, rowIndex) => <section className={`tv-sports-section${row.id === "more" ? " is-compact" : ""}`} key={row.id} aria-label={row.title}>
@@ -157,14 +180,44 @@ export function SportsGuidePane({ channels, guide, onPlay, onEnter, onOpenCatego
       <header>{selected && !failedArtwork.has(selected.id) && (selected.artwork || selected.teamArtwork) && <div className="tv-event-picker-art"><EventArtwork event={selected} /></div>}<div><p>{selected ? `${stamp(selected)} · ${guideSports.find(s => s.id === selected.sportId)!.title}` : translateUi("This event is no longer in the available guide.")}</p><h2>{selected?.title ?? translateUi("Schedule changed")}</h2></div><button type="button" onClick={close} aria-label={translateUi("Close")}><X /></button></header>
       {selected?.fixture && <div className="tv-event-details"><span>{[selected.competition, selected.fixture.venue, selected.fixture.round ? `Round ${selected.fixture.round}` : undefined].filter(Boolean).join(" · ")}</span>
         {selected.fixture.homeScore !== undefined && selected.fixture.awayScore !== undefined && isConfirmedLive(selected, now) && <button type="button" className="secondary" onClick={() => setShowScore(value => !value)}>{showScore ? `${selected.fixture.homeScore} : ${selected.fixture.awayScore}` : translateUi("Show score")}</button>}</div>}
-      <h3>{selected && isOnAir(selected, now) ? translateUi("Channels") : translateUi("Scheduled channels")}<span>{selected ? sportsChannelSummary(selected, now) : translateUi("No channels")}</span></h3>
-      {!sourceChannels.length && <p className="tv-event-no-channels">{translateUi("No matching channels in your playlists.")}</p>}
-      <VirtualList items={sourceChannels} estimate={72} itemKey={(ch) => ch.id} label={translateUi("Available channels")} renderItem={(ch) =>
+      <h3>{selected?.addonSources?.length ? translateUi("Sources") : selected && isOnAir(selected, now) ? translateUi("Channels") : translateUi("Scheduled channels")}<span>{selected ? sportsChannelSummary(selected, now) : translateUi("No channels")}</span></h3>
+      {!sourceChannels.length && !selected?.addonSources?.length && <p className="tv-event-no-channels">{translateUi("No sources found yet.")}</p>}
+      {sourceChannels.length > 0 && <VirtualList items={sourceChannels} estimate={72} itemKey={(ch) => ch.id} label={translateUi("Available channels")} renderItem={(ch) =>
         <button type="button" className="tv-event-source" disabled={!selected || !isOnAir(selected, now)} onClick={() => {
           if (selected && accessibleIds.has(ch.id) && isOnAir(selected, Date.now()) && (availableEventChannels(selected, Date.now()).some(channel => channel.id === ch.id) || possibleChannels.some(channel => channel.id === ch.id))) { close(); onPlay(ch); }
-        }}><span className="tv-source-logo-fallback"><ChannelLogo channel={ch} size={28} /></span><span><strong>{ch.name}</strong><small>{providerNames[ch.id.split(":")[0]] || ch.group}{possibleChannels.some(candidate => candidate.id === ch.id) ? translateUi(" · Possible broadcast") : translateUi(" · Guide match")}</small></span>{ch.qualityLabel && <em>{ch.qualityLabel}</em>}{ch.language && <em>{ch.language.toUpperCase()}</em>}<ChevronRight className="tv-source-arrow" size={22} /><Play className="tv-source-play" size={22} /></button>} />
+        }}><span className="tv-source-logo-fallback"><ChannelLogo channel={ch} size={28} /></span><span><strong>{ch.name}</strong><small>{providerNames[ch.id.split(":")[0]] || ch.group}{possibleChannels.some(candidate => candidate.id === ch.id) ? translateUi(" · Possible broadcast") : translateUi(" · Guide match")}</small></span>{ch.qualityLabel && <em>{ch.qualityLabel}</em>}{ch.language && <em>{ch.language.toUpperCase()}</em>}<ChevronRight className="tv-source-arrow" size={22} /><Play className="tv-source-play" size={22} /></button>} />}
+      {selected?.addonSources?.map(source => <AddonSourceRow key={`${selected.id}:${source.key}`} event={source} addons={addons} canPlay={isOnAir(selected, now) && (source.startsAt === undefined || source.startsAt <= now)} onPlay={stream => {
+        if (!addons.some(a => a.enabled !== false && a.manifestUrl === source.installation)) return;
+        if (stream.external) window.open(stream.url, "_blank", "noopener,noreferrer");
+        else onPlay({ id: `sports-addon:${source.addonId}:${source.type}:${source.eventId}`, name: source.title, group: source.addonName, streamUrl: stream.url, requestHeaders: stream.headers });
+        close();
+      }} />)}
     </dialog>
   </section>;
+}
+
+function AddonSourceRow({ event, addons, canPlay, onPlay }: { event: SportsAddonEvent; addons: InstalledAddon[]; canPlay: boolean; onPlay: (stream: SportsAddonStream) => void }) {
+  const translateUi = useTranslation();
+  const [sources, setSources] = useState<SportsAddonStream[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
+  const load = async () => {
+    request.current?.abort();
+    const controller = new AbortController(); request.current = controller;
+    setLoading(true);
+    try { const result = await resolveSportsAddon(event, addons, controller.signal); if (!controller.signal.aborted) setSources(result); }
+    catch { if (!controller.signal.aborted) setSources([]); }
+    finally { if (!controller.signal.aborted) setLoading(false); }
+  };
+  return <div>
+    <button type="button" className="tv-event-source" aria-busy={loading} onClick={() => { if (!loading) void load(); }}>
+      <Tv size={24} /><span><strong>{event.addonName}</strong><small>{loading ? translateUi("Loading…") : sources?.length === 0 ? `${translateUi("No sources found yet.")} ${translateUi("Retry")}` : translateUi("Addons")}</small></span><ChevronRight size={22} />
+    </button>
+    {sources?.map((stream, i) => <button type="button" className="tv-event-source" key={i} disabled={loading || !canPlay && !stream.external} onClick={() => onPlay(stream)}>
+      <Play size={20} /><span><strong>{stream.name}</strong><small>{[event.addonName, stream.description].filter(Boolean).join(" · ")}{stream.external ? " ↗" : ""}</small></span>
+    </button>)}
+  </div>;
 }
 
 

@@ -738,9 +738,13 @@ class HomeServerRepository @Inject constructor(
         imdbId: String?,
         title: String,
         year: Int?,
-        tmdbId: Int?
+        tmdbId: Int?,
+        allowedProviderIds: Set<String>? = null
     ): List<StreamSource> = withContext(Dispatchers.IO) {
-        val connections = currentConnections().filter { it.isUsable }
+        val connections = currentConnections().filter {
+            it.isUsable && (allowedProviderIds == null ||
+                "homeserver:${it.connectionId.ifBlank { it.serverId }}" in allowedProviderIds)
+        }
         if (connections.isEmpty()) return@withContext emptyList()
         val cacheKey = sourceCacheKey(
             type = "movie",
@@ -779,9 +783,13 @@ class HomeServerRepository @Inject constructor(
         season: Int,
         episode: Int,
         tmdbId: Int?,
-        tvdbId: Int?
+        tvdbId: Int?,
+        allowedProviderIds: Set<String>? = null
     ): List<StreamSource> = withContext(Dispatchers.IO) {
-        val connections = currentConnections().filter { it.isUsable }
+        val connections = currentConnections().filter {
+            it.isUsable && (allowedProviderIds == null ||
+                "homeserver:${it.connectionId.ifBlank { it.serverId }}" in allowedProviderIds)
+        }
         if (connections.isEmpty()) return@withContext emptyList()
         val cacheKey = sourceCacheKey(
             type = "episode",

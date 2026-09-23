@@ -1,5 +1,6 @@
 import type { IptvChannel, IptvNowNext, IptvProgram } from "./types";
 import type { SportsFixture } from "./sportsArtwork";
+import type { SportsAddonEvent } from "./sportsAddons";
 
 export const guideSports = [
   { id: "american-football", title: "American football", asset: "american_football", pattern: /\b(american football|nfl|ncaa football)\b/i },
@@ -40,6 +41,7 @@ export interface SportsGuideEvent {
   prominence?: number;
   // The provider confirms a live sports channel, but not a specific fixture.
   channelOnly?: boolean;
+  addonSources?: SportsAddonEvent[];
 }
 const nonEvent = /\b(highlights?|hoogtepunten|samenvatting|resumen|replay|re-?run|classic|news|magazine|review|preview|cancelled|canceled|postponed|abandoned|sendepause|off air|no signal|best of|teleshopping|infomercial|documentary)\b/i;
 export const sportsProgrammeKey = (p: IptvProgram) => `${p.title.trim().toLowerCase().replace(/\s+/g, " ")}|${p.startUtcMillis}|${p.endUtcMillis}`;
@@ -50,9 +52,9 @@ export function safeSportsImage(value?: string): string | undefined {
 export const SPORTS_LIVE_STALE_MS = 15 * 60_000;
 export const isConfirmedLive = (event: SportsGuideEvent, now: number) => Boolean(event.fixture && event.fixture.status === "live" &&
   now >= event.fixture.observedAt && now - event.fixture.observedAt < SPORTS_LIVE_STALE_MS);
-export const isOnAir = (event: SportsGuideEvent, now: number) => !["finished", "postponed"].includes(event.fixture?.status ?? "") && (isConfirmedLive(event, now) || Object.values(event.schedules ?? { fallback: event.programme }).some(p => programmeOnAir(p, now)));
+export const isOnAir = (event: SportsGuideEvent, now: number) => !["finished", "postponed"].includes(event.fixture?.status ?? "") && (isConfirmedLive(event, now) || event.addonSources?.some(s => s.live && now - s.observedAt >= -60_000 && now - s.observedAt < 300_000 && (s.startsAt === undefined || s.startsAt <= now)) || Object.values(event.schedules ?? { fallback: event.programme }).some(p => programmeOnAir(p, now)));
 export const availableEventChannels = (event: SportsGuideEvent, now: number) => event.channels.filter(ch => programmeOnAir(event.schedules?.[ch.id] ?? event.programme, now));
-export const hasSportsChannels = (event: SportsGuideEvent, now: number) => (isOnAir(event, now) ? availableEventChannels(event, now) : event.channels).length > 0 || (event.possibleChannels?.length ?? 0) > 0;
+export const hasSportsChannels = (event: SportsGuideEvent, now: number) => (isOnAir(event, now) ? availableEventChannels(event, now) : event.channels).length > 0 || (event.possibleChannels?.length ?? 0) > 0 || (event.addonSources?.length ?? 0) > 0;
 export function sportsPresentationRows(events: SportsGuideEvent[], now: number, failedArtwork: ReadonlySet<string>) {
   const available = events.filter(e => hasSportsChannels(e, now));
   const illustrated = (e: SportsGuideEvent) => !failedArtwork.has(e.id) && Boolean(e.artwork || (e.teamArtwork?.homeBadge && e.teamArtwork.awayBadge));
@@ -65,7 +67,7 @@ export function sportsChannelSummary(event: SportsGuideEvent, now: number): stri
   const matched = new Set((isOnAir(event, now) ? availableEventChannels(event, now) : event.channels).map(ch => ch.id));
   const possible = new Set((event.possibleChannels ?? []).filter(ch => !matched.has(ch.id)).map(ch => ch.id));
   return [matched.size ? `${matched.size} guide ${matched.size === 1 ? "match" : "matches"}` : "",
-    possible.size ? `${possible.size} possible` : ""].filter(Boolean).join(" · ") || "No channels";
+    possible.size ? `${possible.size} possible` : "", event.addonSources?.length ? `${event.addonSources.length} add-on ${event.addonSources.length === 1 ? "source" : "sources"}` : ""].filter(Boolean).join(" · ") || "No channels";
 }
 export const sportsArtworkKey = (title: string) => title.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase()
   .replace(/^(live\s*[:|-]\s*|live\s+)/, "").replace(/^(football|soccer|basketball|baseball|tennis|ice hockey|american football|boxing|mma|cricket)\s*:\s*/, "")

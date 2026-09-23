@@ -375,6 +375,56 @@ object SubtitleSyncMatcher {
     }
 
     /**
+     * A constant offset that fits the **whole file**, established by agreement rather than by gain.
+     *
+     * [estimateOffsetMatch] maximises overlap over the reference as a whole, so a subtitle that is
+     * a different cut can still produce a confident-looking number — its best offset simply slides
+     * later dialogue onto earlier windows. The cross-candidate corroboration built for that problem
+     * needs two candidates to agree, which says nothing when only one is plausible.
+     *
+     * With a container-index reference there is a better test available: fit the offset
+     * *independently* over [segments] slices of the file and see whether the answers agree. A real
+     * constant delay looks the same at the start, middle and end (House of the Dragon S01E01:
+     * 700/675 ms); a wrong cut does not (South Park S06E02: 2025/6900/6700 ms). Agreement within
+     * [agreementMs] is corroboration from the file itself.
+     *
+     * Returns the median offset with its whole-file scores, or null when the slices disagree, the
+     * offset is negligible, or there are too few windows to slice meaningfully.
+     */
+    fun segmentConsistentOffset(
+        cues: List<TimedCue>,
+        referenceIntervals: List<Pair<Long, Long>>,
+        minOffsetMs: Long,
+        maxOffsetMs: Long,
+        segments: Int = 3,
+        agreementMs: Long = 500L,
+    ): OffsetMatch? {
+        if (segments < 2 || referenceIntervals.size < segments * 5) return null
+        val sliceSize = referenceIntervals.size / segments
+        val offsets = ArrayList<Long>(segments)
+        for (index in 0 until segments) {
+            val from = index * sliceSize
+            val to = if (index == segments - 1) referenceIntervals.size else (index + 1) * sliceSize
+            // minOffsetMs 0: a slice that is already aligned must report 0, not "no answer" —
+            // three zeroes are agreement (and are rejected below as negligible), whereas a null
+            // would hide a disagreement.
+            val fit = estimateOffsetMatch(cues, referenceIntervals.subList(from, to), 0L, maxOffsetMs)
+                ?: return null
+            offsets += fit.offsetMs
+        }
+        val sorted = offsets.sorted()
+        if (sorted.last() - sorted.first() > agreementMs) return null
+        val median = sorted[sorted.size / 2]
+        if (Math.abs(median) < minOffsetMs) return null
+        val sortedCues = cues.sortedBy { it.startMs }
+        return OffsetMatch(
+            offsetMs = median,
+            correctedScore = scoreSortedShifted(sortedCues, referenceIntervals, median),
+            baseScore = scoreSortedShifted(sortedCues, referenceIntervals, 0L),
+        )
+    }
+
+    /**
      * Add [offsetMs] to every timestamp in raw SRT/WEBVTT text, preserving format (comma vs dot)
      * and any trailing cue settings. Used to bake a detected offset into the served local file so
      * the correction survives independently of the player's delay knob.

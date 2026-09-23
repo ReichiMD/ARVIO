@@ -35,9 +35,11 @@ import {
   UserCircle,
   X,
 } from "lucide-react";
-import { Component, CSSProperties, useEffect, useState, type ReactNode } from "react";
+import { Component, CSSProperties, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { defaultCatalogs, mergeCatalogs } from "@/lib/catalogs";
+import { parseCustomCollections, mergeImportedCollections } from "@/lib/customCollections";
+import { textRequest, proxiedUrl } from "@/lib/http";
 import {
   config,
   hasNetlifyBackendConfig,
@@ -61,6 +63,7 @@ import { defaultSettings, useApp } from "@/lib/store";
 import { PremiumAccount } from "@/components/shell/PremiumAccount";
 import { IptvGroupSettings } from "./IptvGroupSettings";
 import { iptvPlaylistSignature } from "@/lib/iptv";
+import { clearSourceSettingsRequest, requestedSourceSettings, SOURCE_SETTINGS_EVENT } from "@/lib/sourceSetup";
 import type {
   AppSettings,
   CatalogConfig,
@@ -218,9 +221,23 @@ function qualityPresetFilters(
 
 export function SettingsScreen() {
   const translateUi = useTranslation();
-  const [section, setSection] = useState<SectionId>("accounts");
+  const [section, setSection] = useState<SectionId>(() => requestedSourceSettings() ?? "accounts");
   const [collapsed, setCollapsed] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    clearSourceSettingsRequest();
+    const navigate = (event: Event) => {
+      const target = (event as CustomEvent).detail;
+      if (target !== "homeserver" && target !== "tv") return;
+      setSection(target);
+      setMobileMenuOpen(false);
+      clearSourceSettingsRequest();
+      window.scrollTo({ top: 0 });
+    };
+    window.addEventListener(SOURCE_SETTINGS_EVENT, navigate);
+    return () => window.removeEventListener(SOURCE_SETTINGS_EVENT, navigate);
+  }, []);
 
   const activeSectionObj = SECTIONS.find((s) => s.id === section);
 
@@ -2208,14 +2225,20 @@ function TvSettingsSection() {
 
 function CatalogsSection() {
   const translateUi = useTranslation();
-  const { settings, updateSettings, setToast } = useApp();
+  const { settings, updateSettings, setToast, activeProfile } = useApp();
   const standardCatalogs = mergeCatalogs(
     safeArray(settings.catalogs),
     safeArray(settings.hiddenCatalogIds),
   ).filter((catalog) => catalog.sourceType !== "home-server");
   const [homeServerCatalogs, setHomeServerCatalogs] = useState<CatalogConfig[]>([]);
   const [customCatalogUrl, setCustomCatalogUrl] = useState("");
+  const [collectionsInput, setCollectionsInput] = useState("");
+  const [importingCollections, setImportingCollections] = useState(false);
   const catalogs = [...homeServerCatalogs, ...standardCatalogs];
+  const currentImportTarget = useRef({ profileId: activeProfile?.id, catalogs });
+  currentImportTarget.current = { profileId: activeProfile?.id, catalogs };
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -2254,6 +2277,37 @@ function CatalogsSection() {
 
   return (
     <Panel title={translateUi("Catalogs (Home Rows)")}>
+      <div className="inline-form">
+        <textarea aria-label={translateUi("Collection")} value={collectionsInput}
+          onChange={e => setCollectionsInput(e.target.value)} placeholder={translateUi("Collection")} rows={3} />
+        <button type="button" className="primary" disabled={importingCollections || !collectionsInput.trim()}
+          onClick={async () => {
+            const profileId = activeProfile?.id;
+            setImportingCollections(true);
+            try {
+              const input = collectionsInput.trim();
+              const raw = input.startsWith("[") || input.startsWith("{");
+              if (!raw && !/^https?:\/\//i.test(input)) throw new Error("Enter an HTTP(S) URL or collections JSON");
+              const json = raw ? input : await textRequest(proxiedUrl(input));
+              const imported = await parseCustomCollections(json, raw ? undefined : input);
+              if (!mounted.current || currentImportTarget.current.profileId !== profileId) return;
+              updateCatalogs(mergeImportedCollections(currentImportTarget.current.catalogs, imported));
+              setCollectionsInput("");
+              setToast("Collections imported");
+            } catch (error) { setToast(error instanceof Error ? error.message : "Could not import collections"); }
+            finally { setImportingCollections(false); }
+          }}><Download size={18} />{translateUi(importingCollections ? "Importing..." : "Import collections")}</button>
+      </div>
+      {catalogs.some(c => !c.collectionRailKey && String(c.kind).toUpperCase() === "COLLECTION_RAIL") && <label className="inline-form">
+        <input type="checkbox" checked={catalogs.some(c => !c.collectionRailKey && String(c.kind).toUpperCase() === "COLLECTION_RAIL" && c.enabled)}
+          onChange={e => updateCatalogs(catalogs.map(c => !c.collectionRailKey && ["COLLECTION_RAIL", "COLLECTION"].includes(String(c.kind).toUpperCase())
+            ? { ...c, enabled: e.target.checked } : c))} />
+        {translateUi("Default")} {translateUi("Collection")}
+      </label>}
+      {Array.from(new Map(catalogs.filter(c => c.packId?.startsWith("usercol_")).map(c => [c.packId!, c.packName || c.name])).entries()).map(([id, name]) =>
+        <div className="inline-form" key={id}><span>{name}</span>
+          <button type="button" className="icon-button danger" aria-label={`${translateUi("Remove")} ${name}`}
+            onClick={() => updateCatalogs(catalogs.filter(c => c.packId !== id))}><Trash2 size={18} /></button></div>)}
       <div className="inline-form">
         <input
           value={customCatalogUrl}

@@ -40,6 +40,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -203,7 +204,6 @@ import com.arflix.tv.ui.theme.Pink
 import com.arflix.tv.ui.theme.Purple
 import com.arflix.tv.ui.theme.TextPrimary
 import com.arflix.tv.ui.theme.TextSecondary
-import com.arflix.tv.util.DeviceType
 import com.arflix.tv.util.Constants
 import com.arflix.tv.util.LocalDeviceType
 import com.arflix.tv.util.formatGenreName
@@ -1246,11 +1246,13 @@ private fun DetailsContent(
 
     // ===================== MOBILE LAYOUT =====================
     if (isMobile) {
-        val configuration = LocalConfiguration.current
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val navigationBottomPadding = WindowInsets.navigationBars
+            .asPaddingValues()
+            .calculateBottomPadding()
         val backdropHeight = resolveDetailsBackdropHeightDp(
-            screenWidthDp = configuration.screenWidthDp,
-            screenHeightDp = configuration.screenHeightDp,
-            isPhone = LocalDeviceType.current == DeviceType.PHONE,
+            availableWidthDp = maxWidth.value,
+            availableHeightDp = (maxHeight - navigationBottomPadding).coerceAtLeast(1.dp).value,
         ).dp
         val mobileScrollState = rememberScrollState()
         val density = LocalDensity.current
@@ -1926,6 +1928,7 @@ private fun DetailsContent(
                 onBack = onBack,
                 modifier = Modifier.align(Alignment.TopStart).statusBarsPadding()
             )
+        }
         }
         return
     }

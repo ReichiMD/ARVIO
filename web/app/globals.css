@@ -12955,3 +12955,23 @@ html { background: #000; }
 .iptv-group-settings button svg{display:block;flex-shrink:0;}
 .iptv-group-name{overflow-wrap:anywhere;min-width:0;}
 .iptv-group-name small{display:block;opacity:.65;font-size:12px;}
+/* Imported collection folders keep their own rail and open within a focus-trapped dialog. */
+.custom-collection-tile { flex: 0 0 220px; width: 220px; min-height: 124px; padding: 0; overflow: hidden; border-radius: 8px; color: var(--text); }
+.custom-collection-tile img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
+.custom-collection-tile span { display: block; padding: 10px; overflow-wrap: anywhere; }
+.custom-collection-dialog { width: min(1200px, 94vw); max-height: 90vh; padding: 20px; background: #151515; color: #fff; border: 1px solid #555; border-radius: 8px; }
+.custom-collection-dialog::backdrop { background: rgb(0 0 0 / 75%); }
+.custom-collection-tile { display: flex; flex-direction: column; align-self: flex-start; background: var(--bg-card); border: 1px solid var(--line); text-align: left; }
+.custom-collection-tile.is-poster { flex-basis: 160px; width: 160px; }
+.custom-collection-tile.is-poster img, .custom-collection-tile.is-poster .custom-collection-art { aspect-ratio: 2 / 3; }
+.custom-collection-art { width: 100%; aspect-ratio: 16 / 9; display: grid; place-items: center; background: var(--bg-elevated); color: var(--muted); }
+.custom-collection-tile:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.custom-collection-tile span { width: 100%; font-size: 15px; line-height: 1.4; }
+.custom-collection-empty { min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.custom-collection-empty p { color: var(--muted); }
+.custom-collection-rail > .rail-scroll-shell > .rail-strip { display: flex; gap: 16px; align-items: flex-start; padding-left: 4px; }
+.custom-collection-dialog .rail { padding: 0; margin-top: 16px; content-visibility: visible; }
+.custom-collection-dialog .rail-head h3 { font-size: 24px; }
+.custom-collection-dialog .rail-strip { grid-auto-columns: 280px; padding-right: 0; }
+.custom-collection-dialog .is-poster .rail-strip { grid-auto-columns: 160px; }
+@media (max-width: 600px) { .custom-collection-dialog { padding: 12px; } .custom-collection-tile { flex-basis: 180px; width: 180px; } .custom-collection-tile.is-poster { flex-basis: 132px; width: 132px; } }

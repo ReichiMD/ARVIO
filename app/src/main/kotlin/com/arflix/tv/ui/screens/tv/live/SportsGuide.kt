@@ -56,6 +56,7 @@ internal data class SportsGuideEvent(
     // specific fixture. Keep that source playable, but never present it as a
     // verified match.
     val channelOnly: Boolean = false,
+    val addonSources: List<com.arflix.tv.data.model.SportsAddonEvent> = emptyList(),
 ) {
     /** Score feeds can be delayed briefly; do not drop a live event during a normal refresh gap. */
     private companion object {
@@ -70,16 +71,17 @@ internal data class SportsGuideEvent(
             now - liveFixture.observedAt < LIVE_STALE_MS
     }
     fun isOnAir(now: Long) = fixture?.status !in setOf("finished", "postponed") &&
-        (isConfirmedLive(now) || if (schedules.isEmpty()) programme.isLive(now) else schedules.values.any { it.isLive(now) })
+        (isConfirmedLive(now) || addonSources.any { it.isLive(now) } || if (schedules.isEmpty()) programme.isLive(now) else schedules.values.any { it.isLive(now) })
     fun availableChannels(now: Long) = channels.filter { (schedules[it.id] ?: programme).isLive(now) }
     // A delayed status feed must not make an event disappear at its start time.
     // This is deliberately separate from LIVE; the broadcaster is not a stream probe.
     fun isScheduledNow(now: Long) = fixture?.status == "scheduled" && !isOnAir(now) &&
         now - programme.startUtcMillis in 0 until 4 * 60 * 60_000L
-    fun hasChannels(now: Long) = (if (isOnAir(now)) availableChannels(now) else channels).isNotEmpty() || possibleChannels.isNotEmpty()
+    fun hasChannels(now: Long) = (if (isOnAir(now)) availableChannels(now) else channels).isNotEmpty() || possibleChannels.isNotEmpty() || addonSources.isNotEmpty()
 }
 
-internal fun attachSportsArtwork(events: List<SportsGuideEvent>, artwork: List<SportsEventArtwork>): List<SportsGuideEvent> {
+internal fun attachSportsArtwork(events: List<SportsGuideEvent>, artwork: List<SportsEventArtwork>,
+    preferMetadata: Boolean = false): List<SportsGuideEvent> {
     val byTitle = artwork.groupBy { sportsEventIdentity(it.title) }
     return events.map { event ->
         val candidates = byTitle[event.identity].orEmpty().filter {
@@ -91,6 +93,16 @@ internal fun attachSportsArtwork(events: List<SportsGuideEvent>, artwork: List<S
         }
         val match = candidates.firstOrNull { it.homeBadge != null && it.awayBadge != null }
         val banner = candidates.firstOrNull { safeSportsImage(it.background) != null }
+        if (preferMetadata) {
+            val paid = candidates.filter { it.source == "TheSportsDB" }
+            val preferredPair = paid.firstOrNull { it.homeBadge != null && it.awayBadge != null }
+            val preferredBanner = paid.firstOrNull { safeSportsImage(it.background) != null }
+            val pair = preferredPair ?: match
+            val image = preferredBanner ?: banner.takeIf { preferredPair == null }
+            if (image == null && pair == null) return@map event
+            return@map event.copy(artwork = safeSportsImage(image?.background), teamArtwork = pair,
+                artworkSource = image?.source ?: pair?.source)
+        }
         event.copy(artwork = safeSportsImage(event.programme.artworkUrl) ?: candidates.firstNotNullOfOrNull { safeSportsImage(it.background) },
             teamArtwork = match, artworkSource = banner?.source ?: match?.source)
     }

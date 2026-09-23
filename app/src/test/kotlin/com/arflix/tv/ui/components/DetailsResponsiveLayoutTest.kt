@@ -73,50 +73,78 @@ class DetailsResponsiveLayoutTest {
     fun phoneLandscapeUsesCompactHeightThatStillFitsOverlay() {
         assertThat(
             resolveDetailsBackdropHeightDp(
-                screenWidthDp = 640,
-                screenHeightDp = 360,
-                isPhone = true,
+                availableWidthDp = 640f,
+                availableHeightDp = 360f,
             )
         ).isWithin(0.01f).of(198f)
     }
 
     @Test
-    fun phoneLandscapeHeightIsClampedToSafeRange() {
+    fun landscapeHeightUsesAdaptiveFloorAndCap() {
         assertThat(
             resolveDetailsBackdropHeightDp(
-                screenWidthDp = 480,
-                screenHeightDp = 320,
-                isPhone = true,
+                availableWidthDp = 480f,
+                availableHeightDp = 320f,
             )
         ).isEqualTo(190f)
         assertThat(
-            resolveDetailsBackdropHeightDp(
-                screenWidthDp = 1280,
-                screenHeightDp = 720,
-                isPhone = true,
-            )
-        ).isEqualTo(220f)
+            resolveDetailsBackdropHeightDp(1280f, 720f)
+        ).isEqualTo(360f)
     }
 
     @Test
     fun phonePortraitKeepsExistingBackdropRule() {
         assertThat(
             resolveDetailsBackdropHeightDp(
-                screenWidthDp = 411,
-                screenHeightDp = 891,
-                isPhone = true,
+                availableWidthDp = 411f,
+                availableHeightDp = 891f,
             )
         ).isWithin(0.01f).of(472.23f)
     }
 
     @Test
-    fun landscapeTabletKeepsExistingBackdropRule() {
+    fun landscapeTabletIsCappedByAvailableHeight() {
         assertThat(
             resolveDetailsBackdropHeightDp(
-                screenWidthDp = 1280,
-                screenHeightDp = 800,
-                isPhone = false,
+                availableWidthDp = 1280f,
+                availableHeightDp = 800f,
             )
-        ).isWithin(0.01f).of(424f)
+        ).isEqualTo(360f)
+    }
+
+    @Test
+    fun unfoldedFoldableUsesLandscapeRuleInsteadOfPortraitMinimum() {
+        assertThat(resolveDetailsBackdropHeightDp(841f, 673f)).isEqualTo(360f)
+    }
+
+    @Test
+    fun foldedFoldableUsesPortraitAndLandscapeGeometry() {
+        val portrait = resolveDetailsBackdropHeightDp(360f, 748f)
+        val landscape = resolveDetailsBackdropHeightDp(748f, 360f)
+
+        assertThat(portrait).isWithin(0.01f).of(400f)
+        assertThat(landscape).isWithin(0.01f).of(198f)
+    }
+
+    @Test
+    fun portraitTabletKeepsPortraitPresentation() {
+        assertThat(resolveDetailsBackdropHeightDp(800f, 1228f))
+            .isWithin(0.01f).of(650.84f)
+    }
+
+    @Test
+    fun veryShortLandscapeViewportUsesAProportionalOverlayFloor() {
+        assertThat(resolveDetailsBackdropHeightDp(640f, 240f))
+            .isWithin(0.01f).of(163.2f)
+    }
+
+    @Test
+    fun orientationChangeRestoresPortraitSizing() {
+        val portrait = resolveDetailsBackdropHeightDp(411f, 891f)
+        val landscape = resolveDetailsBackdropHeightDp(891f, 411f)
+        val portraitAgain = resolveDetailsBackdropHeightDp(411f, 891f)
+
+        assertThat(landscape).isLessThan(portrait)
+        assertThat(portraitAgain).isEqualTo(portrait)
     }
 }

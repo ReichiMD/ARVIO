@@ -75,7 +75,7 @@ export function toSportsEventArtwork(meta: Record<string, unknown>): SportsEvent
     genres: Array.isArray(meta.genres) ? meta.genres.filter((g): g is string => typeof g === "string") : [] };
 }
 
-export function attachSportsArtwork(events: SportsGuideEvent[], artwork: SportsEventArtwork[]): SportsGuideEvent[] {
+export function attachSportsArtwork(events: SportsGuideEvent[], artwork: SportsEventArtwork[], preferMetadata = false): SportsGuideEvent[] {
   const byTitle = new Map<string, SportsEventArtwork[]>();
   for (const item of artwork) { const key = sportsEventIdentity(item.title); byTitle.set(key, [...(byTitle.get(key) ?? []), item]); }
   return events.map(event => {
@@ -86,6 +86,16 @@ export function attachSportsArtwork(events: SportsGuideEvent[], artwork: SportsE
       && (item.startsAt === undefined || Math.abs(item.startsAt - event.programme.startUtcMillis) <= (isScheduleMetadata(item) ? 2 : 6) * 60 * 60_000);
     }) ?? [];
     const match = matches.find(item => item.homeBadge && item.awayBadge);
+    if (preferMetadata) {
+      const paid = matches.filter(item => item.source === "TheSportsDB");
+      const paidPair = paid.find(item => item.homeBadge && item.awayBadge);
+      const pair = paidPair ?? match;
+      const banner = paid.find(item => safeSportsImage(item.background))
+        ?? (paidPair ? undefined : matches.find(item => safeSportsImage(item.background)));
+      if (!banner && !pair) return event;
+      return { ...event, artwork: safeSportsImage(banner?.background),
+        teamArtwork: pair ? { homeBadge: pair.homeBadge!, awayBadge: pair.awayBadge!, homeTeam: pair.homeTeam, awayTeam: pair.awayTeam } : event.teamArtwork };
+    }
     return { ...event, artwork: safeSportsImage(event.programme.artworkUrl) ?? matches.map(item => safeSportsImage(item.background)).find(Boolean),
       teamArtwork: match ? { homeBadge: match.homeBadge!, awayBadge: match.awayBadge!, homeTeam: match.homeTeam, awayTeam: match.awayTeam } : undefined };
   });

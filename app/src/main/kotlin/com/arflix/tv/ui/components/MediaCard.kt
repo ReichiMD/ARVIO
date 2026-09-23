@@ -229,7 +229,8 @@ fun MediaCard(
                               else Modifier.background(missingArtworkBrush)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (!isChannelLogo || imageRequest == null || channelLogoFailed) {
+                    if ((!isChannelLogo || imageRequest == null || channelLogoFailed) &&
+                        !(showCollectionTitleOverlay && item.status?.startsWith("collection:custom_") == true)) {
                         Text(
                             text = item.title,
                             style = ArvioSkin.typography.cardTitle,

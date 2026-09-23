@@ -137,6 +137,8 @@ supabase/functions/tv-auth-web/
 !**/drawable*/*.png
 !**/mipmap*/*.png
 !screenshots/*.png
+!assets/badges/*.png
+!web/public/**/*.png
 
 # Build logs and dev artifacts
 build_*.txt

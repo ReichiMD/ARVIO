@@ -3,15 +3,17 @@ package com.arflix.tv.ui.components
 import kotlin.math.ceil
 
 internal fun resolveDetailsBackdropHeightDp(
-    screenWidthDp: Int,
-    screenHeightDp: Int,
-    isPhone: Boolean,
+    availableWidthDp: Float,
+    availableHeightDp: Float,
 ): Float {
-    val isPhoneLandscape = isPhone && screenWidthDp > screenHeightDp
-    return if (isPhoneLandscape) {
-        (screenHeightDp * 0.55f).coerceIn(190f, 220f)
+    val width = availableWidthDp.coerceAtLeast(1f)
+    val height = availableHeightDp.coerceAtLeast(1f)
+    return if (width > height) {
+        val overlayFloor = minOf(190f, height * 0.68f)
+        (height * 0.55f).coerceIn(overlayFloor, 360f)
     } else {
-        (screenHeightDp * 0.53f).coerceAtLeast(400f)
+        val portraitFloor = minOf(400f, height * 0.65f)
+        (height * 0.53f).coerceAtLeast(portraitFloor)
     }
 }
 

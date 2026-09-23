@@ -1,7 +1,7 @@
 "use client";
 import { useTranslation } from "@/lib/i18n";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { loadStored, saveStored } from "@/lib/storage";
 import { useApp } from "@/lib/store";
 import type { CatalogConfig, Category, MediaItem } from "@/lib/types";
@@ -13,13 +13,14 @@ const CATALOG_ROW_CACHE_KEY = "arvio.web.catalogRows.v3";
 const CATALOG_ROW_CACHE_TTL = 12 * 60 * 60 * 1000;
 type CatalogRowCache = Record<string, { at: number; category: Category }>;
 
-export function LazyRail({ catalog, eager = false, posterMode, onOpen, onFocus, onLoaded }: {
+export function LazyRail({ catalog, eager = false, posterMode, onOpen, onFocus, onLoaded, emptyContent }: {
   catalog: CatalogConfig;
   eager?: boolean;
   posterMode?: boolean;
   onOpen: (item: MediaItem) => void;
   onFocus?: (item: MediaItem) => void;
   onLoaded?: (category: Category) => void;
+  emptyContent?: ReactNode;
 }) {
   const { loadCatalogRow, settings } = useApp();
   const translateUi = useTranslation();
@@ -94,7 +95,7 @@ export function LazyRail({ catalog, eager = false, posterMode, onOpen, onFocus, 
   if (category) {
     return <MediaRail category={category} onOpen={onOpen} onFocus={onFocus} posterMode={effectivePosterMode} />;
   }
-  if (done) return null;
+  if (done) return <>{emptyContent ?? null}</>;
 
   return (
     <section ref={ref} className={`rail rail-skeleton ${effectivePosterMode ? "is-poster" : ""}`} aria-hidden>

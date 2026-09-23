@@ -53,6 +53,50 @@ private val BottomScrim = Brush.verticalGradient(
     )
 )
 
+internal data class MobileHeroLayoutSpec(
+    val cardWidthDp: Float,
+    val cardHeightDp: Float,
+    val carouselHorizontalPaddingDp: Float,
+    val compactContent: Boolean,
+)
+
+/**
+ * Resolves the mobile Home hero from the space that the Home viewport actually owns.
+ * Portrait retains the original 3:4 card whenever it fits. Landscape uses a bounded
+ * 16:9 banner so a wide window cannot turn into an extremely tall poster.
+ */
+internal fun resolveMobileHeroLayout(
+    availableWidthDp: Float,
+    availableHeightDp: Float,
+): MobileHeroLayoutSpec {
+    val width = availableWidthDp.coerceAtLeast(1f)
+    val height = availableHeightDp.coerceAtLeast(1f)
+    val landscape = width > height
+    val horizontalPadding = if (landscape) 32f else 64f
+    val pageWidth = (width - horizontalPadding * 2f).coerceAtLeast(1f)
+
+    return if (landscape) {
+        val heightLimit = minOf(height * 0.56f, 280f)
+        val cardWidth = minOf(pageWidth, heightLimit * (16f / 9f))
+        MobileHeroLayoutSpec(
+            cardWidthDp = cardWidth,
+            cardHeightDp = cardWidth / (16f / 9f),
+            carouselHorizontalPaddingDp = (width - cardWidth) / 2f,
+            compactContent = true,
+        )
+    } else {
+        val heightLimit = height * 0.72f
+        val cardHeight = minOf(pageWidth / (3f / 4f), heightLimit)
+        val cardWidth = minOf(pageWidth, cardHeight * (3f / 4f))
+        MobileHeroLayoutSpec(
+            cardWidthDp = cardWidth,
+            cardHeightDp = cardHeight,
+            carouselHorizontalPaddingDp = (width - cardWidth) / 2f,
+            compactContent = false,
+        )
+    }
+}
+
 /**
  * Netflix-style immersive mobile hero banner.
  *
@@ -65,6 +109,7 @@ private val BottomScrim = Brush.verticalGradient(
  * @param genres    List of genre strings displayed as a bullet-separated row.
  * @param year      Release year string (e.g. "2024"). Pass empty to hide.
  * @param rating    IMDb rating string (e.g. "8.7"). Pass empty to hide.
+ * @param compactContent Use the condensed text treatment for short landscape banners.
  * @param modifier  Modifier applied to the card's outermost Box.
  */
 @Composable
@@ -76,14 +121,13 @@ fun MobileHeroBanner(
     rating: String = "",
     logoUrl: String? = null,
     onClick: (() -> Unit)? = null,
+    compactContent: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
 
     Box(
         modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(3f / 4f)
             .shadow(elevation = 8.dp, shape = BannerShape, clip = false)
             .clip(BannerShape)
             .background(Color(0xFF141419))
@@ -119,10 +163,10 @@ fun MobileHeroBanner(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 28.dp),
+                .padding(horizontal = if (compactContent) 14.dp else 20.dp)
+                .padding(bottom = if (compactContent) 12.dp else 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(if (compactContent) 4.dp else 8.dp)
         ) {
             // Element A — Logo image when available, otherwise large title text
             if (logoUrl != null) {
@@ -137,24 +181,24 @@ fun MobileHeroBanner(
                     contentScale = ContentScale.Fit,
                     alignment = Alignment.Center,
                     modifier = Modifier
-                        .height(56.dp)
+                        .height(if (compactContent) 38.dp else 56.dp)
                         .fillMaxWidth()
                 )
             } else {
                 Text(
                     text = title,
                     color = Color.White,
-                    fontSize = 36.sp,
+                    fontSize = if (compactContent) 24.sp else 36.sp,
                     fontWeight = FontWeight.Bold,
-                    lineHeight = 42.sp,
+                    lineHeight = if (compactContent) 28.sp else 42.sp,
                     textAlign = TextAlign.Center,
-                    maxLines = 3,
+                    maxLines = if (compactContent) 2 else 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
             // Element B — Genre tags with bullet separators
-            BannerGenres(genres = genres)
+            BannerGenres(genres = genres, compact = compactContent)
 
             // Element C — Year and IMDb rating
             BannerMeta(year = year, rating = rating)
@@ -216,7 +260,7 @@ private fun BannerMeta(year: String, rating: String) {
 
 /** Bullet-separated genre string rendered in muted gray. */
 @Composable
-private fun BannerGenres(genres: List<String>) {
+private fun BannerGenres(genres: List<String>, compact: Boolean) {
     if (genres.isEmpty()) return
     Text(
         text = genres.joinToString("  •  "),
@@ -225,7 +269,7 @@ private fun BannerGenres(genres: List<String>) {
         fontWeight = FontWeight.Normal,
         textAlign = TextAlign.Center,
         lineHeight = 17.sp,
-        maxLines = 2,
+        maxLines = if (compact) 1 else 2,
         overflow = TextOverflow.Ellipsis
     )
 }
@@ -248,7 +292,10 @@ private fun MobileHeroBannerSeriesPreview() {
             title = "Stranger Things",
             genres = listOf("Slick", "Psychological", "Thriller"),
             year = "2022",
-            rating = "8.7"
+            rating = "8.7",
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(3f / 4f),
         )
     }
 }
@@ -267,7 +314,10 @@ private fun MobileHeroBannerFilmPreview() {
             title = "Oppenheimer",
             genres = listOf("History", "Drama", "Biography"),
             year = "2023",
-            rating = "8.3"
+            rating = "8.3",
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(3f / 4f),
         )
     }
 }

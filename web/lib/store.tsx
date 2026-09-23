@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { LanguageProvider } from "./i18n";
+import { shouldRefreshAutomatically } from "./automaticRefresh";
 import { getStreams, getStreamsProgressive, installAddon as installAddonManifest, loadLocalAddons, normalizeAddons, saveLocalAddons } from "./addons";
 import { AuthClient, SESSION_KEY, decodeJwtPayload } from "./auth";
 import { config, getAuthPortalUrl } from "./config";
@@ -662,6 +663,8 @@ export function AppProvider({
   const [toast, setToast] = useState<string | null>(null);
   const [cloudProfilesHydrated, setCloudProfilesHydrated] = useState(() => !authClient.session);
   const refreshInFlightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const lastRefreshStartedRef = useRef<number | null>(null);
+  const previousSectionRef = useRef(section);
   const iptvGuideInFlightRef = useRef(new Set<string>());
   // Snapshot of the settings last known to match the cloud, so the autosave
   // effect can skip pushing settings that just CAME from the cloud (an echo
@@ -793,6 +796,7 @@ export function AppProvider({
     refreshKeyRef.current = key;
     const existing = refreshInFlightRef.current;
     if (existing?.key === key) return existing.promise;
+    lastRefreshStartedRef.current = performance.now();
     const generation = ++refreshGenerationRef.current;
     const isCurrent = () => refreshGenerationRef.current === generation && refreshKeyRef.current === key &&
       activeProfileIdRef.current === profileId && authClient.session?.userId === accountId;
@@ -1327,21 +1331,26 @@ export function AppProvider({
 
   useEffect(() => {
     if (view === "login" || (authClient.session && !cloudProfilesHydrated)) return undefined;
-    let lastRefreshAt = 0;
     const refreshOnReturn = () => {
-      if (document.visibilityState !== "visible") return;
-      const now = Date.now();
-      if (now - lastRefreshAt < 2_000) return;
-      lastRefreshAt = now;
-      void refreshData();
+      if (!shouldRefreshAutomatically({
+        visible: document.visibilityState === "visible",
+        playing: playingRef.current,
+        inFlight: Boolean(refreshInFlightRef.current),
+        lastRefreshAt: lastRefreshStartedRef.current,
+        now: performance.now()
+      })) return;
+      void refreshData(undefined, true);
     };
+    const returnedHome = previousSectionRef.current !== "home" && section === "home";
+    previousSectionRef.current = section;
+    if (view === "app" && returnedHome) refreshOnReturn();
     window.addEventListener("focus", refreshOnReturn);
     document.addEventListener("visibilitychange", refreshOnReturn);
     return () => {
       window.removeEventListener("focus", refreshOnReturn);
       document.removeEventListener("visibilitychange", refreshOnReturn);
     };
-  }, [cloudProfilesHydrated, refreshData, view]);
+  }, [cloudProfilesHydrated, refreshData, section, view]);
 
   useEffect(() => {
     saveStored(settingsKey, settings);
@@ -1859,7 +1868,7 @@ export function AppProvider({
       description: channel.group,
       behaviorHints: { proxyHeaders: { request: channel.requestHeaders } }
     };
-    recordChannelPlayback(channel);
+    if (!channel.id?.startsWith("sports-addon:")) recordChannelPlayback(channel);
     if (openLiveExternally(stream, channel.name)) return;
     setActiveChannel(channel);
     setActiveStream(stream);

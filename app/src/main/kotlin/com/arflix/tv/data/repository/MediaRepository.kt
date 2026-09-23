@@ -241,9 +241,13 @@ class MediaRepository @Inject constructor(
                 append(':')
                 append(source.addonCatalogId.orEmpty())
                 append(':')
+                append(source.addonGenre.orEmpty())
+                append(':')
                 append(source.tmdbGenreId ?: -1)
                 append(':')
                 append(source.tmdbPersonId ?: -1)
+                append(':')
+                append(source.tmdbCreditRole.orEmpty())
                 append(':')
                 append(source.tmdbCollectionId ?: -1)
                 append(':')
@@ -258,6 +262,12 @@ class MediaRepository @Inject constructor(
                 append(source.mdblistSlug.orEmpty())
                 append(':')
                 append(source.curatedRefs?.joinToString(",").orEmpty())
+                append(':')
+                append(source.discoverParams?.entries?.joinToString(",") { "${it.key}=${it.value}" }.orEmpty())
+                append(':')
+                append(source.tmdbListId ?: -1)
+                append(':')
+                append(source.traktListId.orEmpty())
                 append(';')
             }
         }
@@ -279,7 +289,8 @@ class MediaRepository @Inject constructor(
         // instead of clamping at the default 72/96/120 ceiling. FRANCHISE and
         // other fixed groups keep the small cap.
         val unlimitedGroup = catalog.collectionGroup == CollectionGroupKind.SERVICE ||
-            catalog.collectionGroup == CollectionGroupKind.GENRE
+            catalog.collectionGroup == CollectionGroupKind.GENRE ||
+            catalog.collectionRailKey != null
 
         // Resolve all sources in parallel so a slow/failed source never blocks the
         // others — this alone fixes "empty" genre collections where one source 404s.
@@ -1604,7 +1615,7 @@ class MediaRepository @Inject constructor(
                 )
             }
 
-            val templateCollections = CollectionTemplateManifest.entries.map { entry ->
+            val templateCollections = CollectionTemplateManifest.entries.filter { it.railKey == null }.map { entry ->
                 val legacy = resolveLegacyCollection(entry.title)
                 val legacyStaticCover = legacy?.collectionCoverImageUrl?.takeUnless {
                     it.contains(".gif", ignoreCase = true) || it.contains("gifv", ignoreCase = true)
@@ -2166,6 +2177,11 @@ class MediaRepository @Inject constructor(
                 CollectionSourceKind.TMDB_WATCH_PROVIDER -> loadCollectionWatchProviderRefs(source, limit)
                 CollectionSourceKind.CURATED_IDS -> loadCollectionCuratedRefs(source, limit)
                 CollectionSourceKind.MDBLIST_PUBLIC -> loadCollectionMdblistPublicRefs(source, limit)
+                CollectionSourceKind.TMDB_DISCOVER -> loadCollectionDiscoverRefs(source, limit)
+                CollectionSourceKind.TMDB_LIST -> loadCollectionTmdbListRefs(source, limit)
+                CollectionSourceKind.TRAKT_LIST -> source.traktListId?.takeIf { it.isNotBlank() }?.let { listId ->
+                    loadTraktCatalogRefs(sourceUrl = "https://trakt.tv/lists/$listId").take(limit)
+                }.orEmpty()
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -2237,6 +2253,68 @@ class MediaRepository @Inject constructor(
      * (Harry Potter = 1241, LOTR = 119, etc.). We keep sort-by-release-date so
      * franchise chronology is preserved. This is a movies-only source.
      */
+    /** Generic TMDB discover for imported collections (raw TMDB query params). */
+    private suspend fun loadCollectionDiscoverRefs(
+        source: CollectionSourceConfig,
+        limit: Int
+    ): List<Pair<MediaType, Int>> {
+        val isTv = when (source.mediaType?.lowercase(Locale.US)) {
+            "series", "tv", "show" -> true
+            else -> false
+        }
+        val params = source.discoverParams.orEmpty()
+        // Nuvio stores one date sort for both media types; TMDB names them differently.
+        val sortBy = (source.sortBy ?: "popularity.desc").let { sort ->
+            when {
+                isTv && sort.startsWith("primary_release_date") -> sort.replace("primary_release_date", "first_air_date")
+                !isTv && sort.startsWith("first_air_date") -> sort.replace("first_air_date", "primary_release_date")
+                else -> sort
+            }
+        }
+        return loadPagedTmdbDiscoverRefs(
+            mediaType = if (isTv) MediaType.TV else MediaType.MOVIE,
+            limit = limit
+        ) { page ->
+            tmdbApi.discoverWithParams(
+                mediaType = if (isTv) "tv" else "movie",
+                apiKey = apiKey,
+                params = params,
+                sortBy = sortBy,
+                language = contentLanguage,
+                page = page
+            )
+        }
+    }
+
+    /** Public TMDB list, kept in list order; mixed movie/TV entries. */
+    private suspend fun loadCollectionTmdbListRefs(
+        source: CollectionSourceConfig,
+        limit: Int
+    ): List<Pair<MediaType, Int>> {
+        val listId = source.tmdbListId ?: return emptyList()
+        val refs = LinkedHashSet<Pair<MediaType, Int>>()
+        var page = 1
+        var totalPages = 1
+        while (refs.size < limit && page <= totalPages && page <= 20) {
+            val response = try {
+                tmdbApi.getPublicList(listId, apiKey, language = contentLanguage, page = page)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                break
+            }
+            response.items.forEach { item ->
+                if (item.id <= 0) return@forEach
+                val type = if (item.mediaType.equals("tv", ignoreCase = true)) MediaType.TV else MediaType.MOVIE
+                refs.add(type to item.id)
+            }
+            totalPages = response.totalPages.coerceAtLeast(1)
+            if (response.items.isEmpty()) break
+            page += 1
+        }
+        return refs.take(limit)
+    }
+
     private suspend fun loadCollectionTmdbCollectionRefs(
         source: CollectionSourceConfig,
         limit: Int
@@ -2395,7 +2473,8 @@ class MediaRepository @Inject constructor(
                     catalogId = catalogId
                 ),
                 offset = offset,
-                limit = limit
+                limit = limit,
+                genre = source.addonGenre
             )
         }.getOrNull() ?: emptyList()
 
@@ -2443,6 +2522,21 @@ class MediaRepository @Inject constructor(
     ): List<Pair<MediaType, Int>> {
         val personId = source.tmdbPersonId ?: return emptyList()
         val sortBy = source.sortBy ?: "popularity.desc"
+        if (source.tmdbCreditRole != null) {
+            val credits = tmdbApi.getPersonDetails(personId, apiKey, language = contentLanguage).combinedCredits
+                ?: return emptyList()
+            val items = if (source.tmdbCreditRole == "Director") credits.crew.filter { it.job == "Director" } else credits.cast
+            val type = if (source.mediaType in setOf("tv", "series", "show")) MediaType.TV else MediaType.MOVIE
+            val matching = items.filter { it.id > 0 && !it.adult && it.mediaType == if (type == MediaType.TV) "tv" else "movie" }.distinctBy { it.id }
+            val sorted = when (sortBy.substringBefore('.')) {
+                "primary_release_date", "first_air_date", "release_date" -> matching.sortedBy { it.releaseDate ?: it.firstAirDate.orEmpty() }
+                "vote_average" -> matching.sortedBy { it.voteAverage }
+                "vote_count" -> matching.sortedBy { it.voteCount }
+                "title", "original_title" -> matching.sortedBy { it.title ?: it.name.orEmpty() }
+                else -> matching.sortedBy { it.popularity }
+            }
+            return (if (sortBy.endsWith(".asc")) sorted else sorted.reversed()).take(limit).map { type to it.id }
+        }
         return when (source.mediaType?.lowercase(Locale.US)) {
             "movie" -> loadPagedTmdbDiscoverRefs(
                 mediaType = MediaType.MOVIE,
@@ -2494,7 +2588,8 @@ class MediaRepository @Inject constructor(
     private suspend fun loadPagedAddonCollectionRefs(
         descriptor: AddonCatalogDescriptor,
         offset: Int,
-        limit: Int
+        limit: Int,
+        genre: String? = null
     ): List<Pair<MediaType, Int>> {
         if (limit <= 0) return emptyList()
         val accumulated = LinkedHashSet<Pair<MediaType, Int>>()
@@ -2507,7 +2602,8 @@ class MediaRepository @Inject constructor(
                     addonId = descriptor.addonId,
                     catalogType = descriptor.catalogType,
                     catalogId = descriptor.catalogId,
-                    skip = probeOffset
+                    skip = probeOffset,
+                    genre = genre
                 )
             }.getOrNull() ?: break
             val metas = response.metas ?: response.items ?: emptyList()

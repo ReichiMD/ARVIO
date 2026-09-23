@@ -20,6 +20,17 @@ internal fun eligiblePlayerAutoplayStreams(
 
 internal enum class PlayerAutoplayAvailability { SEARCHING, READY, NO_MATCH, NO_SOURCES, SELECTED }
 
+internal class SequentialStreamCandidates(private val minimumQuality: Int, private val limits: AutoplayLimits) {
+    var streams: List<StreamSource> = emptyList()
+        private set
+
+    fun accept(candidates: List<StreamSource>): Boolean {
+        val playable = eligiblePlayerAutoplayStreams(candidates, minimumQuality, limits).isNotEmpty()
+        streams = if (playable) candidates else streams + candidates
+        return playable
+    }
+}
+
 internal fun playerAutoplayAvailability(
     streams: List<StreamSource>, minimumQuality: Int, searchActive: Boolean, hasSelection: Boolean,
     limits: AutoplayLimits = AutoplayLimits()

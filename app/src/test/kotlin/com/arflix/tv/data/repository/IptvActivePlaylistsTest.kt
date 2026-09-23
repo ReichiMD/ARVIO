@@ -18,6 +18,24 @@ import org.junit.Test
  */
 class IptvActivePlaylistsTest {
 
+    @Test fun `stream integration filtering isolates a playlist and cannot revive disabled legacy URL`() {
+        val repository = newRepository()
+        val first = IptvPlaylistEntry(id = "a", name = "A", m3uUrl = "https://a.example/list", enabled = true)
+        val second = first.copy(id = "b", name = "B", m3uUrl = "https://b.example/list")
+        val config = IptvConfig(m3uUrl = first.m3uUrl, playlists = listOf(first, second))
+        assertEquals(listOf(second), repository.activePlaylists(repository.streamProviderConfig(config, setOf("iptv_playlist:b"))))
+        assertTrue(repository.activePlaylists(repository.streamProviderConfig(config, emptySet())).isEmpty())
+        assertTrue(repository.activePlaylists(repository.streamProviderConfig(config, setOf("iptv_stalker:a"))).isEmpty())
+        assertEquals(config, repository.streamProviderConfig(config, null))
+    }
+
+    @Test fun `legacy playlist is included only when its integration is allowed`() {
+        val repository = newRepository()
+        val config = IptvConfig(m3uUrl = "https://a.example/list")
+        assertEquals(1, repository.activePlaylists(repository.streamProviderConfig(config, setOf("iptv_playlist:list_1"))).size)
+        assertTrue(repository.activePlaylists(repository.streamProviderConfig(config, emptySet())).isEmpty())
+    }
+
     private fun newRepository(): IptvRepository {
         val context = io.mockk.mockk<android.content.Context>(relaxed = true)
         val okHttpClient = io.mockk.mockk<okhttp3.OkHttpClient>(relaxed = true)
