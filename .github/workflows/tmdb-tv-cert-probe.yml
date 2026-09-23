@@ -1,0 +1,50 @@
+name: TMDB TV certification probe
+
+on:
+  push:
+    branches:
+      - claude/exciting-noether-xxcngw
+    paths:
+      - '.github/workflows/tmdb-tv-cert-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query discover/tv with and without certification filter
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          : "${TMDB_API_KEY:?Missing TMDB_API_KEY secret}"
+          B="https://api.themoviedb.org/3"
+          q() { curl -sS "$B/$1&api_key=$TMDB_API_KEY"; }
+          total() { q "$1" | jq -r '.total_results'; }
+          echo "### Counts"
+          echo "tv unfiltered:                         $(total 'discover/tv?language=de-DE')"
+          echo "tv DE lte 6:                           $(total 'discover/tv?language=de-DE&certification_country=DE&certification.lte=6')"
+          echo "tv DE lte 12:                          $(total 'discover/tv?language=de-DE&certification_country=DE&certification.lte=12')"
+          echo "tv DE = 18:                            $(total 'discover/tv?language=de-DE&certification_country=DE&certification=18')"
+          echo "tv US TV-MA:                           $(total 'discover/tv?certification_country=US&certification=TV-MA')"
+          echo "tv US lte TV-Y7:                       $(total 'discover/tv?certification_country=US&certification.lte=TV-Y7')"
+          echo "tv DE lte 6 + genre Kids 10762:        $(total 'discover/tv?language=de-DE&certification_country=DE&certification.lte=6&with_genres=10762')"
+          echo "tv DE lte 6 + genre Family 10751:      $(total 'discover/tv?language=de-DE&certification_country=DE&certification.lte=6&with_genres=10751')"
+          echo "tv DE lte 6 + Animation 16:            $(total 'discover/tv?language=de-DE&certification_country=DE&certification.lte=6&with_genres=16')"
+          echo "movie unfiltered:                      $(total 'discover/movie?language=de-DE')"
+          echo "movie DE lte 6:                        $(total 'discover/movie?language=de-DE&certification_country=DE&certification.lte=6')"
+          echo
+          echo "### Spot check: top 15 of 'tv DE lte 6' by popularity, with their real DE rating"
+          q 'discover/tv?language=de-DE&certification_country=DE&certification.lte=6&sort_by=popularity.desc' \
+            | jq -r '.results[:15][] | "\(.id)\t\(.name)"' | while IFS=$'\t' read -r id name; do
+              r=$(q "tv/$id/content_ratings?x=1" | jq -r '[.results[] | select(.iso_3166_1=="DE") | .rating] | join(",")')
+              echo "  DE=[${r}]  $name"
+            done
+          echo
+          echo "### Spot check: top 10 of 'tv DE = 18'"
+          q 'discover/tv?language=de-DE&certification_country=DE&certification=18&sort_by=popularity.desc' \
+            | jq -r '.results[:10][] | "  \(.name)"'
+          echo
+          echo "### Spot check: top 10 unfiltered (for comparison)"
+          q 'discover/tv?language=de-DE&sort_by=popularity.desc' | jq -r '.results[:10][] | "  \(.name)"'
