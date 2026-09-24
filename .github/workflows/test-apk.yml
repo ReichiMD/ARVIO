@@ -57,7 +57,7 @@ jobs:
         run: |
           S=app/src/main/kotlin/com/arflix/tv/ui/screens/settings
           grep -q 'android:scheme="stremio"' app/src/main/AndroidManifest.xml || { echo "::error::stremio:// intent filter missing"; exit 1; }
-          grep -q 'fun parseInstallAddonUrl' app/src/main/kotlin/com/arflix/tv/MainActivity.kt || { echo "::error::stremio link parser missing"; exit 1; }
+          grep -q 'fun MainActivity.parseInstallAddonUrl' app/src/main/kotlin/com/arflix/tv/MainActivity.kt || { echo "::error::stremio link parser missing"; exit 1; }
           grep -q 'pendingInstallAddonUrl = pendingInstallAddonUrl' app/src/main/kotlin/com/arflix/tv/MainActivity.kt || { echo "::error::stremio link not handed to the app"; exit 1; }
           grep -q 'fun requestAddonInstall' $S/SettingsViewModel.kt || { echo "::error::install confirmation missing"; exit 1; }
           grep -q 'fun AddonConfigureQrDialog' $S/AddonSetupDialogs.kt || { echo "::error::QR dialog missing"; exit 1; }
