@@ -9,7 +9,7 @@ name: "Test APK (comparison: plain upstream main + TV preview)"
 on:
   push:
     branches:
-      - claude/vergleich-test-apk
+      - claude/addoncfg-vergleich-test-apk
   workflow_dispatch:
 
 jobs:
