@@ -55,11 +55,13 @@ jobs:
       - name: Verify the watched tick work is really in this build
         run: |
           VM=app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchViewModel.kt
-          grep -q 'private fun markWatched(items: List<MediaItem>)' $VM || { echo "::error::markWatched missing"; exit 1; }
+          grep -q 'private fun markWatched($' $VM || { echo "::error::markWatched missing"; exit 1; }
+          grep -q 'fun refreshWatchedMarks()' $VM || { echo "::error::refresh on return missing"; exit 1; }
+          grep -q 'viewModel.refreshWatchedMarks()' app/src/main/kotlin/com/arflix/tv/ui/screens/search/SearchScreen.kt || { echo "::error::refresh not called on resume"; exit 1; }
           grep -q 'discoverCategories = markWatched(categories)' $VM || { echo "::error::browse rows not marked"; exit 1; }
           grep -q 'discoverGridItems = existing + markWatched(fresh)' $VM || { echo "::error::grid not marked"; exit 1; }
           grep -q 'val marked = markWatched(sorted)' $VM || { echo "::error::search results not marked"; exit 1; }
-          echo "watched tick verified: rows, grid, search results"
+          echo "watched tick verified: rows, grid, search results, refresh on return"
 
       - name: Compile and run unit tests
         run: |
