@@ -1,0 +1,28 @@
+{
+  "name": "Collections-Test",
+  "collections": [
+    {
+      "id": "arviotest",
+      "title": "Collections-Test",
+      "folders": [
+        {
+          "id": "gemischt",
+          "title": "Test 1: gemischte Liste",
+          "tileShape": "POSTER",
+          "sources": [
+            { "provider": "mdblist", "slug": "snoak/latest-movies-digital-release" },
+            { "provider": "mdblist", "slug": "jxduffy/star-wars-chronological-order" }
+          ]
+        },
+        {
+          "id": "addonfehlt",
+          "title": "Test 2: fehlendes Add-on",
+          "tileShape": "POSTER",
+          "sources": [
+            { "provider": "addon", "addonId": "org.arvio.test.missing", "type": "movie", "catalogId": "arvio-test-missing" }
+          ]
+        }
+      ]
+    }
+  ]
+}
