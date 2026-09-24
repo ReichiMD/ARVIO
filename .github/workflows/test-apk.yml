@@ -1,4 +1,4 @@
-name: "Test APK (collections: mixed lists, missing add-on, partial cache)"
+name: "Test APK (collections round 2: six items at a time, Trakt keys)"
 
 # Test-branch only. This workflow and the committed keystore must never reach a
 # pull request against upstream - they exist so a Claude Code session can hand
@@ -29,19 +29,32 @@ jobs:
           cache: gradle
 
       # Without a real key the app is an empty browser, and every collection
-      # title is looked up on TMDB.
+      # title is looked up on TMDB. Round 2 also injects the Trakt keys: the
+      # Kaptain pack has Trakt-list folders, and with the placeholder client id
+      # those folders stay empty, which would look like an app bug.
       - name: Prepare runtime configuration
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
         run: |
           cp secrets.defaults.properties secrets.properties
-          if [ -n "$TMDB_API_KEY" ]; then
-            sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
-            echo "TMDB key injected"
-          else
+          if [ -z "$TMDB_API_KEY" ]; then
             echo "::error::TMDB_API_KEY secret is empty - the app would start as an empty browser"
             exit 1
           fi
+          if [ -z "$TRAKT_CLIENT_ID" ] || [ -z "$TRAKT_CLIENT_SECRET" ]; then
+            echo "::error::TRAKT_CLIENT_ID/SECRET repository secret is empty - Trakt folders would stay empty"
+            exit 1
+          fi
+          sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+          sed -i "s|^TRAKT_CLIENT_ID=.*|TRAKT_CLIENT_ID=$TRAKT_CLIENT_ID|" secrets.properties
+          sed -i "s|^TRAKT_CLIENT_SECRET=.*|TRAKT_CLIENT_SECRET=$TRAKT_CLIENT_SECRET|" secrets.properties
+          if grep -qi '^TRAKT_CLIENT_ID=your-\|^TRAKT_CLIENT_SECRET=your-\|^TMDB_API_KEY=your-' secrets.properties; then
+            echo "::error::a placeholder survived in secrets.properties"
+            exit 1
+          fi
+          echo "keys injected; TRAKT_CLIENT_ID length: ${#TRAKT_CLIENT_ID}"
 
       # Sanity check: the TV preview must be in this build, and it must be the
       # kind that only fires when the user forces TV mode on a touch device.
@@ -70,6 +83,10 @@ jobs:
             || { echo "::error::fix 2: German message missing"; exit 1; }
           grep -q 'resolved.isNotEmpty() && everySourceDelivered' "$R" \
             || { echo "::error::fix 3: partial results are still cached"; exit 1; }
+          grep -q 'never written from several jobs at once' "$R" \
+            || { echo "::error::round 2: collection items are not loaded six at a time"; exit 1; }
+          test "$(grep -c 'val semaphore = Semaphore(2)' "$R")" = "0" \
+            || { echo "::error::round 2: a Semaphore(2) item loader is still there"; exit 1; }
           python3 -m json.tool test-collections.json > /dev/null \
             || { echo "::error::test-collections.json is not valid JSON"; exit 1; }
           echo "collections patch verified: type filter, offsets, missing add-on message, cache rule, test file"
