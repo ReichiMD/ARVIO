@@ -67,11 +67,17 @@ jobs:
             || { echo "::error::home: show history is not indexed once"; exit 1; }
           grep -q 'applyWatchedBadges(state.categories' "$H" \
             || { echo "::error::home: ticks are not applied to the latest state"; exit 1; }
+          grep -q 'fun refreshWatchedBadgesOnResume' "$H" \
+            || { echo "::error::home: no tick pass on resume"; exit 1; }
+          grep -q 'rows !== lastWatchedBadgesCategories) refreshWatchedBadges()' "$H" \
+            || { echo "::error::home: new rows do not trigger a tick pass"; exit 1; }
+          grep -q '"WatchedTicks"' "$H" \
+            || { echo "::error::test-only logcat lines missing"; exit 1; }
           grep -q 'heroItem = heroWithWatchedBadge(state.heroItem' "$H" \
             || { echo "::error::home: hero still replaced by the row card"; exit 1; }
           test -f app/src/test/kotlin/com/arflix/tv/ui/screens/home/HomeWatchedBadgesTest.kt \
             || { echo "::error::home watched unit tests missing"; exit 1; }
-          echo "home patch verified: no Trakt gate, one-time show index, latest-state update, hero keeps details"
+          echo "home patch verified: no Trakt gate, one-time show index, latest-state update, hero keeps details, new rows + resume trigger a pass, logcat lines"
 
       - name: Compile and run unit tests
         run: |

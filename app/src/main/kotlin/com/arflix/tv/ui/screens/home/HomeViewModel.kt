@@ -4577,6 +4577,7 @@ class HomeViewModel @Inject constructor(
 
     /** Home resumed (e.g. back from Details): the watched history may have changed meanwhile. */
     fun refreshWatchedBadgesOnResume() {
+        android.util.Log.w("WatchedTicks", "home resumed")
         refreshWatchedBadges(force = true)
     }
 
@@ -4589,7 +4590,11 @@ class HomeViewModel @Inject constructor(
                 sinceLastPassMs = now - lastWatchedBadgesRefreshMs,
                 throttleMs = WATCHED_BADGES_REFRESH_MS
             )
-        ) return
+        ) {
+            android.util.Log.w("WatchedTicks", "pass skipped (rows already marked, throttled)")
+            return
+        }
+        android.util.Log.w("WatchedTicks", "pass scheduled immediate=$immediate force=$force rows=${_uiState.value.categories.size}")
 
         watchedBadgesJob?.cancel()
         watchedBadgesJob = viewModelScope.launch(networkDispatcher) {
@@ -4621,6 +4626,11 @@ class HomeViewModel @Inject constructor(
                         }
                     }
                     lastWatchedBadgesCategories = marked.categories
+                    android.util.Log.w(
+                        "WatchedTicks",
+                        "pass done movies=${watchedMovies.size} startedShows=${startedShows.size} " +
+                            "ticksOnHome=${marked.categories.sumOf { c -> c.items.count { it.isWatched } }}"
+                    )
                 }
                 lastWatchedBadgesRefreshMs = SystemClock.elapsedRealtime()
             } catch (e: Exception) {
