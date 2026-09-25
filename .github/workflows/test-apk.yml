@@ -1,4 +1,4 @@
-name: "Test APK (collections round 2: six items at a time, Trakt keys)"
+name: "Test APK (collections round 3: tabs page past the first window)"
 
 # Test-branch only. This workflow and the committed keystore must never reach a
 # pull request against upstream - they exist so a Claude Code session can hand
@@ -81,12 +81,16 @@ jobs:
             || { echo "::error::fix 2: missing add-on lookup absent"; exit 1; }
           grep -q 'name="collection_missing_addon">Diese Collection braucht' app/src/main/res/values-de/strings.xml \
             || { echo "::error::fix 2: German message missing"; exit 1; }
-          grep -q 'resolved.isNotEmpty() && everySourceDelivered' "$R" \
+          grep -q 'resolved.refs.isNotEmpty() && everySourceDelivered' "$R" \
             || { echo "::error::fix 3: partial results are still cached"; exit 1; }
           grep -q 'never written from several jobs at once' "$R" \
             || { echo "::error::round 2: collection items are not loaded six at a time"; exit 1; }
           test "$(grep -c 'val semaphore = Semaphore(2)' "$R")" = "0" \
             || { echo "::error::round 2: a Semaphore(2) item loader is still there"; exit 1; }
+          grep -q 'Widen' "$R" && grep -q 'mediaType != null && !resolved.complete' "$R" \
+            || { echo "::error::round 3: tabs still stop at the first fetch window"; exit 1; }
+          grep -q 'spaeteserien' test-collections.json \
+            || { echo "::error::round 3: late-series test folder missing"; exit 1; }
           python3 -m json.tool test-collections.json > /dev/null \
             || { echo "::error::test-collections.json is not valid JSON"; exit 1; }
           echo "collections patch verified: type filter, offsets, missing add-on message, cache rule, test file"

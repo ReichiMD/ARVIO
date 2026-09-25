@@ -21,6 +21,14 @@
           "sources": [
             { "provider": "addon", "addonId": "org.arvio.test.missing", "type": "movie", "catalogId": "arvio-test-missing" }
           ]
+        },
+        {
+          "id": "spaeteserien",
+          "title": "Test 3: Serien erst ab Platz 63",
+          "tileShape": "POSTER",
+          "sources": [
+            { "provider": "mdblist", "slug": "hdlists/the-top-100-halloween-movies-of-all-time" }
+          ]
         }
       ]
     }
