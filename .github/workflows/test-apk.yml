@@ -65,21 +65,23 @@ jobs:
           fi
           grep -q 'internal fun startedShowIds' "$H" \
             || { echo "::error::home: show history is not indexed once"; exit 1; }
-          grep -q 'applyWatchedBadges(state.categories' "$H" \
+          grep -q 'updateAndGet { it.withWatchedBadges(watchedMovies, startedShows) }' "$H" \
             || { echo "::error::home: ticks are not applied to the latest state"; exit 1; }
           grep -q 'fun refreshWatchedBadgesOnResume' "$H" \
             || { echo "::error::home: no tick pass on resume"; exit 1; }
-          grep -q 'rows !== lastWatchedBadgesCategories) refreshWatchedBadges()' "$H" \
+          grep -q 'rows === lastWatchedBadgesCategories) return@collect' "$H" \
             || { echo "::error::home: new rows do not trigger a tick pass"; exit 1; }
           grep -q 'internal fun watchedBadgesPassDelayMs' "$H" \
             || { echo "::error::home: resume pass has no quick delay"; exit 1; }
+          grep -q 'lastWatchedBadgesLookup?.let' "$H" \
+            || { echo "::error::home: re-published rows are not marked at once"; exit 1; }
           grep -q '"WatchedTicks"' "$H" \
             || { echo "::error::test-only logcat lines missing"; exit 1; }
-          grep -q 'heroItem = heroWithWatchedBadge(state.heroItem' "$H" \
+          grep -q 'heroItem = heroWithWatchedBadge(heroItem, updatedCategories)' "$H" \
             || { echo "::error::home: hero still replaced by the row card"; exit 1; }
           test -f app/src/test/kotlin/com/arflix/tv/ui/screens/home/HomeWatchedBadgesTest.kt \
             || { echo "::error::home watched unit tests missing"; exit 1; }
-          echo "home patch verified: no Trakt gate, one-time show index, latest-state update, hero keeps details, new rows + resume trigger a pass, quick resume delay, logcat lines"
+          echo "home patch verified: no Trakt gate, one-time show index, latest-state update, hero keeps details, new rows + resume trigger a pass, quick resume delay, instant re-marking, logcat lines"
 
       - name: Compile and run unit tests
         run: |
