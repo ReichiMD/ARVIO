@@ -1,4 +1,4 @@
-name: "Test APK (Home watched ticks without Trakt)"
+name: "Test APK (Trakt connect diagnosis - traktsync)"
 
 # Test-branch only. This workflow and the committed keystore must never reach a
 # pull request against upstream - they exist so a Claude Code session can hand
@@ -9,7 +9,7 @@ name: "Test APK (Home watched ticks without Trakt)"
 on:
   push:
     branches:
-      - claude/startseite-test-apk
+      - claude/traktsync-test-apk
   workflow_dispatch:
 
 jobs:
@@ -77,11 +77,23 @@ jobs:
             || { echo "::error::home: re-published rows are not marked at once"; exit 1; }
           grep -q '"WatchedTicks"' "$H" \
             || { echo "::error::test-only logcat lines missing"; exit 1; }
+          # Round 1 of traktsync: the TraktFlow diagnosis lines must be in every
+          # place the office asked for (docs/73 TS1 step 3).
+          for f in \
+            app/src/main/kotlin/com/arflix/tv/ui/screens/settings/SettingsViewModel.kt \
+            app/src/main/kotlin/com/arflix/tv/data/repository/TraktRepository.kt \
+            app/src/main/kotlin/com/arflix/tv/data/repository/TraktSyncService.kt \
+            "$H"; do
+            grep -q '"TraktFlow"' "$f" || { echo "::error::TraktFlow lines missing in $f"; exit 1; }
+          done
+          if grep -rn '"TraktFlow"' app/src/main/kotlin | grep -qiE 'accessToken|refreshToken|clientSecret|clientId|username'; then
+            echo "::error::a TraktFlow line prints a credential or user name"; exit 1
+          fi
           grep -q 'heroItem = heroWithWatchedBadge(heroItem, updatedCategories)' "$H" \
             || { echo "::error::home: hero still replaced by the row card"; exit 1; }
           test -f app/src/test/kotlin/com/arflix/tv/ui/screens/home/HomeWatchedBadgesTest.kt \
             || { echo "::error::home watched unit tests missing"; exit 1; }
-          echo "home patch verified: no Trakt gate, one-time show index, latest-state update, hero keeps details, new rows + resume trigger a pass, quick resume delay, instant re-marking, logcat lines"
+          echo "home patch verified (#758 state) + TraktFlow diagnosis lines present, no credentials logged"
 
       - name: Compile and run unit tests
         run: |
@@ -123,24 +135,25 @@ jobs:
 
       - name: Give the debug build its own package, name and a fixed signature
         run: |
-          # Kennung "startseite" - the identifier of this theme (docs/10,
+          # Kennung "traktsync" - the identifier of this theme (docs/10,
           # AGENTS.md rule 10). It steers all three places: package suffix,
           # launcher name and artifact name. It is a NEW identifier, so this
-          # build installs BESIDE the other test APKs and starts empty.
-          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Startseite</string>|' \
+          # build installs BESIDE the other test APKs and starts empty - wanted
+          # here, the bug is about the FIRST Trakt connect.
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Trakt-Sync</string>|' \
             app/src/main/res/values/strings.xml
           # debug differs from staging here: the `applicationIdSuffix` line in the
           # debug block is COMMENTED OUT on purpose, so this INSERTS a line after
           # the block header instead of replacing one (docs/10, "Beim Wechsel der
           # Sorte mitdenken").
-          sed -i 's/^        debug {$/        debug {\n            applicationIdSuffix = ".startseite"/' \
+          sed -i 's/^        debug {$/        debug {\n            applicationIdSuffix = ".traktsync"/' \
             app/build.gradle.kts
           sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
           # A sed that silently matches nothing is how this kind of workflow
           # wastes a build cycle - check every edit.
-          grep -q '<string name="app_name">Startseite</string>' app/src/main/res/values/strings.xml \
+          grep -q '<string name="app_name">Trakt-Sync</string>' app/src/main/res/values/strings.xml \
             || { echo "::error::app_name patch did not apply"; exit 1; }
-          grep -q 'applicationIdSuffix = ".startseite"' app/build.gradle.kts \
+          grep -q 'applicationIdSuffix = ".traktsync"' app/build.gradle.kts \
             || { echo "::error::suffix patch did not apply"; exit 1; }
           grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts \
             || { echo "::error::versionCode patch did not apply"; exit 1; }
@@ -162,8 +175,8 @@ jobs:
           }
           KTS
 
-      # Schnell-APK (docs/10): the test question is "is the tick there?" - a
-      # content question, not a smoothness one, so a debug build answers it.
+      # Schnell-APK (docs/10): the test question is "which step of the Trakt
+      # connect fails, in which order?" - a logic question, answered by logcat.
       - name: Build sideload debug APK
         run: ./gradlew assembleSideloadDebug --no-daemon
 
@@ -195,7 +208,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: arvio-startseite-apk
+          name: arvio-traktsync-apk
           path: app/build/outputs/apk/sideload/debug/*.apk
           if-no-files-found: error
           retention-days: 14

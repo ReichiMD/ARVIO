@@ -321,6 +321,7 @@ class TraktRepository @Inject constructor(
     }
 
     private suspend fun saveToken(token: TraktToken) {
+        android.util.Log.w("TraktFlow", "token stored - watched cache NOT touched (initialized=$cacheInitialized movies=${watchedMoviesCache.size} episodes=${watchedEpisodesCache.size})")
         ensureProfileCacheScope()
         context.traktDataStore.edit { prefs ->
             prefs[accessTokenKey()] = token.accessToken
@@ -365,6 +366,7 @@ class TraktRepository @Inject constructor(
     }
 
     suspend fun logout() {
+        android.util.Log.w("TraktFlow", "logout - token removed, watched cache emptied")
         ensureProfileCacheScope()
         context.traktDataStore.edit { prefs ->
             prefs.remove(accessTokenKey())
@@ -4843,6 +4845,7 @@ class TraktRepository @Inject constructor(
      * Call this after sync operations to pick up new data
      */
     fun invalidateWatchedCache() {
+        android.util.Log.w("TraktFlow", "watched cache invalidated caller=${Throwable().stackTrace.drop(1).firstOrNull { !it.className.startsWith("com.arflix.tv.data.repository.TraktRepository") }?.let { it.className.substringAfterLast('.') + "." + it.methodName }}")
         ensureProfileCacheScope()
         cacheInitialized = false
         watchedMoviesCache.clear()
@@ -4860,7 +4863,10 @@ class TraktRepository @Inject constructor(
      */
     suspend fun initializeWatchedCache() {
         ensureProfileCacheScope()
-        if (cacheInitialized) return
+        if (cacheInitialized) {
+            android.util.Log.w("TraktFlow", "watched cache already loaded - kept movies=${watchedMoviesCache.size} episodes=${watchedEpisodesCache.size} caller=${Throwable().stackTrace.drop(1).firstOrNull { !it.className.startsWith("com.arflix.tv.data.repository.TraktRepository") }?.let { it.className.substringAfterLast('.') + "." + it.methodName }}")
+            return
+        }
         // Prevent multiple simultaneous initializations
         if (cacheInitializing) {
             // Wait for ongoing initialization to complete
@@ -4870,12 +4876,14 @@ class TraktRepository @Inject constructor(
             return
         }
         cacheInitializing = true
+        android.util.Log.w("TraktFlow", "watched cache load start caller=${Throwable().stackTrace.drop(1).firstOrNull { !it.className.startsWith("com.arflix.tv.data.repository.TraktRepository") }?.let { it.className.substringAfterLast('.') + "." + it.methodName }}")
         try {
             val readProviders = syncProviderStore.readProviders(
                 com.arflix.tv.data.repository.sync.TrackingFeature.WATCHED
             )
             val hasTraktAuth = com.arflix.tv.data.repository.sync.SyncProvider.TRAKT in readProviders &&
                 refreshTokenIfNeeded() != null
+            android.util.Log.w("TraktFlow", "watched cache readProviders=$readProviders hasTraktAuth=$hasTraktAuth")
             val (localSnapshotMovies, localSnapshotEpisodes) = loadLocalWatchedSnapshotForCurrentProfile()
 
             // Try to load from Supabase first (works for both Trakt and non-Trakt Cloud profiles)
@@ -4900,6 +4908,7 @@ class TraktRepository @Inject constructor(
                 watchedEpisodesCache.clear()
                 watchedEpisodesCache.addAll(localSnapshotEpisodes)
                 cacheInitialized = true
+                android.util.Log.w("TraktFlow", "watched cache loaded WITHOUT Trakt (no Trakt auth, no cloud/mdblist/simkl data) local movies=${localSnapshotMovies.size} episodes=${localSnapshotEpisodes.size}")
                 return
             }
 
@@ -4920,10 +4929,15 @@ class TraktRepository @Inject constructor(
             watchedEpisodesCache.addAll(simklEpisodes)
 
             cacheInitialized = true
+            android.util.Log.w("TraktFlow", "watched cache loaded local=${localSnapshotMovies.size}/${localSnapshotEpisodes.size} " +
+                "cloud=${supabaseMovies.size}/${supabaseEpisodes.size} trakt=${traktMovies.size}/${traktEpisodes.size} " +
+                "mdblist=${mdbMovies.size}/${mdbEpisodes.size} simkl=${simklMovies.size}/${simklEpisodes.size} " +
+                "total=${watchedMoviesCache.size}/${watchedEpisodesCache.size} (movies/episodes)")
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
 
             // If sync service fails, try direct Trakt load (only if Trakt auth available)
+            android.util.Log.w("TraktFlow", "watched cache load failed type=${e.javaClass.simpleName} msg=${e.message} - trying Trakt directly")
             try {
                 val (localSnapshotMovies, localSnapshotEpisodes) = loadLocalWatchedSnapshotForCurrentProfile()
                 val hasTraktFallback = refreshTokenIfNeeded() != null

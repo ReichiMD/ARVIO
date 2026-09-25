@@ -937,6 +937,7 @@ class SettingsViewModel @Inject constructor(
             val isTrakt = _uiState.value.isTraktAuthenticated
             val isMdbList = _uiState.value.isMdbListConnected
             val isSimkl = _uiState.value.isSimklConnected
+            android.util.Log.w("TraktFlow", "overview refresh: stored summary movies=$movies episodes=$episodes trakt=$isTrakt")
 
             // If summary has 0/null but a provider is connected, query provider caches directly
             if (movies == 0 && episodes == 0 && (isTrakt || isMdbList || isSimkl)) {
@@ -965,6 +966,7 @@ class SettingsViewModel @Inject constructor(
             }
 
             if (profileManager.getProfileIdSync() != profileId) return@launch
+            android.util.Log.w("TraktFlow", "overview refresh: shown movies=$movies episodes=$episodes")
             withContext(Dispatchers.Main) {
                 _uiState.value = _uiState.value.copy(
                     lastSyncTime = formatSyncTime(lastSyncAt),
@@ -1289,11 +1291,16 @@ class SettingsViewModel @Inject constructor(
         if (!silent) {
             lastManualSyncTimeMs = now
         }
+        android.util.Log.w("TraktFlow", "sync requested silent=$silent")
         viewModelScope.launch(Dispatchers.IO) {
-            if (_uiState.value.isSyncing) return@launch
+            if (_uiState.value.isSyncing) {
+                android.util.Log.w("TraktFlow", "sync DROPPED - a sync is already running (isSyncing=true)")
+                return@launch
+            }
             withContext(Dispatchers.Main) {
                 _uiState.value = _uiState.value.copy(isSyncing = true)
             }
+            android.util.Log.w("TraktFlow", "sync start trakt=${_uiState.value.isTraktAuthenticated} mdblist=${_uiState.value.isMdbListConnected} simkl=${_uiState.value.isSimklConnected}")
             try {
                 var totalMovies = 0
                 var totalEpisodes = 0
@@ -1303,7 +1310,9 @@ class SettingsViewModel @Inject constructor(
 
                 if (_uiState.value.isTraktAuthenticated) {
                     connectedProviders += "Trakt"
-                    when (val result = traktSyncService.performFullSync()) {
+                    val result = traktSyncService.performFullSync()
+                    android.util.Log.w("TraktFlow", "sync trakt result=${if (result is SyncResult.Success) "success movies=${result.moviesSynced} episodes=${result.episodesSynced}" else "error ${(result as? SyncResult.Error)?.message}"}")
+                    when (result) {
                         is SyncResult.Success -> {
                             totalMovies += result.moviesSynced
                             totalEpisodes += result.episodesSynced
@@ -1367,8 +1376,10 @@ class SettingsViewModel @Inject constructor(
                             }
                         )
                     }
+                    android.util.Log.w("TraktFlow", "sync end syncedAny=true movies=$totalMovies episodes=$totalEpisodes failures=${failures.size} - overview filled, reloading watched cache")
                     traktRepository.invalidateWatchedCache()
                     traktRepository.initializeWatchedCache()
+                    android.util.Log.w("TraktFlow", "watched cache reloaded after sync movies=${traktRepository.getWatchedMoviesFromCache().size} episodes=${traktRepository.getWatchedEpisodesFromCache().size} - nobody tells Home")
                 } else if (!silent && connectedProviders.isEmpty()) {
                     withContext(Dispatchers.Main) {
                         _uiState.value = _uiState.value.copy(
@@ -1389,6 +1400,7 @@ class SettingsViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                android.util.Log.w("TraktFlow", "sync threw type=${e.javaClass.simpleName} msg=${e.message}")
                 if (!silent) {
                     withContext(Dispatchers.Main) {
                         _uiState.value = _uiState.value.copy(
@@ -1401,6 +1413,7 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
             } finally {
+                android.util.Log.w("TraktFlow", "sync finished (isSyncing=false)")
                 withContext(Dispatchers.Main) {
                     _uiState.value = _uiState.value.copy(isSyncing = false)
                 }
@@ -4569,10 +4582,12 @@ class SettingsViewModel @Inject constructor(
             )
 
             try {
+                android.util.Log.w("TraktFlow", "auth start")
                 traktRepository.logout()
                 val deviceCode = withContext(Dispatchers.IO) {
                     traktRepository.getDeviceCode()
                 }
+                android.util.Log.w("TraktFlow", "device code received expiresIn=${deviceCode.expiresIn}s interval=${deviceCode.interval}s")
                 _uiState.value = _uiState.value.copy(
                     traktCode = deviceCode,
                     traktCodeExpiresAtMillis = System.currentTimeMillis() +
@@ -4589,6 +4604,7 @@ class SettingsViewModel @Inject constructor(
                 if (e is kotlinx.coroutines.CancellationException) throw e
 
                 System.err.println("SettingsVM: failed to start Trakt auth: ${e.message}")
+                android.util.Log.w("TraktFlow", "device code failed http=${(e as? retrofit2.HttpException)?.code()} type=${e.javaClass.simpleName} msg=${e.message}")
                 val message: SettingsMessage = when (e) {
                     is retrofit2.HttpException -> if (e.code() == 429) {
                         SettingsMessage.Res(R.string.settings_trakt_rate_limited)
@@ -4640,6 +4656,7 @@ class SettingsViewModel @Inject constructor(
 
                 try {
                     traktRepository.pollForToken(deviceCode.deviceCode)
+                    android.util.Log.w("TraktFlow", "poll success - token saved")
 
                     // Get the expiration date
                     val expirationDate = traktRepository.getTokenExpirationDate()
@@ -4686,7 +4703,10 @@ class SettingsViewModel @Inject constructor(
                         isSimklConnected = simklStillConnected
                     )
                     traktRepository.clearContinueWatchingCache()
+                    android.util.Log.w("TraktFlow", "after connect: continue watching fetch start")
                     runCatching { traktRepository.getContinueWatching() }
+                        .onFailure { android.util.Log.w("TraktFlow", "after connect: continue watching fetch failed type=${it.javaClass.simpleName}") }
+                    android.util.Log.w("TraktFlow", "after connect: continue watching fetch done - requesting silent full sync")
                     performFullSync(silent = true)
                     syncLocalStateToCloud(silent = true, force = true)
                     runCatching { launcherContinueWatchingRepository.refreshForCurrentProfile() }
@@ -4695,6 +4715,8 @@ class SettingsViewModel @Inject constructor(
                     if (e is kotlinx.coroutines.CancellationException) throw e
 
                     val httpError = e as? retrofit2.HttpException
+                    android.util.Log.w("TraktFlow", "poll answer http=${httpError?.code()} type=${e.javaClass.simpleName}" +
+                        if (httpError == null) " msg=${e.message}" else "")
                     val isPending = when {
                         httpError?.code() == 400 -> true
                         else -> e.message?.contains("400") == true ||
@@ -4712,6 +4734,7 @@ class SettingsViewModel @Inject constructor(
                         continue
                     }
 
+                    android.util.Log.w("TraktFlow", "poll loop ends - activation aborted http=${httpError?.code()}")
                     lastFailure = when (httpError?.code()) {
                         404 -> SettingsMessage.Res(R.string.settings_trakt_code_invalid)
                         409 -> SettingsMessage.Res(R.string.settings_trakt_code_used)
@@ -4736,6 +4759,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun cancelTraktAuth() {
+        android.util.Log.w("TraktFlow", "dialog closed outcome=${_uiState.value.traktAuthOutcome} polling=${_uiState.value.isTraktPolling}")
         // Once the activation succeeded the dialog only lingers to show the result, while the
         // polling job finishes the first sync. Dismissing that must not cancel the sync.
         if (_uiState.value.traktAuthOutcome != TraktAuthOutcome.CONNECTED) {

@@ -2209,6 +2209,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             traktSyncService.syncEvents.collect { status ->
                 if (status == com.arflix.tv.data.repository.SyncStatus.COMPLETED) {
+                    android.util.Log.w("TraktFlow", "home got sync COMPLETED - refreshes Continue Watching only, no tick pass")
                     refreshContinueWatchingOnly(force = true)
                 }
             }

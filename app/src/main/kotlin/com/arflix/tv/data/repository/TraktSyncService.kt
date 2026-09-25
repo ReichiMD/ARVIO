@@ -128,8 +128,10 @@ class TraktSyncService @Inject constructor(
 
     suspend fun performFullSync(): SyncResult = withContext(Dispatchers.IO) {
         if (_isSyncing.value) {
+            android.util.Log.w("TraktFlow", "trakt full sync refused - already syncing")
             return@withContext SyncResult.Error(context.getString(R.string.sync_in_progress))
         }
+        android.util.Log.w("TraktFlow", "trakt full sync start")
 
         _isSyncing.value = true
         _syncProgress.value = SyncProgress(status = SyncStatus.STARTING, message = "Starting full sync...")
@@ -319,6 +321,7 @@ class TraktSyncService @Inject constructor(
                 totalEpisodes = totalEpisodes
             )
             _syncEvents.tryEmit(SyncStatus.COMPLETED)
+            android.util.Log.w("TraktFlow", "trakt full sync COMPLETED sent movies=$totalMovies episodes=$totalEpisodes (watched cache not reloaded yet)")
 
             SyncResult.Success(totalMovies, totalEpisodes)
 
@@ -329,6 +332,7 @@ class TraktSyncService @Inject constructor(
                 status = SyncStatus.ERROR,
                 message = "Sync failed: ${e.message}"
             )
+            android.util.Log.w("TraktFlow", "trakt sync ERROR type=${e.javaClass.simpleName} msg=${e.message}")
 
             try {
                 val userId = getUserId()
@@ -529,6 +533,7 @@ class TraktSyncService @Inject constructor(
                 episodesProcessed = episodesUpdated
             )
             _syncEvents.tryEmit(SyncStatus.COMPLETED)
+            android.util.Log.w("TraktFlow", "trakt incremental sync COMPLETED sent movies=$moviesUpdated episodes=$episodesUpdated")
 
             SyncResult.Success(moviesUpdated, episodesUpdated)
 
@@ -539,6 +544,7 @@ class TraktSyncService @Inject constructor(
                 status = SyncStatus.ERROR,
                 message = "Sync failed: ${e.message}"
             )
+            android.util.Log.w("TraktFlow", "trakt sync ERROR type=${e.javaClass.simpleName} msg=${e.message}")
             SyncResult.Error(e.message ?: context.getString(R.string.error_unknown))
         } finally {
             _isSyncing.value = false
