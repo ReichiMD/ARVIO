@@ -4611,8 +4611,7 @@ class HomeViewModel @Inject constructor(
             android.util.Log.w("WatchedTicks", "pass skipped (rows already marked, throttled)")
             return
         }
-        android.util.Log.w("WatchedTicks", "pass scheduled immediate=$immediate force=$force rows=${_uiState.value.categories.size}")
-
+        
         // A resume pass stays quick even when rows published right after it restart the debounce.
         val quick = force || (watchedBadgesQuickPending && watchedBadgesJob?.isActive == true)
         watchedBadgesJob?.cancel()
@@ -4622,6 +4621,7 @@ class HomeViewModel @Inject constructor(
             hadPass = lastWatchedBadgesRefreshMs != 0L,
             isLowRamDevice = isLowRamDevice
         )
+        android.util.Log.w("WatchedTicks", "pass scheduled force=$force quick=$quick delayMs=$passDelayMs rows=${_uiState.value.categories.size}")
         watchedBadgesJob = viewModelScope.launch(networkDispatcher) {
             if (!immediate) {
                 delay(passDelayMs)
