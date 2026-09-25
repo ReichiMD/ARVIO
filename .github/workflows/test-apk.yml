@@ -1,0 +1,193 @@
+name: "Test APK (watchlist bookmark shows at once)"
+
+# Test-branch only. This workflow and the committed keystore must never reach a
+# pull request against upstream - they exist so a Claude Code session can hand
+# the user an installable build. `workflow_dispatch` returns 403 from such a
+# session (the app token has no `actions: write`), so a push to this branch is
+# the trigger.
+
+on:
+  push:
+    branches:
+      - claude/merkliste-test-apk
+  workflow_dispatch:
+
+jobs:
+  build-test-apk:
+    name: Build sideload debug test APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # The bug only shows with Trakt connected: the bookmark waited for the
+      # Trakt write and the cloud push. With the placeholder client id Trakt
+      # answers 400 and the tester could not sign in at all, so both Trakt keys
+      # are injected and checked (docs/10, "a copied workflow carries the keys
+      # of ITS theme").
+      - name: Prepare runtime configuration
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+        run: |
+          cp secrets.defaults.properties secrets.properties
+          if [ -z "$TMDB_API_KEY" ]; then
+            echo "::error::TMDB_API_KEY secret is empty - the app would start as an empty browser"
+            exit 1
+          fi
+          if [ -z "$TRAKT_CLIENT_ID" ] || [ -z "$TRAKT_CLIENT_SECRET" ]; then
+            echo "::error::TRAKT_CLIENT_ID/SECRET repository secret is empty - Trakt sign-in would answer 400"
+            exit 1
+          fi
+          sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+          sed -i "s|^TRAKT_CLIENT_ID=.*|TRAKT_CLIENT_ID=$TRAKT_CLIENT_ID|" secrets.properties
+          sed -i "s|^TRAKT_CLIENT_SECRET=.*|TRAKT_CLIENT_SECRET=$TRAKT_CLIENT_SECRET|" secrets.properties
+          if grep -qi '^TRAKT_CLIENT_ID=your-\|^TRAKT_CLIENT_SECRET=your-\|^TMDB_API_KEY=your-' secrets.properties; then
+            echo "::error::a placeholder survived in secrets.properties"
+            exit 1
+          fi
+          echo "keys injected; TRAKT_CLIENT_ID length: ${#TRAKT_CLIENT_ID}"
+
+      # The point of this round, checked before the build is spent on it.
+      - name: Verify the watchlist work is really in this build
+        run: |
+          D=app/src/main/kotlin/com/arflix/tv/ui/screens/details/DetailsViewModel.kt
+          H=app/src/main/kotlin/com/arflix/tv/ui/screens/home/HomeViewModel.kt
+          grep -q 'private val watchlistWriteMutex = Mutex()' "$D" \
+            || { echo "::error::details: watchlist writes are not serialized"; exit 1; }
+          grep -q 'Show the new state right away' "$D" \
+            || { echo "::error::details: bookmark still waits for the writes"; exit 1; }
+          grep -q 'watchlistToggleVersion != watchlistVersionAtLoad' "$D" \
+            || { echo "::error::details: the page load can still undo a tap"; exit 1; }
+          grep -q 'Confirm before the cloud push' "$H" \
+            || { echo "::error::home: the long-press message still waits for the cloud push"; exit 1; }
+          test -f app/src/test/kotlin/com/arflix/tv/ui/screens/details/DetailsWatchlistToggleTest.kt \
+            || { echo "::error::watchlist unit tests missing"; exit 1; }
+          echo "watchlist patch verified: instant bookmark, serialized writes, load guard, home message"
+
+      - name: Compile and run unit tests
+        run: |
+          # A second run is the office rule for the known order-dependent flakes
+          # (docs/34 5z): another ViewModel test can leave a coroutine on the Main
+          # dispatcher. Nothing is silenced - the build still fails if it stays red.
+          ./gradlew testSideloadDebugUnitTest --no-daemon \
+            || ./gradlew testSideloadDebugUnitTest --no-daemon --rerun-tasks
+
+      # The office wants the test count as a measured number, not a guess.
+      # Gradle does not print one, so it is summed out of the JUnit XML.
+      - name: Count the unit tests
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          for f in glob.glob("app/build/test-results/testSideloadDebugUnitTest/*.xml"):
+              r = ET.parse(f).getroot()
+              tests += int(r.get("tests", 0)); failures += int(r.get("failures", 0))
+              errors += int(r.get("errors", 0)); skipped += int(r.get("skipped", 0))
+          print(f"unit tests: {tests} | failures: {failures} | errors: {errors} | skipped: {skipped}")
+          PY
+
+      # The office rule is "detekt rule for rule unchanged", and the fork CI does
+      # not run detekt at all - so the count is taken here. It never fails the
+      # build: the comparison is the point, not a gate.
+      - name: Count detekt findings rule by rule
+        continue-on-error: true
+        run: |
+          ./gradlew detekt --no-daemon || true
+          for report in app/build/reports/detekt/*.xml; do
+            [ -f "$report" ] || continue
+            echo "== $report"
+            grep -o 'source="[^"]*"' "$report" | wc -l | sed 's/^/  findings: /'
+            grep -o '<error[^>]*source="[^"]*"' "$report" \
+              | sed -n 's/.*source="detekt\.\([^"]*\)".*/\1/p' | sort | uniq -c | sort -rn
+          done
+
+      - name: Give the debug build its own package, name and a fixed signature
+        run: |
+          # Kennung "merkliste" - the identifier of this theme (docs/10,
+          # AGENTS.md rule 10). It steers all three places: package suffix,
+          # launcher name and artifact name. It is a NEW identifier, so this
+          # build installs BESIDE the other test APKs and starts empty.
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Merkliste</string>|' \
+            app/src/main/res/values/strings.xml
+          # debug differs from staging here: the `applicationIdSuffix` line in the
+          # debug block is COMMENTED OUT on purpose, so this INSERTS a line after
+          # the block header instead of replacing one (docs/10, "Beim Wechsel der
+          # Sorte mitdenken").
+          sed -i 's/^        debug {$/        debug {\n            applicationIdSuffix = ".merkliste"/' \
+            app/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          # A sed that silently matches nothing is how this kind of workflow
+          # wastes a build cycle - check every edit.
+          grep -q '<string name="app_name">Merkliste</string>' app/src/main/res/values/strings.xml \
+            || { echo "::error::app_name patch did not apply"; exit 1; }
+          grep -q 'applicationIdSuffix = ".merkliste"' app/build.gradle.kts \
+            || { echo "::error::suffix patch did not apply"; exit 1; }
+          grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts \
+            || { echo "::error::versionCode patch did not apply"; exit 1; }
+          cat >> app/build.gradle.kts <<'KTS'
+
+          // CI only: on a runner the signing config named "debug" points at a
+          // freshly generated ~/.android/debug.keystore, so every build would
+          // carry a different signature and the tester could not install one
+          // test APK over the previous one. Pin it to the committed keystore.
+          android {
+              signingConfigs {
+                  getByName("debug") {
+                      storeFile = rootProject.file(".github/test-signing/debug.keystore")
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+          }
+          KTS
+
+      # Schnell-APK (docs/10): the test question is "seconds or at once?" for a
+      # network wait of 4-5 s. That is not a smoothness question - a debug build
+      # answers it just as well as an R8 build.
+      - name: Build sideload debug APK
+        run: ./gradlew assembleSideloadDebug --no-daemon
+
+      - name: Verify APK signature against the committed keystore
+        run: |
+          EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
+            -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          # find, not ls: a filename with a space would break the glob (shellcheck SC2012).
+          APK=$(find app/build/outputs/apk/sideload/debug -name '*.apk' -type f | head -1)
+          ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          echo "APK:      $APK"
+          echo "expected: $EXPECTED"
+          echo "actual:   $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Signature mismatch - Gradle did not use the committed keystore."
+            exit 1
+          fi
+          echo "Signature verified against the committed keystore."
+
+      # Proves the suffix really landed on the built artifact, not just in the
+      # build file - the package name is what decides whether this installs
+      # beside the other test APKs or over one of them.
+      - name: Show the package name of the finished APK
+        run: |
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort | tail -1)
+          APK=$(find app/build/outputs/apk/sideload/debug -name '*.apk' -type f | head -1)
+          "$AAPT" dump packagename "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arvio-merkliste-apk
+          path: app/build/outputs/apk/sideload/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
