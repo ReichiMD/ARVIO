@@ -67,9 +67,11 @@ jobs:
             || { echo "::error::home: show history is not indexed once"; exit 1; }
           grep -q 'applyWatchedBadges(state.categories' "$H" \
             || { echo "::error::home: ticks are not applied to the latest state"; exit 1; }
+          grep -q 'heroItem = heroWithWatchedBadge(state.heroItem' "$H" \
+            || { echo "::error::home: hero still replaced by the row card"; exit 1; }
           test -f app/src/test/kotlin/com/arflix/tv/ui/screens/home/HomeWatchedBadgesTest.kt \
             || { echo "::error::home watched unit tests missing"; exit 1; }
-          echo "home patch verified: no Trakt gate, one-time show index, latest-state update"
+          echo "home patch verified: no Trakt gate, one-time show index, latest-state update, hero keeps details"
 
       - name: Compile and run unit tests
         run: |
