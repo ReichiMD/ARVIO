@@ -476,6 +476,7 @@ object OkHttpProvider {
             .connectionPool(ConnectionPool(8, 30, TimeUnit.SECONDS))
             .dns(dns)
             .retryOnConnectionFailure(true)
+            .addNetworkInterceptor(com.arflix.tv.util.CoverTiming.tmdbInterceptor()) // TEST BRANCH ONLY
             .build()
     }
 
@@ -491,6 +492,7 @@ object OkHttpProvider {
         }
         return ImageLoader.Builder(context)
             .okHttpClient(coilClient)
+            .eventListener(com.arflix.tv.util.CoverTiming.cardListener(context)) // TEST BRANCH ONLY
             .memoryCache {
                 MemoryCache.Builder(context)
                     .maxSizeBytes(imageCacheBytes)
