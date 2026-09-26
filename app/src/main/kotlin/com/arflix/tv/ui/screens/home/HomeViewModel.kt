@@ -4619,8 +4619,9 @@ class HomeViewModel @Inject constructor(
 
     /**
      * The long-press menu just marked a title: the watched cache already holds it, but the rows are
-     * the ones the last pass marked, so only a forced pass puts the tick on (or takes it off) the
-     * cards and the hero now instead of on the next return to Home.
+     * the ones the last pass marked, so no pass would run before the next return to Home.
+     * `immediate` runs it now, past the throttle; `force` keeps a pass that freshly published rows
+     * restart (the next-episode branch refreshes Continue Watching) on the short delay.
      */
     private fun refreshWatchedBadgesAfterMark() {
         refreshWatchedBadges(immediate = true, force = true)

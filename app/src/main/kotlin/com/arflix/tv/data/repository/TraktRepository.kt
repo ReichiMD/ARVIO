@@ -4856,9 +4856,10 @@ class TraktRepository @Inject constructor(
      * Falls back to Trakt if Supabase data is not available
      *
      * Not gated on Trakt: the cache always starts from the profile's local watched snapshot
-     * and adds the Cloud (Supabase) history plus MDBList and SIMKL when they are read
-     * providers, so a profile without Trakt still sees its ticks. Profile isolation comes
-     * from [ensureProfileCacheScope] and the per-profile snapshot keys, not from Trakt auth.
+     * and adds the Cloud (Supabase) history, or Trakt when the Cloud has none and the profile
+     * is signed in, plus MDBList and SIMKL when they are read providers, so a profile without
+     * Trakt still sees its ticks. Profile isolation comes from [ensureProfileCacheScope], the
+     * per-profile snapshot keys and the Cloud's profile filter, not from Trakt auth.
      */
     suspend fun initializeWatchedCache() {
         ensureProfileCacheScope()
