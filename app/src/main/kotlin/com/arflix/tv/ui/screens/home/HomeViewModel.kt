@@ -1729,6 +1729,10 @@ class HomeViewModel @Inject constructor(
     }
 
     init {
+        com.arflix.tv.util.CoverTiming.watchHome(viewModelScope, _uiState) // TEST BRANCH ONLY
+    }
+
+    init {
         viewModelScope.launch {
             profileManager.activeProfileId
                 .distinctUntilChanged()
@@ -2516,6 +2520,10 @@ class HomeViewModel @Inject constructor(
         homeDataLoadAttempted = true
         val requestId = ++loadHomeRequestId
         loadHomeJob = viewModelScope.launch loadHome@{
+            // TEST BRANCH ONLY: first loadHomeData() that runs to the end.
+            coroutineContext[Job]?.invokeOnCompletion { cause ->
+                if (cause == null) com.arflix.tv.util.CoverTiming.once("rows-done")
+            }
             // Skip delay - preloading now happens on profile focus for instant display
             // Only add minimal delay if no preloaded data exists yet
             if (!usedPreloadedData) {
