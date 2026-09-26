@@ -47,9 +47,10 @@ jobs:
       - name: Verify the playlist-dialog focus fix is really in this build
         run: |
           M=app/src/main/kotlin/com/arflix/tv/ui/components/IptvPlaylistModal.kt
-          grep -q 'OnGlobalFocusChangeListener' $M || { echo "::error::focus return listener missing"; exit 1; }
-          grep -q 'dismissOnScrimClick = isTouchDevice' $M || { echo "::error::scrim still dismisses on TV"; exit 1; }
-          echo "focus fix verified: listener and TV-safe scrim"
+          test "$(grep -c 'onKeyboardClosed = returnFocusToDialog' $M)" = "11" || { echo "::error::expected the focus return on all eleven TV fields"; exit 1; }
+          test "$(grep -c 'onKeyboardClosed?.invoke()' $M)" = "4" || { echo "::error::expected Done and Back in both field types"; exit 1; }
+          grep -q 'dismissOnScrimClick = hasTouchScreen' $M || { echo "::error::scrim still dismisses without a touchscreen"; exit 1; }
+          echo "focus fix verified: eleven fields, Done/Back, touch-only scrim"
 
       - name: Compile and run unit tests
         run: |
