@@ -1,0 +1,191 @@
+name: "Test APK (cover image sizing - cover, vorher)"
+
+# Test-branch only. This workflow and the committed keystore must never reach a
+# pull request against upstream - they exist so a Claude Code session can hand
+# the user an installable build. `workflow_dispatch` returns 403 from such a
+# session (the app token has no `actions: write`), so a push to this branch is
+# the trigger.
+#
+# Two test apps share the identifier "cover": "vorher" = upstream main + the
+# CoverTiming logcat lines, "nachher" = the pull request branch + the same lines.
+# "nachher" installs as an UPDATE over "vorher" (same package, same signature,
+# higher versionCode), so sign-in and addons survive and the comparison is fair.
+
+on:
+  push:
+    branches:
+      - claude/cover-vorher-test-apk
+  workflow_dispatch:
+
+jobs:
+  build-test-apk:
+    name: Build sideload staging test APK (vorher)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # The home screen is the whole test, so it must look like the tester's:
+      # TMDB for the rows, Trakt so a Trakt profile can sign in (docs/10 4a).
+      - name: Prepare runtime configuration
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+        run: |
+          cp secrets.defaults.properties secrets.properties
+          if [ -z "$TMDB_API_KEY" ]; then
+            echo "::error::TMDB_API_KEY secret is empty - the app would start as an empty browser"
+            exit 1
+          fi
+          if [ -z "$TRAKT_CLIENT_ID" ] || [ -z "$TRAKT_CLIENT_SECRET" ]; then
+            echo "::error::TRAKT_CLIENT_ID/SECRET repository secret is empty - Trakt sign-in would answer 400"
+            exit 1
+          fi
+          sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+          sed -i "s|^TRAKT_CLIENT_ID=.*|TRAKT_CLIENT_ID=$TRAKT_CLIENT_ID|" secrets.properties
+          sed -i "s|^TRAKT_CLIENT_SECRET=.*|TRAKT_CLIENT_SECRET=$TRAKT_CLIENT_SECRET|" secrets.properties
+          if grep -qi '^TRAKT_CLIENT_ID=your-\|^TRAKT_CLIENT_SECRET=your-\|^TMDB_API_KEY=your-' secrets.properties; then
+            echo "::error::a placeholder survived in secrets.properties"
+            exit 1
+          fi
+          echo "keys injected"
+
+      # Mandatory for every test APK with a TV view (docs/arbeitsweise/43).
+      - name: Verify the TV preview patch is present
+        run: |
+          grep -q 'TvPreviewLetterbox' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview letterbox missing"; exit 1; }
+          grep -q 'deviceModeOverride == "tv" && hasTouchScreen' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview guard missing or changed"; exit 1; }
+
+      # The measurement is the point of both builds - check it before the build is spent.
+      - name: Verify the CoverTiming lines are in this build
+        run: |
+          T=app/src/main/kotlin/com/arflix/tv/util/CoverTiming.kt
+          grep -q 'CoverTiming.tmdbInterceptor()' app/src/main/kotlin/com/arflix/tv/network/OkHttpProvider.kt \
+            || { echo "::error::network byte lines missing"; exit 1; }
+          grep -q 'CoverTiming.cardListener(context)' app/src/main/kotlin/com/arflix/tv/network/OkHttpProvider.kt \
+            || { echo "::error::card image lines missing"; exit 1; }
+          grep -q 'CoverTiming.watchHome(viewModelScope, _uiState)' app/src/main/kotlin/com/arflix/tv/ui/screens/home/HomeViewModel.kt \
+            || { echo "::error::rows-first / hero-logo lines missing"; exit 1; }
+          grep -q 'CoverTiming.once("rows-done")' app/src/main/kotlin/com/arflix/tv/ui/screens/home/HomeViewModel.kt \
+            || { echo "::error::rows-done line missing"; exit 1; }
+          # staging runs R8, and proguard-rules.pro strips Log.v/d/i.
+          if grep -qE 'Log\.(v|d|i)\(' "$T"; then
+            echo "::error::CoverTiming uses a log level that R8 strips in staging"; exit 1
+          fi
+          echo "CoverTiming lines verified"
+
+      - name: Verify this is the vorher state of the code
+        run: |
+          M=app/src/main/kotlin/com/arflix/tv/ui/components/MediaCard.kt
+          if [ "vorher" = "nachher" ]; then
+            grep -q 'TmdbImageSizing.forSlot' "$M" \
+              || { echo "::error::nachher build without the image sizing"; exit 1; }
+            grep -q 'if (isStartupSettling()) Priority.BACKGROUND else Priority.DEFERRED' \
+              app/src/main/kotlin/com/arflix/tv/ui/screens/home/HomeViewModel.kt \
+              || { echo "::error::nachher build without the hero logo priority"; exit 1; }
+          else
+            if grep -q 'TmdbImageSizing' "$M"; then
+              echo "::error::vorher build already contains the image sizing"; exit 1
+            fi
+          fi
+          echo "vorher state verified"
+
+      # No unit-test step here: this is upstream main plus logcat lines, and the
+      # R8 build alone takes ~20 minutes. The "nachher" build runs the tests.
+      - name: Give the staging build its own package, name and a fixed signature
+        run: |
+          # Kennung "cover" (docs/10, AGENTS.md rule 10): package suffix, launcher
+          # name and artifact name. Both test apps use it, so "nachher" updates
+          # "vorher" in place. staging carries a `.beta` suffix to replace.
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Cover</string>|' \
+            app/src/main/res/values/strings.xml
+          sed -i 's|applicationIdSuffix = ".beta"|applicationIdSuffix = ".cover"|' app/build.gradle.kts
+          # "nachher" must always carry the higher versionCode, whatever the run numbers.
+          sed -i "s/versionCode = [0-9]*/versionCode = $((940000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          # staging inherits the release cloud-secret gate; the Trakt/Telegram release
+          # values only exist upstream (docs/10, "Die Falle bei staging").
+          sed -i 's|dependsOn(validateReleaseCloudSecrets)|// CI test build only: cloud-secret gate disabled|' app/build.gradle.kts
+          grep -q '<string name="app_name">Cover</string>' app/src/main/res/values/strings.xml \
+            || { echo "::error::app_name patch did not apply"; exit 1; }
+          grep -q 'applicationIdSuffix = ".cover"' app/build.gradle.kts \
+            || { echo "::error::suffix patch did not apply"; exit 1; }
+          if grep -q 'applicationIdSuffix = ".beta"' app/build.gradle.kts; then
+            echo "::error::the .beta suffix is still there"; exit 1
+          fi
+          grep -q "versionCode = $((940000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts \
+            || { echo "::error::versionCode patch did not apply"; exit 1; }
+          if grep -q 'dependsOn(validateReleaseCloudSecrets)' app/build.gradle.kts; then
+            echo "::error::cloud-secret gate still wired"; exit 1
+          fi
+          cat >> app/build.gradle.kts <<'KTS'
+
+          // CI only: staging signs with the config named "debug" when no release
+          // keystore exists. On a runner that points at a freshly generated key, so
+          // "nachher" could not update "vorher". Pin it to the committed keystore.
+          android {
+              signingConfigs {
+                  getByName("debug") {
+                      storeFile = rootProject.file(".github/test-signing/debug.keystore")
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+          }
+          KTS
+
+      # Mess-APK (docs/10): the test question looks at the clock - how long until
+      # the home cards are there - so it needs the R8 build a user really gets.
+      - name: Build sideload staging APK
+        run: ./gradlew assembleSideloadStaging --no-daemon
+
+      - name: Verify APK signature against the committed keystore
+        run: |
+          EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
+            -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          APK=$(find app/build/outputs/apk/sideload/staging -name '*.apk' -type f | head -1)
+          ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          echo "APK:      $APK"
+          echo "expected: $EXPECTED"
+          echo "actual:   $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Signature mismatch - Gradle did not use the committed keystore."
+            exit 1
+          fi
+          echo "Signature verified against the committed keystore."
+
+      # R8 could still drop the lines; the tag string must survive in the dex.
+      - name: Verify the CoverTiming lines survived R8
+        run: |
+          APK=$(find app/build/outputs/apk/sideload/staging -name '*.apk' -type f | head -1)
+          for s in CoverTiming rows-done rows-first card-img hero-logo; do
+            N=$(unzip -p "$APK" 'classes*.dex' | grep -a -c "$s" || true)
+            echo "$s: $N"
+            [ "$N" -gt 0 ] || { echo "::error::'$s' is not in the dex - R8 removed the measurement"; exit 1; }
+          done
+
+      - name: Show the package name and version of the finished APK
+        run: |
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort | tail -1)
+          APK=$(find app/build/outputs/apk/sideload/staging -name '*.apk' -type f | head -1)
+          "$AAPT" dump badging "$APK" > badging.txt
+          sed -n 1p badging.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arvio-cover-vorher-apk
+          path: app/build/outputs/apk/sideload/staging/*.apk
+          if-no-files-found: error
+          retention-days: 14
