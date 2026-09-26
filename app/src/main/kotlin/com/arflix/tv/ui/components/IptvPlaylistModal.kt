@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -343,12 +344,38 @@ fun IptvPlaylistModal(
             modalFocusRequester.requestFocus()
         }
 
+        // Closing the keyboard with Done or Back clears the field's focus without
+        // saying where it goes, so Compose hands it to whatever it finds first: the
+        // scrim, or a button the dialog does not draw as focused. The highlight
+        // vanishes and the next OK on the remote dismisses the dialog with
+        // everything typed (reported on Fire TV). Bring focus back to the dialog
+        // whenever it leaves the text fields. Touch has no highlight to lose, so
+        // phones and tablets keep their behaviour.
+        val dialogView = LocalView.current
+        DisposableEffect(dialogView, isTouchDevice) {
+            if (isTouchDevice) return@DisposableEffect onDispose { }
+            val listener = android.view.ViewTreeObserver.OnGlobalFocusChangeListener { oldFocus, newFocus ->
+                val leftField = oldFocus != null && editTextRefs.any { it === oldFocus }
+                val enteredField = newFocus != null && editTextRefs.any { it === newFocus }
+                if (leftField && !enteredField) {
+                    dialogView.post { runCatching { modalFocusRequester.requestFocus() } }
+                }
+            }
+            dialogView.viewTreeObserver.addOnGlobalFocusChangeListener(listener)
+            onDispose {
+                if (dialogView.viewTreeObserver.isAlive) {
+                    dialogView.viewTreeObserver.removeOnGlobalFocusChangeListener(listener)
+                }
+            }
+        }
+
         BackHandler {
             hideKeyboardAll()
             onDismiss()
         }
 
         ModalScrim(
+            dismissOnScrimClick = isTouchDevice,
             onDismiss = {
                 hideKeyboardAll()
                 onDismiss()
@@ -2025,29 +2052,38 @@ private fun InputFieldBlock(
 
 @Composable
 private fun ModalScrim(
+    dismissOnScrimClick: Boolean,
     onDismiss: () -> Unit,
     content: @Composable BoxScope.() -> Unit
 ) {
     val scrimInteraction = remember { MutableInteractionSource() }
     val contentInteraction = remember { MutableInteractionSource() }
 
+    // Tapping beside the dialog is a touch gesture. On a remote a clickable scrim
+    // is just another focus target, and OK on it throws the whole form away.
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.72f))
-            .clickable(
-                interactionSource = scrimInteraction,
-                indication = null,
-                onClick = onDismiss
+            .then(
+                if (dismissOnScrimClick) {
+                    Modifier.clickable(
+                        interactionSource = scrimInteraction,
+                        indication = null,
+                        onClick = onDismiss
+                    )
+                } else Modifier
             ),
         contentAlignment = Alignment.Center
     ) {
         Box(
-            modifier = Modifier.clickable(
-                interactionSource = contentInteraction,
-                indication = null,
-                onClick = {}
-            ),
+            modifier = if (dismissOnScrimClick) {
+                Modifier.clickable(
+                    interactionSource = contentInteraction,
+                    indication = null,
+                    onClick = {}
+                )
+            } else Modifier,
             content = content
         )
     }
