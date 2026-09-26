@@ -4617,6 +4617,15 @@ class HomeViewModel @Inject constructor(
         refreshWatchedBadges(force = true)
     }
 
+    /**
+     * The long-press menu just marked a title: the watched cache already holds it, but the rows are
+     * the ones the last pass marked, so only a forced pass puts the tick on (or takes it off) the
+     * cards and the hero now instead of on the next return to Home.
+     */
+    private fun refreshWatchedBadgesAfterMark() {
+        refreshWatchedBadges(immediate = true, force = true)
+    }
+
     private fun refreshWatchedBadges(immediate: Boolean = false, force: Boolean = false) {
         val now = SystemClock.elapsedRealtime()
         if (!immediate && watchedBadgesPassIsRedundant(
@@ -5235,12 +5244,14 @@ class HomeViewModel @Inject constructor(
                 if (item.mediaType == MediaType.MOVIE) {
                     if (item.isWatched) {
                         traktRepository.markMovieUnwatched(item.id)
+                        refreshWatchedBadgesAfterMark()
                         _uiState.value = _uiState.value.copy(
                             toastMessage = context.getString(R.string.details_marked_unwatched),
                             toastType = ToastType.SUCCESS
                         )
                     } else {
                         traktRepository.markMovieWatched(item.id)
+                        refreshWatchedBadgesAfterMark()
                         watchHistoryRepository.removeFromHistory(item.id, null, null)
                         _uiState.value = _uiState.value.copy(
                             toastMessage = context.getString(R.string.details_marked_watched),
@@ -5269,6 +5280,7 @@ class HomeViewModel @Inject constructor(
 
                         // Sync to backend after UI update (these may be slow for non-Trakt/non-Cloud profiles)
                         traktRepository.markEpisodeWatched(item.id, nextEp.seasonNumber, nextEp.episodeNumber)
+                        refreshWatchedBadgesAfterMark()
                         watchHistoryRepository.removeFromHistory(item.id, nextEp.seasonNumber, nextEp.episodeNumber)
 
                         try {
