@@ -92,25 +92,25 @@ jobs:
 
       - name: Give the debug build its own package, name and a fixed signature
         run: |
-          # Kennung "firetv" - the identifier of this theme (docs/10, AGENTS.md
+          # Kennung "firetv2" (was "firetv"; a leftover of that package on the Stick blocked every reinstall) - the identifier of this theme (docs/10, AGENTS.md
           # rule 10). It steers all three places: package suffix, launcher name
           # and artifact name. It is a NEW identifier, so this build installs
           # BESIDE the other test APKs and starts empty: portal, MAC and
           # playlists have to be entered once.
-          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">FireTV Test</string>|' \
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">FireTV Test 2</string>|' \
             app/src/main/res/values/strings.xml
           # debug differs from staging here: it has no applicationIdSuffix to
           # replace, only a commented-out line to take the place of (docs/10,
           # "Beim Wechsel der Sorte mitdenken").
-          sed -i 's|// applicationIdSuffix = ".debug" // Disabled to preserve settings between debug/release|applicationIdSuffix = ".firetv"|' \
+          sed -i 's|// applicationIdSuffix = ".debug" // Disabled to preserve settings between debug/release|applicationIdSuffix = ".firetv2"|' \
             app/build.gradle.kts
           sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
           # A sed that silently matches nothing is how this kind of workflow wastes
           # a build cycle: a missed replacement fails nothing, it just ships an APK
           # under the plain package name and overwrites a different test build.
-          grep -q '<string name="app_name">FireTV Test</string>' app/src/main/res/values/strings.xml \
+          grep -q '<string name="app_name">FireTV Test 2</string>' app/src/main/res/values/strings.xml \
             || { echo "::error::app_name patch did not apply"; exit 1; }
-          grep -q 'applicationIdSuffix = ".firetv"' app/build.gradle.kts \
+          grep -q 'applicationIdSuffix = ".firetv2"' app/build.gradle.kts \
             || { echo "::error::suffix patch did not apply"; exit 1; }
           grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts \
             || { echo "::error::versionCode patch did not apply"; exit 1; }
@@ -167,7 +167,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: arvio-firetv-apk
+          name: arvio-firetv2-apk
           path: app/build/outputs/apk/sideload/debug/*.apk
           if-no-files-found: error
           retention-days: 14
