@@ -2082,7 +2082,10 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             // COMPLETED goes out before the watched cache is reloaded, so the ticks follow the
             // reload itself - otherwise a fresh Trakt connection shows its ticks only after restart.
-            traktRepository.watchedCacheReloaded.collect { refreshWatchedBadges(immediate = true) }
+            traktRepository.watchedCacheReloaded.collect {
+                android.util.Log.w("TraktFlow", "home: watched cache reloaded - immediate tick pass")
+                refreshWatchedBadges(immediate = true)
+            }
         }
         viewModelScope.launch(Dispatchers.IO) {
             delay(if (isLowRamDevice) 8 * 60_000L else 6 * 60_000L)
@@ -4503,6 +4506,7 @@ class HomeViewModel @Inject constructor(
                 if (categories.isEmpty()) return@launch
 
                 val watchedMovies = traktRepository.getWatchedMoviesFromCache()
+                android.util.Log.w("TraktFlow", "home tick pass movies=${watchedMovies.size} episodes=${traktRepository.getWatchedEpisodesFromCache().size}")
 
                 // Performance: Build show watched map only for unique TV shows
                 val showWatched = mutableMapOf<Int, Boolean>()
@@ -4543,6 +4547,7 @@ class HomeViewModel @Inject constructor(
                     }
                 }
 
+                android.util.Log.w("TraktFlow", "home tick pass done changed=$anyChange ticksOnHome=${updatedCategories.sumOf { c -> c.items.count { it.isWatched } }}")
                 if (!anyChange) {
                     lastWatchedBadgesRefreshMs = SystemClock.elapsedRealtime()
                     return@launch

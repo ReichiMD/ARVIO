@@ -1289,8 +1289,12 @@ class SettingsViewModel @Inject constructor(
         if (!silent) {
             lastManualSyncTimeMs = now
         }
+        android.util.Log.w("TraktFlow", "sync requested silent=$silent")
         viewModelScope.launch(Dispatchers.IO) {
-            if (_uiState.value.isSyncing) return@launch
+            if (_uiState.value.isSyncing) {
+                android.util.Log.w("TraktFlow", "sync DROPPED - a sync is already running")
+                return@launch
+            }
             withContext(Dispatchers.Main) {
                 _uiState.value = _uiState.value.copy(isSyncing = true)
             }
@@ -1303,7 +1307,9 @@ class SettingsViewModel @Inject constructor(
 
                 if (_uiState.value.isTraktAuthenticated) {
                     connectedProviders += "Trakt"
-                    when (val result = traktSyncService.performFullSync()) {
+                    val result = traktSyncService.performFullSync()
+                    android.util.Log.w("TraktFlow", "sync trakt result=${if (result is SyncResult.Success) "success movies=${result.moviesSynced} episodes=${result.episodesSynced}" else "error ${(result as? SyncResult.Error)?.message}"}")
+                    when (result) {
                         is SyncResult.Success -> {
                             totalMovies += result.moviesSynced
                             totalEpisodes += result.episodesSynced
@@ -1367,8 +1373,10 @@ class SettingsViewModel @Inject constructor(
                             }
                         )
                     }
+                    android.util.Log.w("TraktFlow", "sync end - overview filled movies=$totalMovies episodes=$totalEpisodes, reloading watched cache")
                     traktRepository.invalidateWatchedCache()
                     traktRepository.initializeWatchedCache()
+                    android.util.Log.w("TraktFlow", "watched cache after sync movies=${traktRepository.getWatchedMoviesFromCache().size} episodes=${traktRepository.getWatchedEpisodesFromCache().size}")
                 } else if (!silent && connectedProviders.isEmpty()) {
                     withContext(Dispatchers.Main) {
                         _uiState.value = _uiState.value.copy(
@@ -4569,10 +4577,12 @@ class SettingsViewModel @Inject constructor(
             )
 
             try {
+                android.util.Log.w("TraktFlow", "auth start")
                 traktRepository.logout()
                 val deviceCode = withContext(Dispatchers.IO) {
                     traktRepository.getDeviceCode()
                 }
+                android.util.Log.w("TraktFlow", "device code received expiresIn=${deviceCode.expiresIn}s interval=${deviceCode.interval}s")
                 _uiState.value = _uiState.value.copy(
                     traktCode = deviceCode,
                     traktCodeExpiresAtMillis = System.currentTimeMillis() +
@@ -4644,6 +4654,7 @@ class SettingsViewModel @Inject constructor(
                 try {
                     traktRepository.pollForToken(deviceCode.deviceCode)
                     tokenSaved = true
+                    android.util.Log.w("TraktFlow", "poll success - token saved")
 
                     // Get the expiration date
                     val expirationDate = traktRepository.getTokenExpirationDate()
@@ -4691,9 +4702,11 @@ class SettingsViewModel @Inject constructor(
                     )
                     // The sync runs in its own job and fills the sync summary when it ends; start it
                     // first so the summary does not also wait for the Continue Watching fetch.
+                    android.util.Log.w("TraktFlow", "after connect: silent full sync requested first")
                     performFullSync(silent = true)
                     traktRepository.clearContinueWatchingCache()
                     runCatching { traktRepository.getContinueWatching() }
+                    android.util.Log.w("TraktFlow", "after connect: continue watching fetch done")
                     syncLocalStateToCloud(silent = true, force = true)
                     runCatching { launcherContinueWatchingRepository.refreshForCurrentProfile() }
                     return@launch
@@ -4701,6 +4714,8 @@ class SettingsViewModel @Inject constructor(
                     if (e is kotlinx.coroutines.CancellationException) throw e
 
                     val httpError = e as? retrofit2.HttpException
+                    android.util.Log.w("TraktFlow", "poll answer http=${httpError?.code()} type=${e.javaClass.simpleName} tokenSaved=$tokenSaved" +
+                        if (httpError == null) " msg=${e.message}" else "")
                     val isPending = when {
                         httpError?.code() == 400 -> true
                         else -> e.message?.contains("400") == true ||
@@ -4726,9 +4741,11 @@ class SettingsViewModel @Inject constructor(
                     // the token is saved, asking again would report the code as already used.
                     if (!tokenSaved && com.arflix.tv.data.repository.isTransientTraktPollFailure(e)) {
                         networkFailure = e.message.orMessage(SettingsMessage.Res(R.string.settings_trakt_auth_failed))
+                        android.util.Log.w("TraktFlow", "poll: network failure - keep polling")
                         continue
                     }
 
+                    android.util.Log.w("TraktFlow", "poll loop ends - activation aborted http=${httpError?.code()}")
                     lastFailure = when (httpError?.code()) {
                         404 -> SettingsMessage.Res(R.string.settings_trakt_code_invalid)
                         // Right after a dropped poll, 409 most likely means Trakt issued the token
@@ -4751,6 +4768,7 @@ class SettingsViewModel @Inject constructor(
             // Local timeout and server-reported expiry both offer Retry; other failures keep
             // their error toast and dismiss the dialog. A code that ran out while the network was
             // down reports the network error instead of a plain expiry.
+            android.util.Log.w("TraktFlow", "poll loop finished lastFailure=${lastFailure != null} networkFailure=${networkFailure != null}")
             _uiState.value = _uiState.value.finishTraktActivationPolling(lastFailure ?: networkFailure)
         }
     }

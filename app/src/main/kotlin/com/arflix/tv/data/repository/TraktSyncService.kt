@@ -319,6 +319,7 @@ class TraktSyncService @Inject constructor(
                 totalEpisodes = totalEpisodes
             )
             _syncEvents.tryEmit(SyncStatus.COMPLETED)
+            android.util.Log.w("TraktFlow", "trakt full sync COMPLETED sent movies=$totalMovies episodes=$totalEpisodes")
 
             SyncResult.Success(totalMovies, totalEpisodes)
 

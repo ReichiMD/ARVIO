@@ -4853,6 +4853,7 @@ class TraktRepository @Inject constructor(
      * Call this after sync operations to pick up new data
      */
     fun invalidateWatchedCache() {
+        android.util.Log.w("TraktFlow", "watched cache invalidated")
         ensureProfileCacheScope()
         cacheInitialized = false
         watchedCacheGeneration++
@@ -4885,6 +4886,7 @@ class TraktRepository @Inject constructor(
         }
         cacheInitializing = true
         val generation = watchedCacheGeneration
+        android.util.Log.w("TraktFlow", "watched cache load start generation=$generation")
         try {
             val readProviders = syncProviderStore.readProviders(
                 com.arflix.tv.data.repository.sync.TrackingFeature.WATCHED
@@ -4938,6 +4940,9 @@ class TraktRepository @Inject constructor(
             watchedEpisodesCache.addAll(traktEpisodes)
             watchedEpisodesCache.addAll(mdbEpisodes)
             watchedEpisodesCache.addAll(simklEpisodes)
+            android.util.Log.w("TraktFlow", "watched cache loaded local=${localSnapshotMovies.size}/${localSnapshotEpisodes.size} " +
+                "sync=${supabaseMovies.size}/${supabaseEpisodes.size} trakt=${traktMovies.size}/${traktEpisodes.size} " +
+                "total=${watchedMoviesCache.size}/${watchedEpisodesCache.size} stale=${generation != watchedCacheGeneration}")
 
             cacheInitialized = generation == watchedCacheGeneration
         } catch (e: Exception) {
@@ -4967,6 +4972,7 @@ class TraktRepository @Inject constructor(
             }
         } finally {
             cacheInitializing = false
+            android.util.Log.w("TraktFlow", "watched cache load end initialized=$cacheInitialized")
             if (cacheInitialized) watchedCacheReloads.loaded()
         }
     }
