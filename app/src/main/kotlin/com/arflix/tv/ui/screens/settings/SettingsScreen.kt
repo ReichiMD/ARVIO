@@ -303,7 +303,7 @@ private fun tvGeneralRowsForSection(section: String): List<Int> {
         "subtitles" -> listOf(4, 5, 6, 7, 42, 8, 38, 39, 9, 45)
         "ai_subtitles" -> listOf(28, 29, 30, 31, 32, 33)
         "playback" -> listOf(10, 11, 12, 43, 44, 13, 14, 34, 16, 15, 40, 27)
-        "appearance" -> listOf(17, 18, 20, 21, 24, 23, 22, 41, 46, 36, 47)
+        "appearance" -> listOf(17, 18, 20, 21, 24, 23, 22, 41, 46, 36, 47, 48)
         "profiles" -> listOf(19)
         "network" -> listOf(25, 26, 35)
         else -> emptyList()
@@ -520,6 +520,7 @@ fun SettingsScreen(
     onNavigateToTv: () -> Unit = {},
     onNavigateToWatchlist: () -> Unit = {},
     onNavigateToTelegramSettings: () -> Unit = {},
+    onOpenSkinSettings: () -> Unit = {},
     onSwitchProfile: () -> Unit = {},
     onBack: () -> Unit = {},
     onSubPageChanged: (Boolean) -> Unit = {}
@@ -1432,6 +1433,7 @@ fun SettingsScreen(
                                                 33 -> viewModel.startAiKeyServer()
                                                 34 -> viewModel.cycleTrailerDelay()
                                                 47 -> viewModel.cycleGuideRowCount()
+                                                48 -> onOpenSkinSettings()
                                                 37 -> viewModel.setTrailerInCards(!uiState.trailerInCards)
                                             }
                                         }
@@ -2050,6 +2052,7 @@ fun SettingsScreen(
                             onTrailerDelayClick = { viewModel.cycleTrailerDelay() },
                             guideRowCount = uiState.guideRowCount,
                             onGuideRowCountClick = { viewModel.cycleGuideRowCount() },
+                            onOpenSkinSettings = onOpenSkinSettings,
                             onDeviceModeClick = openUiModeWarningDialog,
                             onContentLanguageClick = openContentLanguagePicker,
                             onSkipProfileSelectionToggle = { viewModel.setSkipProfileSelection(it) },
@@ -6852,6 +6855,7 @@ private fun TvGeneralSettingsRows(
     onTrailerDelayClick: () -> Unit = {},
     guideRowCount: Int = 0,
     onGuideRowCountClick: () -> Unit = {},
+    onOpenSkinSettings: () -> Unit = {},
     qualityFilterValue: String = "OFF",
     onQualityFiltersClick: () -> Unit = {},
     subtitleAiEnabled: Boolean = false,
@@ -7002,6 +7006,8 @@ private fun TvGeneralSettingsRows(
                 33 -> SettingsRow(Icons.Default.QrCode, stringResource(R.string.ai_scan_qr_title), stringResource(R.string.ai_scan_qr_desc), "", focusedIndex == localIndex, onSubtitleAiQrClick, Modifier.settingsFocusSlot(localIndex).alpha(if (subtitleAiEnabled) 1f else 0.4f))
                 34 -> SettingsRow(Icons.Default.Schedule, stringResource(R.string.trailer_delay), stringResource(R.string.trailer_delay_desc), "${trailerDelaySeconds}s", focusedIndex == localIndex, onTrailerDelayClick, Modifier.settingsFocusSlot(localIndex))
                 47 -> SettingsRow(Icons.Default.TableRows, stringResource(R.string.guide_rows), stringResource(R.string.guide_rows_desc), if (guideRowCount == 0) stringResource(R.string.auto) else "$guideRowCount", focusedIndex == localIndex, onGuideRowCountClick, Modifier.settingsFocusSlot(localIndex))
+                48 -> com.arflix.tv.ui.skin.baukasten.SkinEinstellungsEintrag(
+                    focusedIndex == localIndex, onOpenSkinSettings, Modifier.settingsFocusSlot(localIndex))
                 35 -> SettingsRow(Icons.Default.Language, stringResource(R.string.custom_user_agent), stringResource(R.string.custom_user_agent_desc), formatUserAgentPreview(customUserAgent, 30), focusedIndex == localIndex, onCustomUserAgentClick, Modifier.settingsFocusSlot(localIndex))
                 37 -> SettingsToggleRow(stringResource(R.string.trailer_in_cards), stringResource(R.string.trailer_in_cards_desc), trailerInCards, focusedIndex == localIndex, onTrailerInCardsToggle, Modifier.settingsFocusSlot(localIndex))
             }

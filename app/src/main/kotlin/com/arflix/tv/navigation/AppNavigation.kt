@@ -209,6 +209,10 @@ fun AppNavigation(
 
         // Home screen
         composable(Screen.Home.route) {
+            com.arflix.tv.ui.skin.baukasten.SkinWeiche(skin = {
+                com.arflix.tv.ui.skin.baukasten.SkinHomeRoute(navController, navigateTopLevel, currentProfile, preloadedCategories,
+                    preloadedHeroItem, preloadedHeroLogoUrl, preloadedLogoCache, onSwitchProfile, onExitApp)
+            }) {
             HomeScreen(
                 preloadedCategories = preloadedCategories,
                 preloadedHeroItem = preloadedHeroItem,
@@ -254,6 +258,10 @@ fun AppNavigation(
                 },
                 onExitApp = onExitApp
             )
+            }
+        }
+        composable(com.arflix.tv.ui.skin.baukasten.SKIN_EINSTELLUNGEN_ROUTE) {
+            com.arflix.tv.ui.skin.baukasten.SkinEinstellungenRoute(navController)
         }
 
         // Search screen
@@ -368,6 +376,7 @@ fun AppNavigation(
                 onNavigateToTv = { navigateTopLevel(Screen.Tv.createRoute()) },
                 onNavigateToWatchlist = { navigateTopLevel(Screen.Watchlist.route) },
                 onNavigateToTelegramSettings = { navController.navigate(Screen.TelegramSettings.route) },
+                onOpenSkinSettings = { navController.navigate(com.arflix.tv.ui.skin.baukasten.SKIN_EINSTELLUNGEN_ROUTE) },
                 onSwitchProfile = {
                     onSwitchProfile()
                     navController.navigateToProfileSelection()
