@@ -78,11 +78,19 @@ suspend fun Context.skinEinstellungAendern(block: (SkinEinstellungen) -> SkinEin
     }
 }
 
+/**
+ * Last known settings of this app start. Returning to Home rebuilds the page switch; starting
+ * from this value instead of "unknown" avoids an empty frame on every return — for the skin
+ * and for Prodigy's Home when the skin is off.
+ */
+@Volatile private var letzteEinstellungen: SkinEinstellungen? = null
+
 @Composable
 fun rememberSkinEinstellungen(): SkinEinstellungen? {
     val context = LocalContext.current
     val flow = remember(context) { context.skinEinstellungenFlow() }
-    val stand by flow.collectAsState(initial = null)
+    val stand by flow.collectAsState(initial = letzteEinstellungen)
+    stand?.let { letzteEinstellungen = it }
     return stand
 }
 
