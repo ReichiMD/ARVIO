@@ -123,7 +123,9 @@ internal fun isAutoPlayableStream(stream: StreamSource): Boolean {
 }
 
 internal fun isPendingDebridStream(stream: StreamSource): Boolean {
-    val text = listOfNotNull(stream.source, stream.addonName, stream.quality, stream.url, stream.description)
+    // Only the labels describe a debrid status. The URL is left out on purpose: a CDN host such
+    // as "…-caching-….example.net" would otherwise mark a ready stream as still downloading.
+    val text = listOfNotNull(stream.source, stream.addonName, stream.quality, stream.description)
         .joinToString(" ")
         .lowercase()
     return listOf(
