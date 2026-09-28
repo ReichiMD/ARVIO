@@ -1926,6 +1926,7 @@ class MediaRepository @Inject constructor(
         if (catalog.kind == CatalogKind.COLLECTION) {
             return@coroutineScope loadCollectionCatalogPage(catalog, offset, limit)
         }
+        val rowTimingStart = android.os.SystemClock.elapsedRealtime() // TEST BRANCH ONLY
         if (limit <= 0 || offset < 0) return@coroutineScope CategoryPageResult(emptyList(), hasMore = false)
         val rankedCatalogLimit = if (catalog.isTop10Catalog()) 10 else Int.MAX_VALUE
         if (offset >= rankedCatalogLimit) {
@@ -1978,6 +1979,9 @@ class MediaRepository @Inject constructor(
         val items = jobs.mapNotNull { it.await() }
         if (items.isNotEmpty()) {
             cacheItems(items)
+        }
+        if (offset == 0) { // TEST BRANCH ONLY
+            com.arflix.tv.util.RowTiming.rowLoaded(catalog.id, catalog.sourceType.name, items.size, rowTimingStart)
         }
         CategoryPageResult(
             items = items,
@@ -2162,6 +2166,7 @@ class MediaRepository @Inject constructor(
         limit: Int,
         mediaType: MediaType? = null
     ): CategoryPageResult = coroutineScope {
+        val rowTimingStart = android.os.SystemClock.elapsedRealtime() // TEST BRANCH ONLY
         if (catalog.collectionSources.isEmpty() || limit <= 0 || offset < 0) {
             return@coroutineScope CategoryPageResult(emptyList(), hasMore = false)
         }
@@ -2206,6 +2211,9 @@ class MediaRepository @Inject constructor(
         }
         val items = pageRefs.mapNotNull { itemsByRef[it] }
         if (items.isNotEmpty()) cacheItems(items)
+        if (offset == 0) { // TEST BRANCH ONLY
+            com.arflix.tv.util.RowTiming.rowLoaded(catalog.id, "COLLECTION", items.size, rowTimingStart)
+        }
         // nextOffset counts consumed refs, not returned items: a failed lookup drops an item, and
         // counting items would make the next page start inside this one.
         // A filtered tab can have run out of its type inside the fetched window while the sources

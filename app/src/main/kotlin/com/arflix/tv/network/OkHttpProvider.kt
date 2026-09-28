@@ -268,6 +268,7 @@ object OkHttpProvider {
         }
 
         val builder = OkHttpClient.Builder()
+            .addInterceptor(com.arflix.tv.util.RowTiming.requestInterceptor()) // TEST BRANCH ONLY
             .addInterceptor(customUserAgentInterceptor)
             // TMDB/Trakt calls are proxied when Supabase proxy config is present.
             // Contributors can still use direct calls with their own local keys.
