@@ -830,6 +830,7 @@
     <string name="plugin_screen_refresh_done">Atualizado</string>
     <string name="plugin_screen_installed_repos">Repositórios instalados</string>
     <string name="plugin_screen_installed_scrapers">Scrapers instalados</string>
+    <string name="plugin_scraper_version">Versão %1$s</string>
     <string name="plugin_screen_no_scrapers">Nenhum scraper instalado.</string>
     <string name="plugin_screen_add_repo_dialog_title">Adicionar repositório de plugins</string>
     <string name="plugin_screen_repo_url">URL do repositório</string>

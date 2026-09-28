@@ -983,6 +983,7 @@
     <string name="plugin_screen_refresh_done">Up to date</string>
     <string name="plugin_screen_installed_repos">Installed Repositories</string>
     <string name="plugin_screen_installed_scrapers">Installed Scrapers</string>
+    <string name="plugin_scraper_version">Version %1$s</string>
     <string name="plugin_screen_no_scrapers">No scrapers installed.</string>
     <string name="plugin_screen_add_repo_dialog_title">Add Plugin Repository</string>
     <string name="plugin_screen_repo_url">Repository URL</string>
