@@ -87,6 +87,7 @@ class PluginViewModel @Inject constructor(
             is PluginUiEvent.AddRepository -> addRepository(event.url)
             is PluginUiEvent.RemoveRepository -> removeRepository(event.repoId)
             is PluginUiEvent.RefreshRepository -> refreshRepository(event.repoId)
+            PluginUiEvent.RefreshAllRepositories -> refreshAllRepositories()
             is PluginUiEvent.ToggleScraper -> toggleScraper(event.scraperId, event.enabled)
             is PluginUiEvent.ToggleAllScrapersForRepo -> toggleAllScrapersForRepo(event.repoId, event.enabled)
             is PluginUiEvent.TestScraper -> testScraper(event.scraperId)
@@ -183,6 +184,38 @@ class PluginViewModel @Inject constructor(
                     }
                 }
             )
+        }
+    }
+
+    private fun refreshAllRepositories() {
+        if (_uiState.value.isRefreshingRepos) return
+        val repoIds = _uiState.value.repositories.map { it.id }
+        if (repoIds.isEmpty()) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshingRepos = true, errorMessage = null, successMessage = null) }
+
+            val failure = repoIds
+                .map { repoId -> pluginManager.refreshRepository(repoId) }
+                .firstOrNull { it.isFailure }
+                ?.exceptionOrNull()
+
+            _uiState.update {
+                if (failure == null) {
+                    it.copy(
+                        isRefreshingRepos = false,
+                        successMessage = PluginMessage(R.string.plugin_repo_refreshed)
+                    )
+                } else {
+                    it.copy(
+                        isRefreshingRepos = false,
+                        errorMessage = PluginMessage(
+                            R.string.plugin_error_refresh,
+                            listOf(failure.message ?: "")
+                        )
+                    )
+                }
+            }
         }
     }
 

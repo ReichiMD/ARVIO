@@ -210,6 +210,11 @@ class PluginManager @Inject constructor(
     // Semaphore to limit concurrent scrapers
     private val scraperSemaphore = Semaphore(MAX_CONCURRENT_SCRAPERS)
 
+    // Scraper IDs whose missing file was already re-downloaded (or tried) in this app
+    // session, so a dead download URL is not retried on every search.
+    private val restoreAttemptedIds = ConcurrentHashMap.newKeySet<String>()
+    private val restoreMutex = Mutex()
+
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val pluginDispatcher: CoroutineDispatcher =
@@ -538,6 +543,9 @@ class PluginManager @Inject constructor(
             val repo = dataStore.repositories.first().find { it.id == repoId }
                 ?: return@withContext Result.failure(Exception("Repository not found"))
 
+            // A manual refresh is also the retry path for files that could not be restored.
+            restoreAttemptedIds.removeAll { it.startsWith("$repoId:") }
+
             if (repo.type == RepositoryType.EXTERNAL_DEX) {
                 return@withContext refreshExternalRepository(repo)
             }
@@ -641,6 +649,8 @@ class PluginManager @Inject constructor(
 
         Log.d(TAG, "Executing ${enabledScraperList.size} scrapers for $mediaType:$tmdbId")
 
+        restoreMissingScraperFiles(enabledScraperList)
+
         // Preload all extractors from EXTERNAL_DEX repos before any scraper runs
         val dexScraperIds = enabledScraperList
             .filter { it.type == RepositoryType.EXTERNAL_DEX }
@@ -685,6 +695,8 @@ class PluginManager @Inject constructor(
         }
 
         Log.d(TAG, "Streaming execution of ${enabledList.size} scrapers for $mediaType:$tmdbId")
+
+        restoreMissingScraperFiles(enabledList)
 
         // Preload all extractors from EXTERNAL_DEX repos before any scraper runs
         val dexScraperIds = enabledList.filter { it.type == RepositoryType.EXTERNAL_DEX }.map { it.id }
@@ -860,6 +872,75 @@ class PluginManager @Inject constructor(
     }
 
     /**
+     * Cloud sync restores the repository and scraper lists, but never the downloaded
+     * plugin files. A device can therefore list a plugin as enabled while its .cs3 file
+     * or JS code is missing, and every search returns nothing for it. Re-download any
+     * missing file before the scrapers run. Each scraper is tried once per app session
+     * (a manual repository refresh resets that), and the mutex keeps two parallel
+     * searches from downloading the same file twice.
+     */
+    internal suspend fun restoreMissingScraperFiles(scrapers: List<ScraperInfo>) {
+        if (scrapers.isEmpty()) return
+        withContext(Dispatchers.IO) {
+            restoreMutex.withLock {
+                val missing = scrapers.filter { it.id !in restoreAttemptedIds && !hasScraperFile(it) }
+                if (missing.isEmpty()) return@withLock
+                restoreAttemptedIds.addAll(missing.map { it.id })
+                val repositories = dataStore.repositories.first()
+                val downloadSemaphore = Semaphore(MAX_PARALLEL_DOWNLOADS)
+                missing.map { scraper ->
+                    async { downloadSemaphore.withPermit { restoreScraperFile(scraper, repositories) } }
+                }.awaitAll()
+            }
+        }
+    }
+
+    private fun hasScraperFile(scraper: ScraperInfo): Boolean = when (scraper.type) {
+        RepositoryType.EXTERNAL_DEX -> externalExtensionLoader.hasExtensionFile(scraper.id)
+        RepositoryType.NUVIO_JS -> dataStore.getScraperCodeFile(scraper.id).exists()
+    }
+
+    private suspend fun restoreScraperFile(scraper: ScraperInfo, repositories: List<PluginRepository>) {
+        // Warn level on purpose: R8 strips Log.d/Log.i from release builds.
+        Log.w(TAG, "Plugin file missing for ${scraper.name} (${scraper.id}), downloading it again")
+        val restored = try {
+            when (scraper.type) {
+                RepositoryType.EXTERNAL_DEX -> {
+                    // For .cs3 extensions the filename is the download URL.
+                    scraper.filename.takeIf { it.startsWith("http", ignoreCase = true) }
+                        ?.let { externalExtensionLoader.downloadExtension(scraper.id, it) }
+                        ?.also { externalExtensionLoader.evictCache(scraper.id) } != null
+                }
+                RepositoryType.NUVIO_JS -> {
+                    val manifestUrl = repositories.firstOrNull { it.id == scraper.repositoryId }?.url
+                    val codeUrl = when {
+                        scraper.filename.startsWith("http") -> scraper.filename
+                        manifestUrl != null -> "${manifestUrl.substringBeforeLast("/")}/${scraper.filename}"
+                        else -> null
+                    }
+                    val code = codeUrl?.let { fetchScraperCode(it, scraper.name) }
+                    if (code.isNullOrBlank()) {
+                        false
+                    } else {
+                        dataStore.saveScraperCode(scraper.id, code)
+                        true
+                    }
+                }
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Restoring plugin file for ${scraper.name} failed: ${e.message}")
+            false
+        }
+        if (restored) {
+            Log.w(TAG, "Restored plugin file for ${scraper.name}")
+        } else {
+            Log.w(TAG, "Could not restore plugin file for ${scraper.name}; not retrying until restart or repository refresh")
+        }
+    }
+
+    /**
      * Test a scraper with sample data, returning results along with diagnostic steps.
      */
     suspend fun testScraper(scraperId: String): Result<Pair<List<LocalScraperResult>, TestDiagnostics>> {
@@ -871,6 +952,8 @@ class PluginManager @Inject constructor(
         }
 
         diagnostics.addStep("Scraper: ${scraper.name} (type=${scraper.type})")
+
+        restoreMissingScraperFiles(listOf(scraper))
 
         // Use a popular movie for testing (The Matrix - 603)
         val testTmdbId = "603"
@@ -947,35 +1030,7 @@ class PluginManager @Inject constructor(
                     "$baseUrl/${info.filename}"
                 }
 
-                // Check response size before downloading
-                val headRequest = Request.Builder()
-                    .url(codeUrl)
-                    .head()
-                    .build()
-
-                val contentLength = httpClient.newCall(headRequest).execute().use { headResponse ->
-                    headResponse.header("Content-Length")?.toLongOrNull() ?: 0
-                }
-
-                if (contentLength > MAX_RESPONSE_SIZE) {
-                    Log.w(TAG, "Scraper ${info.name} too large: $contentLength bytes")
-                    return@forEach
-                }
-
-                // Download code
-                val codeRequest = Request.Builder()
-                    .url(codeUrl)
-                    .header("User-Agent", "NuvioTV/1.0")
-                    .build()
-
-                val code = httpClient.newCall(codeRequest).execute().use { codeResponse ->
-                    if (!codeResponse.isSuccessful) {
-                        Log.e(TAG, "Failed to download scraper ${info.name}: ${codeResponse.code}")
-                        return@forEach
-                    }
-
-                    codeResponse.body?.string() ?: return@forEach
-                }
+                val code = fetchScraperCode(codeUrl, info.name) ?: return@forEach
 
                 try {
                     val sha = sha256Hex(code)
@@ -1036,6 +1091,38 @@ class PluginManager @Inject constructor(
         dataStore.saveScrapers(existingScrapers)
     }
 
+    private fun fetchScraperCode(codeUrl: String, scraperName: String): String? {
+        // Check response size before downloading
+        val headRequest = Request.Builder()
+            .url(codeUrl)
+            .head()
+            .build()
+
+        val contentLength = httpClient.newCall(headRequest).execute().use { headResponse ->
+            headResponse.header("Content-Length")?.toLongOrNull() ?: 0
+        }
+
+        if (contentLength > MAX_RESPONSE_SIZE) {
+            Log.w(TAG, "Scraper $scraperName too large: $contentLength bytes")
+            return null
+        }
+
+        // Download code
+        val codeRequest = Request.Builder()
+            .url(codeUrl)
+            .header("User-Agent", "NuvioTV/1.0")
+            .build()
+
+        return httpClient.newCall(codeRequest).execute().use { codeResponse ->
+            if (!codeResponse.isSuccessful) {
+                Log.e(TAG, "Failed to download scraper $scraperName: ${codeResponse.code}")
+                return null
+            }
+
+            codeResponse.body?.string()
+        }
+    }
+
     /**
      * Download .cs3 DEX extensions in parallel and register them as scrapers.
      * Uses a semaphore to limit concurrent downloads and avoid overwhelming
@@ -1077,7 +1164,8 @@ class PluginManager @Inject constructor(
                             version = plugin.version.toString(),
                             filename = plugin.url,
                             supportedTypes = supportedTypes,
-                            enabled = true,
+                            // Keep the user's switch when an existing repository is refreshed.
+                            enabled = existingScrapers.firstOrNull { it.id == scraperId }?.enabled ?: true,
                             manifestEnabled = plugin.status == 1,
                             logo = plugin.iconUrl,
                             contentLanguage = emptyList(),

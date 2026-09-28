@@ -977,6 +977,10 @@
     <string name="telegram_disconnect_confirm_desc">You\'ll need to sign in again to use Telegram as a source.</string>
     <string name="plugin_screen_title">Plugins (Testing)</string>
     <string name="plugin_screen_add_repo">Add Repository</string>
+    <string name="plugin_screen_refresh_plugins">Refresh plugins</string>
+    <string name="plugin_screen_refresh_plugins_desc">Download all plugins again from their repositories</string>
+    <string name="plugin_screen_refreshing">Refreshing…</string>
+    <string name="plugin_screen_refresh_done">Up to date</string>
     <string name="plugin_screen_installed_repos">Installed Repositories</string>
     <string name="plugin_screen_installed_scrapers">Installed Scrapers</string>
     <string name="plugin_screen_no_scrapers">No scrapers installed.</string>

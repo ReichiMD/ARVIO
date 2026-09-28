@@ -202,16 +202,11 @@ class ExternalExtensionLoader @Inject constructor(
      */
     suspend fun downloadExtension(scraperId: String, downloadUrl: String): File? = withContext(Dispatchers.IO) {
         com.arflix.tv.core.runtime.PluginRuntimeHooks.ensureCloudstreamInitialized()
+        val targetFile = File(extensionsDir, "${safeFileName(scraperId)}.cs3")
+        // Download into a temp file first so a failed download (offline, 404)
+        // never removes the working copy that is already on disk.
+        val tempFile = File(extensionsDir, "${safeFileName(scraperId)}.cs3.part")
         try {
-            val targetFile = File(extensionsDir, "${safeFileName(scraperId)}.cs3")
-
-            // Remove existing read-only file before writing (DEX files are set
-            // read-only for API 28+ compat, so overwriting would fail with EACCES)
-            if (targetFile.exists()) {
-                targetFile.setWritable(true)
-                targetFile.delete()
-            }
-
             val request = Request.Builder()
                 .url(downloadUrl)
                 .header("User-Agent", "NuvioTV/1.0")
@@ -235,7 +230,18 @@ class ExternalExtensionLoader @Inject constructor(
                     return@withContext null
                 }
 
-                targetFile.writeBytes(bytes)
+                tempFile.writeBytes(bytes)
+
+                // Remove existing read-only file before replacing it (DEX files are set
+                // read-only for API 28+ compat, so overwriting would fail with EACCES)
+                if (targetFile.exists()) {
+                    targetFile.setWritable(true)
+                    targetFile.delete()
+                }
+                if (!tempFile.renameTo(targetFile)) {
+                    Log.e(TAG, "Failed to move downloaded extension $scraperId into place")
+                    return@withContext null
+                }
 
                 // Fix for Android API 28+: DEX files must be read-only
                 // Writing writable DEX files is blocked on newer Android versions
@@ -250,8 +256,14 @@ class ExternalExtensionLoader @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error downloading extension $scraperId: ${e.message}", e)
             null
+        } finally {
+            tempFile.delete()
         }
     }
+
+    /** Whether the .cs3 file for this scraper is present on disk. */
+    fun hasExtensionFile(scraperId: String): Boolean =
+        File(extensionsDir, "${safeFileName(scraperId)}.cs3").exists()
 
     /**
      * Load a .cs3 DEX file and return the MainAPI instance(s) registered by the plugin.
