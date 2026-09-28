@@ -178,4 +178,36 @@ class AutoPlaySourcePlannerTest {
 
         assertFalse(isAutoPlayableStream(magnet))
     }
+
+    // ── Debrid "still downloading" markers ────────────────────────────────
+
+    @Test
+    fun `a url containing caching is not a pending debrid stream`() {
+        val cdn = StreamSource(
+            source = "Movie 1080p",
+            addonName = "Plugin",
+            addonId = "plugin_example",
+            quality = "1080p",
+            size = "",
+            url = "https://edge-caching-01.cdn.example.net/hls/master.m3u8"
+        )
+
+        assertFalse(isPendingDebridStream(cdn))
+        assertTrue(isAutoPlayableStream(cdn))
+    }
+
+    @Test
+    fun `a caching label still marks a pending debrid stream`() {
+        val pending = StreamSource(
+            source = "Movie 1080p [caching 42%]",
+            addonName = "Debrid",
+            addonId = "debrid",
+            quality = "1080p",
+            size = "",
+            url = "https://example.invalid/pending.mkv"
+        )
+
+        assertTrue(isPendingDebridStream(pending))
+        assertFalse(isAutoPlayableStream(pending))
+    }
 }
