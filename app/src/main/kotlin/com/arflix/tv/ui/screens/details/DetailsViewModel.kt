@@ -217,7 +217,23 @@ enum class ToastType {
 private fun isSupplementalStream(stream: StreamSource): Boolean =
     IptvVodSourceIds.isIptvVodAddonId(stream.addonId) || stream.addonId == HomeServerRepository.ADDON_ID ||
         // Found by the user's own "Search Telegram" — outside the addon lookup, like the above.
-        stream.addonId == TELEGRAM_ADDON_ID
+        stream.addonId == TELEGRAM_ADDON_ID ||
+        // Plugin results arrive from their own job, not from the addon lookup.
+        stream.addonId.startsWith(PLUGIN_ADDON_ID_PREFIX)
+
+private const val PLUGIN_ADDON_ID_PREFIX = "plugin_"
+
+/**
+ * Every progressive addon emission carries the complete addon list so far, so the source list
+ * is rebuilt from it. Sources found outside the addon lookup (IPTV VOD, home server, Telegram,
+ * plugins) are only in the current list and have to be carried over, or they vanish again.
+ */
+internal fun mergeAddonEmissionWithSupplementalStreams(
+    addonStreams: List<StreamSource>,
+    currentStreams: List<StreamSource>
+): List<StreamSource> =
+    (addonStreams + currentStreams.filter(::isSupplementalStream))
+        .distinctBy(::providerScopedStreamIdentity)
 
 private const val TELEGRAM_ADDON_ID = "telegram_native"
 
@@ -2295,10 +2311,8 @@ class DetailsViewModel @Inject constructor(
                         year = item?.year?.toIntOrNull()
                     ).collect { progressive ->
                         if (!isCurrentRequest()) return@collect
-                        val existingVod = _uiState.value.streams.filter(::isSupplementalStream)
                         val mergedStreams = sortPlayableStreamsFirst(
-                            (progressive.streams + existingVod)
-                                .distinctBy(::providerScopedStreamIdentity)
+                            mergeAddonEmissionWithSupplementalStreams(progressive.streams, _uiState.value.streams)
                         )
                         Log.d(
                             TAG,
@@ -2364,10 +2378,8 @@ class DetailsViewModel @Inject constructor(
                         airDate = episodeAirDate
                     ).collect { progressive ->
                         if (!isCurrentRequest()) return@collect
-                        val existingVod = _uiState.value.streams.filter(::isSupplementalStream)
                         val mergedStreams = sortPlayableStreamsFirst(
-                            (progressive.streams + existingVod)
-                                .distinctBy(::providerScopedStreamIdentity)
+                            mergeAddonEmissionWithSupplementalStreams(progressive.streams, _uiState.value.streams)
                         )
                         val addonCount = streamRepository.installedAddons.first()
                             .count { it.isVodStreamingAddon() }
