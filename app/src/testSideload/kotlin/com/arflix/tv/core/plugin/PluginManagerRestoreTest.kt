@@ -145,7 +145,7 @@ class PluginManagerRestoreTest {
         val scraper = dexScraper("Alpha")
         every { loader.hasExtensionFile(scraper.id) } returns false
         coEvery { loader.downloadExtension(any(), any()) } returns null
-        every { parser.tryParse(repo.url) } returns null
+        coEvery { parser.tryParse(repo.url) } returns null
         val manager = manager(listOf(scraper))
 
         manager.restoreMissingScraperFiles(listOf(scraper))
@@ -158,7 +158,7 @@ class PluginManagerRestoreTest {
     @Test
     fun `repository refresh keeps a disabled extension disabled`() = runBlocking<Unit> {
         val disabled = dexScraper("Alpha", enabled = false)
-        every { parser.tryParse(repo.url) } returns ExternalRepoParseResult(
+        coEvery { parser.tryParse(repo.url) } returns ExternalRepoParseResult(
             name = "Repo",
             description = null,
             plugins = listOf(
