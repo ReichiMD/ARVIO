@@ -1843,6 +1843,10 @@ class HomeViewModel @Inject constructor(
     }
 
     init {
+        com.arflix.tv.util.RowTiming.watchHome(viewModelScope, _uiState) // TEST BRANCH ONLY
+    }
+
+    init {
         // Rows are published from many places (startup cache, catalog load, next pages, cloud
         // reloads), always with unmarked cards. Once a pass has run, new rows take over what it
         // found at once, so the ticks do not blink off while a catalog load lands; before that,
@@ -2653,6 +2657,10 @@ class HomeViewModel @Inject constructor(
         homeDataLoadAttempted = true
         val requestId = ++loadHomeRequestId
         loadHomeJob = viewModelScope.launch loadHome@{
+            // TEST BRANCH ONLY: first loadHomeData() that runs to the end.
+            coroutineContext[Job]?.invokeOnCompletion { cause ->
+                if (cause == null) com.arflix.tv.util.RowTiming.once("rows-done")
+            }
             // Skip delay - preloading now happens on profile focus for instant display
             // Only add minimal delay if no preloaded data exists yet
             if (!usedPreloadedData) {
