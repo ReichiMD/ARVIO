@@ -1,0 +1,172 @@
+name: "Test APK (plugin self-healing + four plugin fixes - plugins)"
+
+# Test-branch only. This workflow, the committed keystore and the TV preview
+# commit must never reach a pull request against upstream - they exist so a
+# Claude Code session can hand the user an installable build.
+# `workflow_dispatch` returns 403 from such a session (the app token has no
+# `actions: write`), so a push to this branch is the trigger.
+
+on:
+  push:
+    branches:
+      - claude/serene-wright-i3itu0
+  workflow_dispatch:
+
+jobs:
+  build-test-apk:
+    name: Build sideload debug test APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # The test needs the cloud sign-in (the plugin list arrives by cloud
+      # sync) and TMDB for anything visible. debug keeps the cloud secrets
+      # from secrets.defaults.properties; only TMDB has to be injected.
+      - name: Prepare runtime configuration
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          cp secrets.defaults.properties secrets.properties
+          if [ -z "$TMDB_API_KEY" ]; then
+            echo "::error::TMDB_API_KEY secret is empty - the app would start as an empty browser"
+            exit 1
+          fi
+          sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$TMDB_API_KEY|" secrets.properties
+          if grep -qi '^TMDB_API_KEY=your-' secrets.properties; then
+            echo "::error::a placeholder survived in secrets.properties"
+            exit 1
+          fi
+          echo "TMDB key injected"
+
+      # The point of this round, checked before the build is spent on it:
+      # all five pull request branches are merged into this one.
+      - name: Verify all five plugin fixes are in this build
+        run: |
+          PM=app/src/sideload/kotlin/com/arflix/tv/core/plugin/PluginManager.kt
+          EL=app/src/sideload/kotlin/com/arflix/tv/core/plugin/cloudstream/ExternalExtensionLoader.kt
+          PS=app/src/main/kotlin/com/arflix/tv/ui/screens/plugin/PluginScreen.kt
+          DV=app/src/main/kotlin/com/arflix/tv/ui/screens/details/DetailsViewModel.kt
+          AP=app/src/main/kotlin/com/arflix/tv/ui/screens/details/AutoPlaySourcePlanner.kt
+          grep -q 'restoreMissingScraperFiles(enabledList)' "$PM" \
+            || { echo "::error::PR 1: self-healing missing"; exit 1; }
+          grep -q 'existingScrapers.firstOrNull { it.id == scraperId }?.enabled ?: true' "$PM" \
+            || { echo "::error::PR 1: refresh still re-enables plugins"; exit 1; }
+          grep -q '.cs3.part' "$EL" \
+            || { echo "::error::PR 1: download still deletes the old file first"; exit 1; }
+          grep -q 'PluginUiEvent.RefreshAllRepositories' "$PS" \
+            || { echo "::error::PR 1: refresh button missing"; exit 1; }
+          grep -q 'toggleChecked = scraper.enabled' "$PS" \
+            || { echo "::error::PR 2: plugin list switch missing"; exit 1; }
+          grep -q 'subtitle = scraperSubtitle(scraper)' "$PS" \
+            || { echo "::error::PR 2: plugin list still shows the id"; exit 1; }
+          grep -q 'stream.addonId.startsWith(PLUGIN_ADDON_ID_PREFIX)' "$DV" \
+            || { echo "::error::PR 3: plugin sources still dropped"; exit 1; }
+          if grep -q 'stream.quality, stream.url' "$AP" "$DV"; then
+            echo "::error::PR 4: debrid check still reads the URL"; exit 1
+          fi
+          grep -q 'hasEnabledPlugins = hasEnabledPlugins' "$DV" \
+            || { echo "::error::PR 5: plugins not counted as provider"; exit 1; }
+          echo "all five plugin fixes present"
+
+      - name: Verify the TV preview patch is present
+        run: |
+          grep -q 'TvPreviewLetterbox' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview letterbox missing"; exit 1; }
+          grep -q 'deviceModeOverride == "tv" && hasTouchScreen' app/src/main/kotlin/com/arflix/tv/MainActivity.kt \
+            || { echo "::error::TV preview guard missing or changed"; exit 1; }
+
+      - name: Compile and run unit tests
+        run: |
+          # A second run is the office rule for the known order-dependent flakes
+          # (docs/34 5z). Nothing is silenced - the build still fails if it stays red.
+          ./gradlew testSideloadDebugUnitTest --no-daemon \
+            || ./gradlew testSideloadDebugUnitTest --no-daemon --rerun-tasks
+
+      - name: Count the unit tests
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          tests = failures = errors = skipped = 0
+          for f in glob.glob("app/build/test-results/testSideloadDebugUnitTest/*.xml"):
+              r = ET.parse(f).getroot()
+              tests += int(r.get("tests", 0)); failures += int(r.get("failures", 0))
+              errors += int(r.get("errors", 0)); skipped += int(r.get("skipped", 0))
+          print(f"unit tests: {tests} | failures: {failures} | errors: {errors} | skipped: {skipped}")
+          PY
+
+      - name: Give the debug build its own package, name and a fixed signature
+        run: |
+          # Kennung "plugins" (docs/10, register entry for docs/themen/85).
+          # It steers package suffix, launcher name and artifact name.
+          sed -i 's|<string name="app_name">ARVIO</string>|<string name="app_name">Plugins-Test</string>|' \
+            app/src/main/res/values/strings.xml
+          # The applicationIdSuffix line in the debug block is commented out,
+          # so this INSERTS a line after the block header.
+          sed -i 's/^        debug {$/        debug {\n            applicationIdSuffix = ".plugins"/' \
+            app/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          grep -q '<string name="app_name">Plugins-Test</string>' app/src/main/res/values/strings.xml \
+            || { echo "::error::app_name patch did not apply"; exit 1; }
+          grep -q 'applicationIdSuffix = ".plugins"' app/build.gradle.kts \
+            || { echo "::error::suffix patch did not apply"; exit 1; }
+          grep -q "versionCode = $((950000 + GITHUB_RUN_NUMBER))" app/build.gradle.kts \
+            || { echo "::error::versionCode patch did not apply"; exit 1; }
+          cat >> app/build.gradle.kts <<'KTS'
+
+          // CI only: pin the debug signature to the committed keystore so one
+          // test APK installs over the previous one.
+          android {
+              signingConfigs {
+                  getByName("debug") {
+                      storeFile = rootProject.file(".github/test-signing/debug.keystore")
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+          }
+          KTS
+
+      # Schnell-APK (docs/10): every test question of this round is about
+      # content (do plugin sources show up, does a switch stay off), not speed.
+      - name: Build sideload debug APK
+        run: ./gradlew assembleSideloadDebug --no-daemon
+
+      - name: Verify APK signature against the committed keystore
+        run: |
+          EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore \
+            -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          APK=$(find app/build/outputs/apk/sideload/debug -name '*.apk' -type f | head -1)
+          ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          echo "APK:      $APK"
+          echo "expected: $EXPECTED"
+          echo "actual:   $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Signature mismatch - Gradle did not use the committed keystore."
+            exit 1
+          fi
+          echo "Signature verified against the committed keystore."
+
+      - name: Show the package name of the finished APK
+        run: |
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort | tail -1)
+          APK=$(find app/build/outputs/apk/sideload/debug -name '*.apk' -type f | head -1)
+          "$AAPT" dump packagename "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arvio-plugins-apk
+          path: app/build/outputs/apk/sideload/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
