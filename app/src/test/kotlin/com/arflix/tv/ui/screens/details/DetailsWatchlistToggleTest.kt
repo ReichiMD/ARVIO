@@ -71,7 +71,7 @@ class DetailsWatchlistToggleTest {
         media = mockk(relaxed = true)
         every { media.episodeRatingsUpdated } returns MutableSharedFlow<Pair<Int, Int>>()
         every { media.getCachedFullItem(MediaType.MOVIE, movie.id) } returns movie
-        coEvery { media.getMovieDetails(movie.id) } returns movie
+        coEvery { media.getMovieDetails(movie.id, any()) } returns movie
         watchlistRead = CompletableDeferred()
         watchlist = mockk(relaxed = true)
         coEvery { watchlist.isInWatchlist(MediaType.MOVIE, movie.id) } coAnswers { watchlistRead.await() }
@@ -241,7 +241,7 @@ class DetailsWatchlistToggleTest {
     fun `old title save cannot make the next title skip its write`() = runTest {
         val otherMovie = movie.copy(id = 604, title = "Another movie")
         every { media.getCachedFullItem(MediaType.MOVIE, otherMovie.id) } returns otherMovie
-        coEvery { media.getMovieDetails(otherMovie.id) } returns otherMovie
+        coEvery { media.getMovieDetails(otherMovie.id, any()) } returns otherMovie
         coEvery { watchlist.isInWatchlist(MediaType.MOVIE, otherMovie.id) } returns false
         val firstSave = CompletableDeferred<Boolean>()
         coEvery { remote.addToWatchlist(MediaType.MOVIE, movie.id, any()) } coAnswers { firstSave.await() }

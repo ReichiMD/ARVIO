@@ -322,7 +322,8 @@ data class TmdbMovieDetails(
     @SerializedName("belongs_to_collection") val belongsToCollection: TmdbCollectionRef? = null,
     // Appended via append_to_response. Nullable so the response stays valid
     // when TMDB omits the block.
-    @SerializedName("release_dates") val releaseDates: TmdbReleaseDatesResponse? = null
+    @SerializedName("release_dates") val releaseDates: TmdbReleaseDatesResponse? = null,
+    @SerializedName("external_ids") val externalIds: TmdbExternalIds? = null
 )
 
 /** Reference to a TMDB collection (franchise) returned inside movie/TV details. */
@@ -351,7 +352,8 @@ data class TmdbTvDetails(
     val seasons: List<TmdbTvSeason> = emptyList(),
     // Appended via append_to_response. Nullable so the response stays valid
     // when TMDB omits the block.
-    @SerializedName("content_ratings") val contentRatings: TmdbContentRatingsResponse? = null
+    @SerializedName("content_ratings") val contentRatings: TmdbContentRatingsResponse? = null,
+    @SerializedName("external_ids") val externalIds: TmdbExternalIds? = null
 )
 
 data class TmdbSeasonDetails(

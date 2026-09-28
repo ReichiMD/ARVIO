@@ -721,6 +721,10 @@ class MediaRepository @Inject constructor(
 
     companion object {
         const val STREAMING_COLLECTION_ADDON_URL = "https://pastebin.com/raw/P4gfd98n"
+        // Full details also carry the ids, so rows need no separate /external_ids call.
+        // Only getMovieDetails/getTvDetails ask for it; lightweight callers keep the API default.
+        private const val MOVIE_DETAILS_APPEND = "release_dates,external_ids"
+        private const val TV_DETAILS_APPEND = "content_ratings,external_ids"
         private val UPLOADED_COVER_BASE = "https://" + "nu" + "vioapp.space/uploads/covers/"
 
         /**
@@ -1898,8 +1902,8 @@ class MediaRepository @Inject constructor(
                 semaphore.withPermit {
                     runCatching {
                         when (type) {
-                            MediaType.MOVIE -> getMovieDetails(tmdbId)
-                            MediaType.TV -> getTvDetails(tmdbId)
+                            MediaType.MOVIE -> getMovieDetails(tmdbId, withImdbRating = false)
+                            MediaType.TV -> getTvDetails(tmdbId, withImdbRating = false)
                         }
                     }.getOrNull()
                 }
@@ -1964,8 +1968,8 @@ class MediaRepository @Inject constructor(
                 semaphore.withPermit {
                     runCatching {
                         when (type) {
-                            MediaType.MOVIE -> getMovieDetails(tmdbId)
-                            MediaType.TV -> getTvDetails(tmdbId)
+                            MediaType.MOVIE -> getMovieDetails(tmdbId, withImdbRating = false)
+                            MediaType.TV -> getTvDetails(tmdbId, withImdbRating = false)
                         }
                     }.getOrNull()
                 }
@@ -2069,8 +2073,8 @@ class MediaRepository @Inject constructor(
         providers["tmdb"]?.toIntOrNull()?.let { tmdbId ->
             return runCatching {
                 when (item.mediaType) {
-                    MediaType.MOVIE -> getMovieDetails(tmdbId)
-                    MediaType.TV -> getTvDetails(tmdbId)
+                    MediaType.MOVIE -> getMovieDetails(tmdbId, withImdbRating = false)
+                    MediaType.TV -> getTvDetails(tmdbId, withImdbRating = false)
                 }
             }.getOrNull()
         }
@@ -2078,8 +2082,8 @@ class MediaRepository @Inject constructor(
             resolveImdbToTmdbRef(imdbId, item.mediaType)?.let { (type, tmdbId) ->
                 return runCatching {
                     when (type) {
-                        MediaType.MOVIE -> getMovieDetails(tmdbId)
-                        MediaType.TV -> getTvDetails(tmdbId)
+                        MediaType.MOVIE -> getMovieDetails(tmdbId, withImdbRating = false)
+                        MediaType.TV -> getTvDetails(tmdbId, withImdbRating = false)
                     }
                 }.getOrNull()
             }
@@ -2142,8 +2146,8 @@ class MediaRepository @Inject constructor(
 
         return runCatching {
             when (item.mediaType) {
-                MediaType.MOVIE -> getMovieDetails(best.id)
-                MediaType.TV -> getTvDetails(best.id)
+                MediaType.MOVIE -> getMovieDetails(best.id, withImdbRating = false)
+                MediaType.TV -> getTvDetails(best.id, withImdbRating = false)
             }
         }.getOrNull()
     }
@@ -2181,9 +2185,9 @@ class MediaRepository @Inject constructor(
                 missingRefs += (type to tmdbId)
             }
         }
-        // Each item costs two sequential rounds (TMDB details + external ids, then the IMDb
-        // rating), so two at a time left a first page of 8 waiting through four rounds. Same
-        // limit as custom catalog rows. Results are collected after awaitAll, so the map is
+        // Each item costs one TMDB details request (ids appended, no IMDb rating); two at a
+        // time left a first page of 8 waiting through four batches. Same limit as custom
+        // catalog rows. Results are collected after awaitAll, so the map is
         // never written from several jobs at once.
         val semaphore = Semaphore(6)
         missingRefs.map { (type, tmdbId) ->
@@ -2191,8 +2195,8 @@ class MediaRepository @Inject constructor(
                 semaphore.withPermit {
                     (type to tmdbId) to runCatching {
                         when (type) {
-                            MediaType.MOVIE -> getMovieDetails(tmdbId)
-                            MediaType.TV -> getTvDetails(tmdbId)
+                            MediaType.MOVIE -> getMovieDetails(tmdbId, withImdbRating = false)
+                            MediaType.TV -> getTvDetails(tmdbId, withImdbRating = false)
                         }
                     }.getOrNull()
                 }
@@ -3113,14 +3117,18 @@ class MediaRepository @Inject constructor(
     }
 
     /**
-     * Get movie details (cached)
+     * Get movie details (cached).
+     *
+     * [withImdbRating] = false skips the Cinemeta lookup for the IMDb rating. Rows use it:
+     * cards never show that rating, and Details fetches it on its own. The IMDb id still
+     * comes with the details (appended `external_ids`) and is cached for later lookups.
      */
-    suspend fun getMovieDetails(movieId: Int): MediaItem {
+    suspend fun getMovieDetails(movieId: Int, withImdbRating: Boolean = true): MediaItem {
         val cacheKey = "movie_$movieId"
         getFromCache(detailsCache, cacheKey)?.let { cached ->
             if (movieId < 0 && cached.isHomeServer) return cached
             if (cacheKey in fullDetailsCacheKeys) {
-                if (cached.imdbRating.isNotBlank()) return cached
+                if (cached.imdbRating.isNotBlank() || !withImdbRating) return cached
                 val imdbRating = getImdbRating(MediaType.MOVIE, movieId)
                 if (!imdbRating.isNullOrBlank()) {
                     return cached.copy(imdbRating = imdbRating).also { cacheFullDetailsItem(it) }
@@ -3129,31 +3137,40 @@ class MediaRepository @Inject constructor(
             }
         }
 
-        val item = coroutineScope {
-            val detailsDeferred = async { tmdbApi.getMovieDetails(movieId, apiKey, language = contentLanguage) }
-            val externalIdsDeferred = async { resolveExternalIds(MediaType.MOVIE, movieId) }
-
-            val details = detailsDeferred.await()
-            val imdbId = externalIdsDeferred.await()?.imdbId?.also { cacheImdbId(MediaType.MOVIE, movieId, it) }
-            val imdbRating = imdbId?.let { getImdbRating(MediaType.MOVIE, movieId, it) }
-            details.toMediaItem().copy(
-                imdbRating = imdbRating.orEmpty(),
-                contentRating = ContentRating.forMovie(details.releaseDates, contentLanguage)
-            )
+        val details = tmdbApi.getMovieDetails(
+            movieId,
+            apiKey,
+            appendToResponse = MOVIE_DETAILS_APPEND,
+            language = contentLanguage
+        )
+        val imdbId = details.externalIds?.imdbId
+            ?.takeIf { it.isNotBlank() }
+            ?.also { cacheImdbId(MediaType.MOVIE, movieId, it) }
+        // Without the appended block getImdbRating falls back to /external_ids itself. Rows
+        // still take a rating that is already in memory, so they never cache a rated title
+        // back without it.
+        val imdbRating = if (withImdbRating) {
+            getImdbRating(MediaType.MOVIE, movieId, imdbId)
+        } else {
+            getFromCache(imdbRatingCache, cacheKey)
         }
+        val item = details.toMediaItem().copy(
+            imdbRating = imdbRating.orEmpty(),
+            contentRating = ContentRating.forMovie(details.releaseDates, contentLanguage)
+        )
         cacheFullDetailsItem(item)
         return item
     }
 
     /**
-     * Get TV show details (cached)
+     * Get TV show details (cached). See [getMovieDetails] for [withImdbRating].
      */
-    suspend fun getTvDetails(tvId: Int): MediaItem {
+    suspend fun getTvDetails(tvId: Int, withImdbRating: Boolean = true): MediaItem {
         val cacheKey = "tv_$tvId"
         getFromCache(detailsCache, cacheKey)?.let { cached ->
             if (tvId < 0 && cached.isHomeServer) return cached
             if (cacheKey in fullDetailsCacheKeys) {
-                if (cached.imdbRating.isNotBlank()) return cached
+                if (cached.imdbRating.isNotBlank() || !withImdbRating) return cached
                 val imdbRating = getImdbRating(MediaType.TV, tvId)
                 if (!imdbRating.isNullOrBlank()) {
                     return cached.copy(imdbRating = imdbRating).also { cacheFullDetailsItem(it) }
@@ -3162,18 +3179,27 @@ class MediaRepository @Inject constructor(
             }
         }
 
-        val item = coroutineScope {
-            val detailsDeferred = async { tmdbApi.getTvDetails(tvId, apiKey, language = contentLanguage) }
-            val externalIdsDeferred = async { resolveExternalIds(MediaType.TV, tvId) }
-
-            val details = detailsDeferred.await()
-            val imdbId = externalIdsDeferred.await()?.imdbId?.also { cacheImdbId(MediaType.TV, tvId, it) }
-            val imdbRating = imdbId?.let { getImdbRating(MediaType.TV, tvId, it) }
-            details.toMediaItem().copy(
-                imdbRating = imdbRating.orEmpty(),
-                contentRating = ContentRating.forTv(details.contentRatings, contentLanguage)
-            )
+        val details = tmdbApi.getTvDetails(
+            tvId,
+            apiKey,
+            appendToResponse = TV_DETAILS_APPEND,
+            language = contentLanguage
+        )
+        val imdbId = details.externalIds?.imdbId
+            ?.takeIf { it.isNotBlank() }
+            ?.also { cacheImdbId(MediaType.TV, tvId, it) }
+        // Without the appended block getImdbRating falls back to /external_ids itself. Rows
+        // still take a rating that is already in memory, so they never cache a rated title
+        // back without it.
+        val imdbRating = if (withImdbRating) {
+            getImdbRating(MediaType.TV, tvId, imdbId)
+        } else {
+            getFromCache(imdbRatingCache, cacheKey)
         }
+        val item = details.toMediaItem().copy(
+            imdbRating = imdbRating.orEmpty(),
+            contentRating = ContentRating.forTv(details.contentRatings, contentLanguage)
+        )
         cacheFullDetailsItem(item)
         return item
     }

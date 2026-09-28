@@ -548,11 +548,13 @@ class DetailsViewModel @Inject constructor(
                 // IMMEDIATE budget so Home background decoration yields to it.
                 val itemDeferred = async {
                     tmdbPriorityDispatcher.withPermit(Priority.IMMEDIATE) {
+                        // The IMDb rating is filled in below once the ids arrive, so the
+                        // title does not wait for Cinemeta.
                         loadDetailsPart("item") {
                             if (mediaType == MediaType.TV) {
-                                mediaRepository.getTvDetails(mediaId)
+                                mediaRepository.getTvDetails(mediaId, withImdbRating = false)
                             } else {
-                                mediaRepository.getMovieDetails(mediaId)
+                                mediaRepository.getMovieDetails(mediaId, withImdbRating = false)
                             }
                         }
                     }

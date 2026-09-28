@@ -24,8 +24,8 @@ class CollectionTabPagingTest {
     private val media = spyk(MediaRepository(mockk(relaxed = true), mockk(), mockk(), mockk(), mockk(), streams, mockk()))
 
     init {
-        coEvery { media.getMovieDetails(any()) } answers { MediaItem(firstArg(), "Movie ${firstArg<Int>()}") }
-        coEvery { media.getTvDetails(any()) } answers {
+        coEvery { media.getMovieDetails(any(), any()) } answers { MediaItem(firstArg(), "Movie ${firstArg<Int>()}") }
+        coEvery { media.getTvDetails(any(), any()) } answers {
             MediaItem(firstArg(), "Show ${firstArg<Int>()}", mediaType = MediaType.TV)
         }
     }

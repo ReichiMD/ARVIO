@@ -234,7 +234,7 @@ class WatchlistHomeLibraryTest {
     @Test fun trackerShowsAllItemsBeforeSlowArtworkHydration() {
         coEvery { trakt.getPersonalLists() } returns emptyList()
         coEvery { trakt.getWatchlist() } returns (1..605).map { MediaItem(id = it, title = "Movie $it") }
-        coEvery { media.getMovieDetails(any()) } coAnswers { awaitCancellation() }
+        coEvery { media.getMovieDetails(any(), any()) } coAnswers { awaitCancellation() }
         traktAuth.value = true
         model.selectSource("tracker_trakt___watchlist__")
         assertEquals(605, model.uiState.value.allItems.size)

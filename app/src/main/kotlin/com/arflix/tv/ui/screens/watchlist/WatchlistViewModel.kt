@@ -855,8 +855,8 @@ class WatchlistViewModel @Inject constructor(
                 limiter.withPermit {
                     runCatching {
                         when (item.mediaType) {
-                            MOVIE -> mediaRepository.getMovieDetails(item.id)
-                            TV -> mediaRepository.getTvDetails(item.id)
+                            MOVIE -> mediaRepository.getMovieDetails(item.id, withImdbRating = false)
+                            TV -> mediaRepository.getTvDetails(item.id, withImdbRating = false)
                         }.copy(sourceOrder = index)
                     }.getOrElse {
                         item.copy(sourceOrder = index)
