@@ -35,7 +35,7 @@ class MediaDetailsRequestsTest {
             val request = firstArg<Request>()
             requests += request.url.toString()
             val json = """{"meta":{"imdbRating":"8.7"}}"""
-            mockk<Call> {
+            mockk<okhttp3.Call> {
                 every { execute() } returns Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
                     .code(200).message("OK").body(json.toResponseBody("application/json".toMediaType())).build()
             }
