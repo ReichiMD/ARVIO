@@ -58,6 +58,7 @@ import com.arflix.tv.ui.screens.settings.settingsFocusSlot
 import com.arflix.tv.util.LocalDeviceType
 
 import com.arflix.tv.domain.model.PluginRepository
+import com.arflix.tv.domain.model.ScraperInfo
 
 @Composable
 private fun PluginMessage.localizedText(): String =
@@ -192,8 +193,9 @@ fun PluginScreen(
                         MobileSettingsRow(
                             icon = Icons.Default.Extension,
                             title = scraper.name,
-                            subtitle = scraper.id,
+                            subtitle = scraperSubtitle(scraper),
                             value = if (scraper.enabled) stringResource(R.string.on) else stringResource(R.string.off),
+                            toggleChecked = scraper.enabled,
                             isFocused = false,
                             showDivider = idx < scrapers.lastIndex,
                             onClick = { viewModel.onEvent(PluginUiEvent.ToggleScraper(scraper.id, !scraper.enabled)) }
@@ -325,7 +327,7 @@ fun PluginScreen(
                         index = slotIndex,
                         focusedIndex = focusedIndex,
                         title = scraper.name,
-                        subtitle = scraper.id,
+                        subtitle = scraperSubtitle(scraper),
                         isEnabled = scraper.enabled,
                         onToggle = { enabled -> viewModel.onEvent(PluginUiEvent.ToggleScraper(scraper.id, enabled)) }
                     )
@@ -412,6 +414,14 @@ fun PluginScreen(
         )
     }
 }
+/** "Version 13 · Movies · TV Shows" instead of the internal "<repo-uuid>:<name>" id. */
+@Composable
+private fun scraperSubtitle(scraper: ScraperInfo): String = listOfNotNull(
+    scraper.version.takeIf { it.isNotBlank() }?.let { stringResource(R.string.plugin_scraper_version, it) },
+    stringResource(R.string.movies).takeIf { scraper.supportsType("movie") },
+    stringResource(R.string.tv_shows).takeIf { scraper.supportsType("tv") }
+).joinToString(" · ")
+
 @Composable
 fun HideDialogSystemBars() {
     val view = LocalView.current
