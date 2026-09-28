@@ -2142,6 +2142,10 @@ class DetailsViewModel @Inject constructor(
                 // on, though - switched off, ARVIO does not search there at all.
                 val vodEnabled = streamIntegrationRepository.isIntegrationEnabled(StreamIntegrationType.IPTV_VOD)
                 val hasIptvVodProviders = vodEnabled && streamRepository.hasIptvVodProviders()
+                // Same for plugins: a user whose only sources are plugins is not missing an addon.
+                val hasEnabledPlugins =
+                    streamIntegrationRepository.isIntegrationEnabled(StreamIntegrationType.PLUGINS) &&
+                        pluginManager.enabledScrapers.first().isNotEmpty()
                 if (!isCurrentRequest()) return@launch
                 if (hasHomeServerConnections) {
                     homeServerAppendJob = viewModelScope.launch {
@@ -2282,7 +2286,8 @@ class DetailsViewModel @Inject constructor(
                                 streamingAddonCount = streamRepository.installedAddons.first()
                                     .count { it.isVodStreamingAddon() },
                                 hasHomeServerConnections = hasHomeServerConnections,
-                                hasIptvVodProviders = hasIptvVodProviders
+                                hasIptvVodProviders = hasIptvVodProviders,
+                                hasEnabledPlugins = hasEnabledPlugins
                             )
                         )
                         return@launch
@@ -2315,7 +2320,8 @@ class DetailsViewModel @Inject constructor(
                             hasStreamingAddons = hasAnyStreamProvider(
                                 streamingAddonCount = addonCount,
                                 hasHomeServerConnections = hasHomeServerConnections,
-                                hasIptvVodProviders = hasIptvVodProviders
+                                hasIptvVodProviders = hasIptvVodProviders,
+                                hasEnabledPlugins = hasEnabledPlugins
                             )
                         )
                         prewarmVisibleStreams(mergedStreams)
@@ -2337,7 +2343,8 @@ class DetailsViewModel @Inject constructor(
                                 streamingAddonCount = streamRepository.installedAddons.first()
                                     .count { it.isVodStreamingAddon() },
                                 hasHomeServerConnections = hasHomeServerConnections,
-                                hasIptvVodProviders = hasIptvVodProviders
+                                hasIptvVodProviders = hasIptvVodProviders,
+                                hasEnabledPlugins = hasEnabledPlugins
                             )
                         )
                         return@launch
@@ -2377,7 +2384,8 @@ class DetailsViewModel @Inject constructor(
                             hasStreamingAddons = hasAnyStreamProvider(
                                 streamingAddonCount = addonCount,
                                 hasHomeServerConnections = hasHomeServerConnections,
-                                hasIptvVodProviders = hasIptvVodProviders
+                                hasIptvVodProviders = hasIptvVodProviders,
+                                hasEnabledPlugins = hasEnabledPlugins
                             )
                         )
                         prewarmVisibleStreams(mergedStreams)
@@ -3503,8 +3511,9 @@ internal fun shouldStopStreamSpinner(
 internal fun hasAnyStreamProvider(
     streamingAddonCount: Int,
     hasHomeServerConnections: Boolean,
-    hasIptvVodProviders: Boolean
-): Boolean = streamingAddonCount > 0 || hasHomeServerConnections || hasIptvVodProviders
+    hasIptvVodProviders: Boolean,
+    hasEnabledPlugins: Boolean = false
+): Boolean = streamingAddonCount > 0 || hasHomeServerConnections || hasIptvVodProviders || hasEnabledPlugins
 
 private object DetailsVMRegexes {
     val reviewWhitespaceRegex = Regex("\\s+")

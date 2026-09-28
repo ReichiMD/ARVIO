@@ -117,6 +117,18 @@ class StreamSpinnerAndProviderStateTest {
     }
 
     @Test
+    fun `an enabled plugin alone counts as a stream provider`() {
+        assertTrue(
+            hasAnyStreamProvider(
+                streamingAddonCount = 0,
+                hasHomeServerConnections = false,
+                hasIptvVodProviders = false,
+                hasEnabledPlugins = true
+            )
+        )
+    }
+
+    @Test
     fun `no addon no home server and no IPTV provider is the only empty setup`() {
         assertFalse(
             hasAnyStreamProvider(
