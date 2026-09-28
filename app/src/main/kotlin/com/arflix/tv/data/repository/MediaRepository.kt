@@ -1926,7 +1926,7 @@ class MediaRepository @Inject constructor(
         if (catalog.kind == CatalogKind.COLLECTION) {
             return@coroutineScope loadCollectionCatalogPage(catalog, offset, limit)
         }
-        val rowTimingStart = android.os.SystemClock.elapsedRealtime() // TEST BRANCH ONLY
+        val rowTimingStart = com.arflix.tv.util.RowTiming.nowMs() // TEST BRANCH ONLY
         if (limit <= 0 || offset < 0) return@coroutineScope CategoryPageResult(emptyList(), hasMore = false)
         val rankedCatalogLimit = if (catalog.isTop10Catalog()) 10 else Int.MAX_VALUE
         if (offset >= rankedCatalogLimit) {
@@ -2166,7 +2166,7 @@ class MediaRepository @Inject constructor(
         limit: Int,
         mediaType: MediaType? = null
     ): CategoryPageResult = coroutineScope {
-        val rowTimingStart = android.os.SystemClock.elapsedRealtime() // TEST BRANCH ONLY
+        val rowTimingStart = com.arflix.tv.util.RowTiming.nowMs() // TEST BRANCH ONLY
         if (catalog.collectionSources.isEmpty() || limit <= 0 || offset < 0) {
             return@coroutineScope CategoryPageResult(emptyList(), hasMore = false)
         }

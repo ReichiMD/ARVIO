@@ -31,23 +31,35 @@ object RowTiming {
     private val counts = ConcurrentHashMap<String, AtomicInteger>()
 
     fun sinceStartMs(): Long =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime()
-        } else {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime()
+            } else {
+                -1L
+            }
+        } catch (_: RuntimeException) {
             -1L
         }
 
+    // Plain JVM unit tests have no android.util.Log / SystemClock ("Method ... not mocked"):
+    // the measurement must never break a test that happens to load a row.
     private fun log(message: String) {
-        Log.w(TAG, "t=${sinceStartMs()} $message")
+        try {
+            Log.w(TAG, "t=${sinceStartMs()} $message")
+        } catch (_: RuntimeException) {
+        }
     }
 
     fun once(event: String) {
         if (onceEvents.add(event)) log(event)
     }
 
+    /** Monotonic, JVM-safe start mark for [rowLoaded]. */
+    fun nowMs(): Long = System.nanoTime() / 1_000_000
+
     /** A first page of an addon / Trakt / MDBList / collection row came back from the repository. */
     fun rowLoaded(id: String, source: String, items: Int, startedAtMs: Long) {
-        log("row $id src=$source items=$items took=${SystemClock.elapsedRealtime() - startedAtMs}ms")
+        log("row $id src=$source items=$items took=${nowMs() - startedAtMs}ms")
     }
 
     private fun kindOf(host: String, segments: List<String>): String = when {
