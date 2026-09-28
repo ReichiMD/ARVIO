@@ -570,6 +570,22 @@ class DetailsViewModel @Inject constructor(
                         resolveExternalIds(mediaType, mediaId)
                     }
                 }
+                // The title loads without the IMDb rating, so start it here, next to the
+                // details, and apply it once the item is on screen. The IMDb id cached with the
+                // details covers a failed /external_ids call.
+                val imdbRatingDeferred = async {
+                    try {
+                        val imdbId = externalIdsDeferred.await().imdbId?.takeIf { it.isNotBlank() }
+                            ?: run {
+                                itemDeferred.await()
+                                mediaRepository.getCachedImdbId(mediaType, mediaId)
+                            }
+                        imdbId?.let { mediaRepository.getImdbRating(mediaType, mediaId, it) }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        null
+                    }
+                }
                 val resumeDeferred = async { fetchResumeInfo(mediaId, mediaType, initialSeason, initialEpisode) }
                 // Fetch logo URL concurrently with details to avoid ~1s delay
                 val logoDeferred = async {
@@ -794,7 +810,8 @@ class DetailsViewModel @Inject constructor(
 
                 launch {
                     val externalIds = runCatching { externalIdsDeferred.await() }.getOrNull()
-                    val imdbId = externalIds?.imdbId
+                    val imdbId = externalIds?.imdbId?.takeIf { it.isNotBlank() }
+                        ?: mediaRepository.getCachedImdbId(mediaType, mediaId)
                     val tvdbId = externalIds?.tvdbId
                     if (!imdbId.isNullOrBlank()) {
                         mediaRepository.cacheImdbId(mediaType, mediaId, imdbId)
@@ -812,9 +829,7 @@ class DetailsViewModel @Inject constructor(
                         }
 
                         launch {
-                            val imdbRating = runCatching {
-                                mediaRepository.getImdbRating(mediaType, mediaId, imdbId)
-                            }.getOrNull()
+                            val imdbRating = imdbRatingDeferred.await()
                             if (!imdbRating.isNullOrBlank()) {
                                 updateState { state ->
                                     state.copy(item = state.item?.copy(imdbRating = imdbRating))

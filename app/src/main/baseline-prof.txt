@@ -17609,7 +17609,7 @@ HSPLcom/arflix/tv/data/repository/MediaRepository;->getLogoUrl$lambda$67(Lcom/ar
 HSPLcom/arflix/tv/data/repository/MediaRepository;->getLogoUrl(Lcom/arflix/tv/data/model/MediaType;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLcom/arflix/tv/data/repository/MediaRepository;->getSeasonEpisodes(IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLcom/arflix/tv/data/repository/MediaRepository;->getStreamingServices(Lcom/arflix/tv/data/model/MediaType;ILjava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-HSPLcom/arflix/tv/data/repository/MediaRepository;->getTvDetails(IZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+HSPLcom/arflix/tv/data/repository/MediaRepository;->getTvDetails(ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLcom/arflix/tv/data/repository/MediaRepository;->normalizeWatchRegion(Ljava/lang/String;)Ljava/lang/String;
 HSPLcom/arflix/tv/data/repository/MediaRepository;->search(Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 HSPLcom/arflix/tv/data/repository/MediaRepository;->setContentLanguage(Ljava/lang/String;)V

@@ -6,6 +6,7 @@ import com.arflix.tv.data.api.TmdbExternalIds
 import com.arflix.tv.data.api.TmdbMovieDetails
 import com.arflix.tv.data.api.TmdbTvDetails
 import com.arflix.tv.data.model.MediaType
+import com.google.gson.Gson
 import io.mockk.*
 import kotlinx.coroutines.runBlocking
 import okhttp3.*
@@ -124,6 +125,46 @@ class MediaDetailsRequestsTest {
 
         assertEquals("8.7", row.imdbRating)
         assertEquals(1, cinemetaRequests())
+    }
+
+    @Test fun cachedRowTitleTakesARatingFetchedSince() = runBlocking {
+        coEvery { tmdb.getMovieDetails(603, any(), any(), any()) } returns movie(603)
+        media.getMovieDetails(603, withImdbRating = false)
+        // The banner looked the rating up on its own after the row had loaded.
+        media.getImdbRating(MediaType.MOVIE, 603)
+
+        assertEquals("8.7", media.getMovieDetails(603, withImdbRating = false).imdbRating)
+        assertEquals(1, cinemetaRequests())
+        coVerify(exactly = 1) { tmdb.getMovieDetails(603, any(), any(), any()) }
+    }
+
+    @Test fun titleWithoutImdbIdIsNotLookedUpAgain() = runBlocking {
+        coEvery { tmdb.getMovieDetails(606, any(), any(), any()) } returns
+            TmdbMovieDetails(id = 606, title = "Unlisted", externalIds = TmdbExternalIds(imdbId = ""))
+
+        val item = media.getMovieDetails(606)
+
+        assertEquals("", item.imdbRating)
+        coVerify(exactly = 0) { tmdb.getMovieExternalIds(any(), any()) }
+        assertEquals(0, cinemetaRequests())
+    }
+
+    @Test fun appendedExternalIdsAreReadFromTheTmdbJson() {
+        val gson = Gson()
+        val movie = gson.fromJson(
+            """{"id":603,"title":"The Matrix","release_dates":{"results":[]},
+               "external_ids":{"imdb_id":"tt0133093","tvdb_id":null}}""",
+            TmdbMovieDetails::class.java
+        )
+        val show = gson.fromJson(
+            """{"id":1399,"name":"Game of Thrones","content_ratings":{"results":[]},
+               "external_ids":{"imdb_id":"tt0944947","tvdb_id":121361}}""",
+            TmdbTvDetails::class.java
+        )
+        assertEquals("tt0133093", movie.externalIds?.imdbId)
+        assertEquals("tt0944947", show.externalIds?.imdbId)
+        assertEquals(121361, show.externalIds?.tvdbId)
+        assertNull(gson.fromJson("""{"id":1,"title":"x"}""", TmdbMovieDetails::class.java).externalIds)
     }
 
     @Test fun missingAppendedBlockStillReturnsTheTitle() = runBlocking {

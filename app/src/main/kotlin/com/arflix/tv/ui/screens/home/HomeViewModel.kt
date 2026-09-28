@@ -3456,21 +3456,28 @@ class HomeViewModel @Inject constructor(
 
     fun preloadImdbRatingsForHeroItems(items: List<MediaItem>) {
         viewModelScope.launch(networkDispatcher) {
-            items.filter { isActionableMediaItem(it) && !isIptvItem(it) }.forEach { item ->
-                val key = "${item.mediaType}_${item.id}"
-                if (!cardImdbRatings.containsKey(key)) {
-                    try {
-                        val rating = mediaRepository.getImdbRating(item.mediaType, item.id)
-                        if (!rating.isNullOrBlank()) {
-                            withContext(Dispatchers.Main.immediate) {
-                                cardImdbRatings[key] = rating
+            // Row titles no longer carry the IMDb rating, so each of these is a Cinemeta
+            // request; a few at a time keeps the later banner pages from waiting in line.
+            val limiter = Semaphore(if (isLowRamDevice) 2 else 4)
+            items.filter { isActionableMediaItem(it) && !isIptvItem(it) }.map { item ->
+                async {
+                    val key = "${item.mediaType}_${item.id}"
+                    if (!cardImdbRatings.containsKey(key)) {
+                        try {
+                            val rating = limiter.withPermit {
+                                mediaRepository.getImdbRating(item.mediaType, item.id)
                             }
+                            if (!rating.isNullOrBlank()) {
+                                withContext(Dispatchers.Main.immediate) {
+                                    cardImdbRatings[key] = rating
+                                }
+                            }
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
                         }
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
                     }
                 }
-            }
+            }.awaitAll()
         }
     }
 

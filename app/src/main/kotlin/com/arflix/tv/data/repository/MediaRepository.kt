@@ -3128,7 +3128,13 @@ class MediaRepository @Inject constructor(
         getFromCache(detailsCache, cacheKey)?.let { cached ->
             if (movieId < 0 && cached.isHomeServer) return cached
             if (cacheKey in fullDetailsCacheKeys) {
-                if (cached.imdbRating.isNotBlank() || !withImdbRating) return cached
+                if (cached.imdbRating.isNotBlank()) return cached
+                if (!withImdbRating) {
+                    // A rating fetched since (hero, banner) joins the cached title, no request.
+                    return getFromCache(imdbRatingCache, cacheKey)
+                        ?.let { rating -> cached.copy(imdbRating = rating).also { cacheFullDetailsItem(it) } }
+                        ?: cached
+                }
                 val imdbRating = getImdbRating(MediaType.MOVIE, movieId)
                 if (!imdbRating.isNullOrBlank()) {
                     return cached.copy(imdbRating = imdbRating).also { cacheFullDetailsItem(it) }
@@ -3143,16 +3149,18 @@ class MediaRepository @Inject constructor(
             appendToResponse = MOVIE_DETAILS_APPEND,
             language = contentLanguage
         )
-        val imdbId = details.externalIds?.imdbId
+        val externalIds = details.externalIds
+        val imdbId = externalIds?.imdbId
             ?.takeIf { it.isNotBlank() }
             ?.also { cacheImdbId(MediaType.MOVIE, movieId, it) }
-        // Without the appended block getImdbRating falls back to /external_ids itself. Rows
-        // still take a rating that is already in memory, so they never cache a rated title
-        // back without it.
-        val imdbRating = if (withImdbRating) {
-            getImdbRating(MediaType.MOVIE, movieId, imdbId)
-        } else {
-            getFromCache(imdbRatingCache, cacheKey)
+        val imdbRating = when {
+            // Rows still take a rating already in memory, so they never cache a rated title
+            // back without it.
+            !withImdbRating -> getFromCache(imdbRatingCache, cacheKey)
+            // TMDB answered and knows no IMDb id: nothing to look up.
+            externalIds != null && imdbId == null -> null
+            // Without the appended block getImdbRating falls back to /external_ids itself.
+            else -> getImdbRating(MediaType.MOVIE, movieId, imdbId)
         }
         val item = details.toMediaItem().copy(
             imdbRating = imdbRating.orEmpty(),
@@ -3170,7 +3178,13 @@ class MediaRepository @Inject constructor(
         getFromCache(detailsCache, cacheKey)?.let { cached ->
             if (tvId < 0 && cached.isHomeServer) return cached
             if (cacheKey in fullDetailsCacheKeys) {
-                if (cached.imdbRating.isNotBlank() || !withImdbRating) return cached
+                if (cached.imdbRating.isNotBlank()) return cached
+                if (!withImdbRating) {
+                    // A rating fetched since (hero, banner) joins the cached title, no request.
+                    return getFromCache(imdbRatingCache, cacheKey)
+                        ?.let { rating -> cached.copy(imdbRating = rating).also { cacheFullDetailsItem(it) } }
+                        ?: cached
+                }
                 val imdbRating = getImdbRating(MediaType.TV, tvId)
                 if (!imdbRating.isNullOrBlank()) {
                     return cached.copy(imdbRating = imdbRating).also { cacheFullDetailsItem(it) }
@@ -3185,16 +3199,18 @@ class MediaRepository @Inject constructor(
             appendToResponse = TV_DETAILS_APPEND,
             language = contentLanguage
         )
-        val imdbId = details.externalIds?.imdbId
+        val externalIds = details.externalIds
+        val imdbId = externalIds?.imdbId
             ?.takeIf { it.isNotBlank() }
             ?.also { cacheImdbId(MediaType.TV, tvId, it) }
-        // Without the appended block getImdbRating falls back to /external_ids itself. Rows
-        // still take a rating that is already in memory, so they never cache a rated title
-        // back without it.
-        val imdbRating = if (withImdbRating) {
-            getImdbRating(MediaType.TV, tvId, imdbId)
-        } else {
-            getFromCache(imdbRatingCache, cacheKey)
+        val imdbRating = when {
+            // Rows still take a rating already in memory, so they never cache a rated title
+            // back without it.
+            !withImdbRating -> getFromCache(imdbRatingCache, cacheKey)
+            // TMDB answered and knows no IMDb id: nothing to look up.
+            externalIds != null && imdbId == null -> null
+            // Without the appended block getImdbRating falls back to /external_ids itself.
+            else -> getImdbRating(MediaType.TV, tvId, imdbId)
         }
         val item = details.toMediaItem().copy(
             imdbRating = imdbRating.orEmpty(),
