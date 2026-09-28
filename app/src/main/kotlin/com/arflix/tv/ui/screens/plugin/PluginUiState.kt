@@ -19,6 +19,7 @@ data class PluginUiState(
     val scrapers: List<ScraperInfo> = emptyList(),
     val isLoading: Boolean = false,
     val isAddingRepo: Boolean = false,
+    val isRefreshingRepos: Boolean = false,
     val isTesting: Boolean = false,
     val testResults: List<LocalScraperResult>? = null,
     val testDiagnostics: TestDiagnostics? = null,
@@ -52,6 +53,7 @@ sealed interface PluginUiEvent {
     data class AddRepository(val url: String) : PluginUiEvent
     data class RemoveRepository(val repoId: String) : PluginUiEvent
     data class RefreshRepository(val repoId: String) : PluginUiEvent
+    data object RefreshAllRepositories : PluginUiEvent
     data class ToggleScraper(val scraperId: String, val enabled: Boolean) : PluginUiEvent
     data class ToggleAllScrapersForRepo(val repoId: String, val enabled: Boolean) : PluginUiEvent
     data class TestScraper(val scraperId: String) : PluginUiEvent

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,13 +88,27 @@ fun PluginScreen(
     val repositories = uiState.repositories
     val scrapers = uiState.scrapers
 
+    val isRefreshingRepos = uiState.isRefreshingRepos
+    val refreshValue = when {
+        isRefreshingRepos -> stringResource(R.string.plugin_screen_refreshing)
+        uiState.successMessage?.resourceId == R.string.plugin_repo_refreshed ->
+            stringResource(R.string.plugin_screen_refresh_done)
+        else -> ""
+    }
+    val refreshPlugins = {
+        if (!isRefreshingRepos) viewModel.onEvent(PluginUiEvent.RefreshAllRepositories)
+    }
+
     // Dynamic index mapping
     // Slot 0: Add button
-    // Slot 1 to repos.size: Repos
-    // Slot repos.size + 1 to repos.size + scrapers.size (or + 1 if empty text)
-    // Slot repos.size + scrapers.size + 1: Reset button
+    // Slot 1: Refresh button (only when repos exist)
+    // Next repos.size slots: Repos
+    // Next scrapers.size slots (or 1 for the empty text): Scrapers
+    // Last slot: Reset button
+    val refreshSlots = if (repositories.isEmpty()) 0 else 1
+    val repoStartIdx = 1 + refreshSlots
     val scrapersCount = if (scrapers.isEmpty()) 1 else scrapers.size
-    val totalItems = 1 + repositories.size + scrapersCount + 1
+    val totalItems = repoStartIdx + repositories.size + scrapersCount + 1
 
     LaunchedEffect(totalItems) {
         onMaxIndexChanged((totalItems - 1).coerceAtLeast(0))
@@ -111,14 +126,15 @@ fun PluginScreen(
         if (enterTrigger >= 0) {
             when (enterTrigger) {
                 0 -> { showAddDialog = true }
-                in 1..repositories.size -> {
-                    val repo = repositories[enterTrigger - 1]
+                in 1 until repoStartIdx -> refreshPlugins()
+                in repoStartIdx until (repoStartIdx + repositories.size) -> {
+                    val repo = repositories[enterTrigger - repoStartIdx]
                     viewModel.onEvent(PluginUiEvent.RemoveRepository(repo.id))
                     onFocusedIndexChanged((enterTrigger - 1).coerceAtLeast(0))
                 }
-                in (1 + repositories.size)..(repositories.size + scrapersCount) -> {
+                in (repoStartIdx + repositories.size) until (totalItems - 1) -> {
                     if (scrapers.isNotEmpty()) {
-                        val scraper = scrapers[enterTrigger - 1 - repositories.size]
+                        val scraper = scrapers[enterTrigger - repoStartIdx - repositories.size]
                         viewModel.onEvent(PluginUiEvent.ToggleScraper(scraper.id, !scraper.enabled))
                     }
                 }
@@ -156,9 +172,20 @@ fun PluginScreen(
                     subtitle = stringResource(R.string.plugin_screen_repo_url),
                     value = "",
                     isFocused = false,
-                    showDivider = false,
+                    showDivider = repositories.isNotEmpty(),
                     onClick = { showAddDialog = true }
                 )
+                if (repositories.isNotEmpty()) {
+                    MobileSettingsRow(
+                        icon = Icons.Default.Refresh,
+                        title = stringResource(R.string.plugin_screen_refresh_plugins),
+                        subtitle = stringResource(R.string.plugin_screen_refresh_plugins_desc),
+                        value = refreshValue,
+                        isFocused = false,
+                        showDivider = false,
+                        onClick = refreshPlugins
+                    )
+                }
             }
 
             if (repositories.isNotEmpty()) {
@@ -276,6 +303,43 @@ fun PluginScreen(
                 )
             }
 
+            if (repositories.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                val isRefreshRowFocused = (focusedIndex == 1)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .settingsFocusSlot(1)
+                        .focusProperties { canFocus = false }
+                        .clickable(enabled = !isRefreshingRepos) { refreshPlugins() }
+                        .background(
+                            if (isRefreshRowFocused) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.05f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .border(
+                            width = if (isRefreshRowFocused) 2.dp else 0.dp,
+                            color = if (isRefreshRowFocused) accentColor else Color.Transparent,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = refreshValue.ifEmpty { stringResource(R.string.plugin_screen_refresh_plugins) },
+                        style = ArflixTypography.button,
+                        color = accentColor
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
 
             if (repositories.isNotEmpty()) {
@@ -287,7 +351,7 @@ fun PluginScreen(
                 )
 
                 repositories.forEachIndexed { idx, repo ->
-                    val slotIndex = 1 + idx
+                    val slotIndex = repoStartIdx + idx
                     FocusableSettingsRow(
                         index = slotIndex,
                         focusedIndex = focusedIndex,
@@ -309,7 +373,7 @@ fun PluginScreen(
                 modifier = Modifier.padding(bottom = 10.dp)
             )
 
-            val scraperStartIdx = 1 + repositories.size
+            val scraperStartIdx = repoStartIdx + repositories.size
             if (scrapers.isEmpty()) {
                 val slotIndex = scraperStartIdx
                 Text(

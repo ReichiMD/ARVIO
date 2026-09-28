@@ -875,6 +875,10 @@
     <string name="telegram_disconnect_confirm_desc">Tendrás que volver a iniciar sesión para usar Telegram como fuente.</string>
     <string name="plugin_screen_title">Plugins (Pruebas)</string>
     <string name="plugin_screen_add_repo">Añadir repositorio</string>
+    <string name="plugin_screen_refresh_plugins">Actualizar plugins</string>
+    <string name="plugin_screen_refresh_plugins_desc">Volver a descargar todos los plugins desde sus repositorios</string>
+    <string name="plugin_screen_refreshing">Actualizando…</string>
+    <string name="plugin_screen_refresh_done">Actualizado</string>
     <string name="plugin_screen_installed_repos">Repositorios instalados</string>
     <string name="plugin_screen_installed_scrapers">Scrapers instalados</string>
     <string name="plugin_screen_no_scrapers">No hay scrapers instalados.</string>
