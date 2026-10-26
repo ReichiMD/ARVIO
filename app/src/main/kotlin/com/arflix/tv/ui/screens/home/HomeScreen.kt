@@ -184,7 +184,6 @@ import com.arflix.tv.ui.theme.AnimationConstants
 import com.arflix.tv.ui.theme.appBackground
 import com.arflix.tv.ui.theme.ArflixTypography
 import com.arflix.tv.ui.theme.BackgroundCard
-import com.arflix.tv.ui.theme.appBackgroundDark
 import com.arflix.tv.ui.theme.AccentRed
 import com.arflix.tv.ui.theme.PrimeBlue
 import com.arflix.tv.ui.theme.PrimeGreen
