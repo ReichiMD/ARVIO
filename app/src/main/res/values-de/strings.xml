@@ -1659,4 +1659,12 @@
     <string name="discord_qr_instructions">1. QR-Code mit dem Telefon scannen\n2. In Discord auf \'Autorisieren\' tippen\n3. Verbindet sich automatisch</string>
     <string name="discord_not_included_in_build">In dieser Version nicht enthalten</string>
     <string name="discord_rpc_help_desc">Zeige deinen Wiedergabestatus in deinem Discord-Profil.</string>
+    <string name="background_style">Hintergrund</string>
+    <string name="background_style_desc">Farbe hinter den Seiten. Der Akzent-Schimmer folgt deiner Akzentfarbe. OLED-Schwarz hat Vorrang.</string>
+    <string name="background_style_standard">Standard</string>
+    <string name="background_style_anthracite">Anthrazit</string>
+    <string name="background_style_glow">Akzent-Schimmer</string>
+    <string name="full_view">Vollansicht</string>
+    <string name="full_view_desc">Zeigt die echten Seiten mit deinem Aussehen. Zurück auf der Startseite bringt dich hierher.</string>
+    <string name="full_view_hint">Vollansicht · Zurück führt zu den Einstellungen</string>
 </resources>

@@ -2,6 +2,7 @@
 
 package com.arflix.tv.ui.screens.tv.live
 
+import com.arflix.tv.ui.theme.appBackground
 import com.arflix.tv.network.iptvProviderCooldownMs
 import com.arflix.tv.network.IptvProviderRequestGuard
 import com.arflix.tv.network.isIptvProviderRequestPaused
@@ -3822,7 +3823,7 @@ fun LiveTvScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(LiveColors.Bg)
+            .appBackground(standardColor = LiveColors.Bg)
             .then(
                 if (!isTouchDevice) {
                     Modifier.onPreviewKeyEvent { event ->

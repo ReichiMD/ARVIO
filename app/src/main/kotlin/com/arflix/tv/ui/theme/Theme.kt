@@ -75,7 +75,11 @@ val LocalOledBlackBackground = staticCompositionLocalOf { false }
 
 @Composable
 fun appBackgroundDark(): Color {
-    return if (LocalOledBlackBackground.current) Color.Black else BackgroundDark
+    return when {
+        LocalOledBlackBackground.current -> Color.Black
+        LocalBackgroundStyle.current == BackgroundStyle.ANTHRACITE -> AnthraciteBackground
+        else -> BackgroundDark
+    }
 }
 
 // Keep legacy aliases for compatibility
@@ -90,9 +94,14 @@ val LocalArflixColors = LocalArvioColors
 fun ArvioTvTheme(
     oledBlackBackground: Boolean = false,
     accentColorName: String? = null,
+    backgroundStyle: BackgroundStyle = BackgroundStyle.STANDARD,
     content: @Composable () -> Unit
 ) {
-    val backgroundDark = if (oledBlackBackground) Color.Black else BackgroundDark
+    val backgroundDark = when {
+        oledBlackBackground -> Color.Black
+        backgroundStyle == BackgroundStyle.ANTHRACITE -> AnthraciteBackground
+        else -> BackgroundDark
+    }
     val accentColor = accentColorName?.let { accentColorFromName(it) }
     val colorScheme = darkColorScheme(
         primary = ArcticWhite,
@@ -123,6 +132,7 @@ fun ArvioTvTheme(
     CompositionLocalProvider(
         LocalArvioColors provides arvioColors,
         LocalOledBlackBackground provides oledBlackBackground,
+        LocalBackgroundStyle provides backgroundStyle,
         LocalAccentColorOverride provides accentColor
     ) {
         ProvideArvioSkin {
@@ -140,10 +150,12 @@ fun ArvioTvTheme(
 fun ArflixTvTheme(
     oledBlackBackground: Boolean = false,
     accentColorName: String? = null,
+    backgroundStyle: BackgroundStyle = BackgroundStyle.STANDARD,
     content: @Composable () -> Unit
 ) = ArvioTvTheme(
     oledBlackBackground = oledBlackBackground,
     accentColorName = accentColorName,
+    backgroundStyle = backgroundStyle,
     content = content
 )
 

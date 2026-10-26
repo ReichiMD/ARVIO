@@ -253,6 +253,7 @@ import com.arflix.tv.ui.focus.isArvioDpadNavigationKey
 import com.arflix.tv.ui.focus.rememberArvioDpadRepeatGate
 import com.arflix.tv.ui.skin.resolveAccentColor
 import com.arflix.tv.ui.theme.ArflixTypography
+import com.arflix.tv.ui.theme.appBackground
 import com.arflix.tv.ui.theme.appBackgroundDark
 import com.arflix.tv.ui.theme.BackgroundElevated
 import com.arflix.tv.ui.theme.contrastingContentColor
@@ -323,6 +324,15 @@ private val tvGeneralSectionIds = setOf(
     "network"
 )
 
+@Composable
+private fun backgroundStyleLabel(style: com.arflix.tv.ui.theme.BackgroundStyle): String = stringResource(
+    when (style) {
+        com.arflix.tv.ui.theme.BackgroundStyle.STANDARD -> R.string.background_style_standard
+        com.arflix.tv.ui.theme.BackgroundStyle.ANTHRACITE -> R.string.background_style_anthracite
+        com.arflix.tv.ui.theme.BackgroundStyle.ACCENT_GLOW -> R.string.background_style_glow
+    }
+)
+
 private fun tvGeneralRowsForSection(section: String): List<Int> {
     return when (section) {
         "language" -> listOf(0, 3, 1, 2)
@@ -332,7 +342,7 @@ private fun tvGeneralRowsForSection(section: String): List<Int> {
             listOf(39, 9, 45)
         "ai_subtitles" -> listOf(28, 29, 30, 31, 32, 33)
         "playback" -> listOf(10, 11, 12, 43, 44, 13, 14, 34, 37, 16, 15, 40, 27)
-        "appearance" -> listOf(17, 49, 50, 18, 20, 21, 24, 23, 22, 41, 46, 36, 47)
+        "appearance" -> listOf(17, 49, 50, 18, 20, 51, 52, 21, 24, 23, 22, 41, 46, 36, 47)
         "profiles" -> listOf(19)
         "network" -> listOf(25, 26, 35)
         else -> emptyList()
@@ -551,7 +561,8 @@ fun SettingsScreen(
     onNavigateToTelegramSettings: () -> Unit = {},
     onSwitchProfile: () -> Unit = {},
     onBack: () -> Unit = {},
-    onSubPageChanged: (Boolean) -> Unit = {}
+    onSubPageChanged: (Boolean) -> Unit = {},
+    onOpenFullView: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showCredits by remember { mutableStateOf(false) }
@@ -610,6 +621,7 @@ fun SettingsScreen(
             when (initialSection) {
                 "iptv" -> "TV"
                 "stremio" -> "Addons"
+                "appearance" -> "Appearance"
                 else -> "MAIN"
             }
         )
@@ -1084,7 +1096,7 @@ fun SettingsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(appBackgroundDark())
+            .appBackground()
             .then(inputFocusModifier)
             .focusRequester(focusRequester)
             .focusable()
@@ -1454,6 +1466,8 @@ fun SettingsScreen(
                                                 18 -> openUiModeWarningDialog()
                                                 19 -> viewModel.setSkipProfileSelection(!uiState.skipProfileSelection)
                                                 20 -> viewModel.setOledBlackBackground(!uiState.oledBlackBackground)
+                                                51 -> viewModel.cycleBackgroundStyle()
+                                                52 -> onOpenFullView()
                                                 21 -> viewModel.cycleClockFormat()
                                                 22 -> viewModel.setShowBudget(!uiState.showBudget)
                                                 41 -> viewModel.setShowEpisodeRatings(!uiState.showEpisodeRatings)
@@ -1864,6 +1878,7 @@ fun SettingsScreen(
             MobileSettingsLayout(
                 page = mobilePage,
                 onNavigate = { mobilePage = it },
+                onOpenFullView = onOpenFullView,
                 uiState = uiState,
                 viewModel = viewModel,
                 stremioAddons = stremioAddons,
@@ -2119,6 +2134,9 @@ fun SettingsScreen(
                             onContentLanguageClick = openContentLanguagePicker,
                             onSkipProfileSelectionToggle = { viewModel.setSkipProfileSelection(it) },
                             onOledBlackBackgroundToggle = { viewModel.setOledBlackBackground(it) },
+                            backgroundStyle = backgroundStyleLabel(uiState.backgroundStyle),
+                            onBackgroundStyleClick = { viewModel.cycleBackgroundStyle() },
+                            onFullViewClick = onOpenFullView,
                             onClockFormatClick = { viewModel.cycleClockFormat() },
                             onShowBudgetToggle = { viewModel.setShowBudget(it) },
                             showEpisodeRatings = uiState.showEpisodeRatings,
@@ -5119,6 +5137,7 @@ private fun DiscordActivationModal(
 private fun MobileSettingsLayout(
     page: String,
     onNavigate: (String) -> Unit,
+    onOpenFullView: () -> Unit,
     uiState: SettingsUiState,
     viewModel: SettingsViewModel,
     stremioAddons: List<com.arflix.tv.data.model.Addon>,
@@ -5257,7 +5276,7 @@ private fun MobileSettingsLayout(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(appBackgroundDark())
+            .appBackground()
     ) {
         Column(
             modifier = Modifier
@@ -5343,7 +5362,7 @@ private fun MobileSettingsLayout(
                             shadowElevation = (backProgress * 16).dp.toPx()
                         }
                     }
-                    .background(appBackgroundDark())
+                    .appBackground()
                     // The main settings list stays composed underneath this page,
                     // and an opaque background hides it without stopping a touch.
                     // A tap that lands anywhere this page has no control - the gap
@@ -5382,6 +5401,7 @@ private fun MobileSettingsLayout(
                 MobileSettingsSubPage(
                     page = displayedSubPage,
                     onNavigate = onNavigate,
+                    onOpenFullView = onOpenFullView,
                     uiState = uiState,
                     viewModel = viewModel,
                     stremioAddons = stremioAddons,
@@ -5638,6 +5658,7 @@ private fun MobileSettingsMainPage(
 private fun MobileSettingsSubPage(
     page: String,
     onNavigate: (String) -> Unit,
+    onOpenFullView: () -> Unit,
     uiState: SettingsUiState,
     viewModel: SettingsViewModel,
     stremioAddons: List<com.arflix.tv.data.model.Addon>,
@@ -6086,6 +6107,22 @@ private fun MobileSettingsSubPage(
                         toggleChecked = uiState.oledBlackBackground,
                         isFocused = false,
                         onClick = { viewModel.setOledBlackBackground(!uiState.oledBlackBackground) }
+                    )
+                    MobileSettingsRow(
+                        icon = Icons.Default.Palette,
+                        title = stringResource(R.string.background_style),
+                        subtitle = stringResource(R.string.background_style_desc),
+                        value = backgroundStyleLabel(uiState.backgroundStyle),
+                        isFocused = false,
+                        onClick = { viewModel.cycleBackgroundStyle() }
+                    )
+                    MobileSettingsRow(
+                        icon = Icons.Default.Visibility,
+                        title = stringResource(R.string.full_view),
+                        subtitle = stringResource(R.string.full_view_desc),
+                        value = null,
+                        isFocused = false,
+                        onClick = onOpenFullView
                     )
                     MobileSettingsRow(
                         icon = Icons.Default.Schedule,
@@ -7264,6 +7301,9 @@ private fun TvGeneralSettingsRows(
     onSmoothScrollingToggle: (Boolean) -> Unit = {},
     onSpoilerBlurToggle: (Boolean) -> Unit = {},
     onAccentColorClick: () -> Unit = {},
+    backgroundStyle: String = "",
+    onBackgroundStyleClick: () -> Unit = {},
+    onFullViewClick: () -> Unit = {},
     showLoadingStats: Boolean = true,
     onShowLoadingStatsToggle: (Boolean) -> Unit = {},
     onVolumeBoostClick: () -> Unit = {},
@@ -7391,6 +7431,8 @@ private fun TvGeneralSettingsRows(
                 )
                 19 -> SettingsToggleRow(stringResource(R.string.skip_profile), stringResource(R.string.skip_profile_desc), skipProfileSelection, focusedIndex == localIndex, onSkipProfileSelectionToggle, Modifier.settingsFocusSlot(localIndex))
                 20 -> SettingsToggleRow(stringResource(R.string.oled_black_background), stringResource(R.string.oled_black_background_desc), oledBlackBackground, focusedIndex == localIndex, onOledBlackBackgroundToggle, Modifier.settingsFocusSlot(localIndex))
+                51 -> SettingsRow(Icons.Default.Palette, stringResource(R.string.background_style), stringResource(R.string.background_style_desc), backgroundStyle, focusedIndex == localIndex, onBackgroundStyleClick, Modifier.settingsFocusSlot(localIndex))
+                52 -> SettingsRow(Icons.Default.Visibility, stringResource(R.string.full_view), stringResource(R.string.full_view_desc), "", focusedIndex == localIndex, onFullViewClick, Modifier.settingsFocusSlot(localIndex))
                 21 -> SettingsRow(Icons.Default.Schedule, stringResource(R.string.clock_format), stringResource(R.string.clock_format_desc), if (clockFormat == "12h") "12-hour" else "24-hour", focusedIndex == localIndex, onClockFormatClick, Modifier.settingsFocusSlot(localIndex))
                 22 -> SettingsToggleRow(stringResource(R.string.show_budget), stringResource(R.string.show_budget_desc), showBudget, focusedIndex == localIndex, onShowBudgetToggle, Modifier.settingsFocusSlot(localIndex))
                 41 -> SettingsToggleRow(stringResource(R.string.show_episode_ratings), stringResource(R.string.show_episode_ratings_desc), showEpisodeRatings, focusedIndex == localIndex, onShowEpisodeRatingsToggle, Modifier.settingsFocusSlot(localIndex))

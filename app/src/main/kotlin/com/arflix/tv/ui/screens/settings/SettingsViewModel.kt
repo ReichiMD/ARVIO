@@ -389,6 +389,7 @@ data class SettingsUiState(
     // Skip profile selection
     val skipProfileSelection: Boolean = false,
     val oledBlackBackground: Boolean = false,
+    val backgroundStyle: com.arflix.tv.ui.theme.BackgroundStyle = com.arflix.tv.ui.theme.BackgroundStyle.STANDARD,
     val clockFormat: String = "24h",
     val qualityFilters: List<QualityFilterConfig> = emptyList(),
     // Spoiler blur â€” blur unwatched episode card images and hide synopsis
@@ -722,6 +723,7 @@ class SettingsViewModel @Inject constructor(
             val deviceModeOverride = prefs[com.arflix.tv.util.DEVICE_MODE_OVERRIDE_KEY] ?: "auto"
             val skipProfileSelection = prefs[com.arflix.tv.util.SKIP_PROFILE_SELECTION_KEY] ?: false
             val oledBlackBackground = prefs[com.arflix.tv.util.OLED_BLACK_BACKGROUND_KEY] ?: false
+            val backgroundStyle = com.arflix.tv.ui.theme.BackgroundStyle.fromKey(prefs[com.arflix.tv.util.BACKGROUND_STYLE_KEY])
             val contentLang = resolveAppLanguage(prefs, loadProfileId)
             // Apply content language to MediaRepository immediately
             mediaRepository.contentLanguage = contentLang
@@ -914,6 +916,7 @@ class SettingsViewModel @Inject constructor(
                 deviceModeOverride = deviceModeOverride,
                 skipProfileSelection = skipProfileSelection,
                 oledBlackBackground = oledBlackBackground,
+                backgroundStyle = backgroundStyle,
                 clockFormat = clockFormat,
                 accentColor = accentColor,
                 qualityFilters = qualityFilters,
@@ -1817,6 +1820,15 @@ class SettingsViewModel @Inject constructor(
 
     fun setOledBlackBackground(enabled: Boolean) {
         preferenceWriter.save(com.arflix.tv.util.OLED_BLACK_BACKGROUND_KEY, enabled, { it.oledBlackBackground }, { state, value -> state.copy(oledBlackBackground = value) })
+    }
+
+    /** Standard → Anthracite → accent glow → Standard. Stored on this device only, not synced to the cloud. */
+    fun cycleBackgroundStyle() {
+        val next = _uiState.value.backgroundStyle.next()
+        _uiState.value = _uiState.value.copy(backgroundStyle = next)
+        viewModelScope.launch {
+            context.settingsDataStore.edit { it[com.arflix.tv.util.BACKGROUND_STYLE_KEY] = next.key }
+        }
     }
 
     fun cycleFrameRateMatchingMode() {

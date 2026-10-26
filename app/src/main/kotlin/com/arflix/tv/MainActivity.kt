@@ -68,7 +68,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -142,8 +141,8 @@ import com.arflix.tv.navigation.partnerOpenNavigationOptions
 import com.arflix.tv.ui.screens.login.LoginScreen
 import com.arflix.tv.ui.startup.StartupViewModel
 import com.arflix.tv.ui.theme.ArflixTvTheme
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arflix.tv.ui.theme.appBackgroundDark
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arflix.tv.worker.TraktSyncWorker
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.Lazy
@@ -346,6 +345,11 @@ class MainActivity : ComponentActivity() {
             val accentColorName by remember {
                 this@MainActivity.settingsDataStore.data.map { it[ACCENT_COLOR_KEY] }
             }.collectAsStateWithLifecycle(initialValue = null)
+            val backgroundStyle by remember {
+                this@MainActivity.settingsDataStore.data.map {
+                    com.arflix.tv.ui.theme.BackgroundStyle.fromKey(it[com.arflix.tv.util.BACKGROUND_STYLE_KEY])
+                }
+            }.collectAsStateWithLifecycle(initialValue = com.arflix.tv.ui.theme.BackgroundStyle.STANDARD)
             val activeProfileId by remember {
                 profileRepository.get().activeProfileId
             }.collectAsStateWithLifecycle(initialValue = null)
@@ -400,7 +404,8 @@ class MainActivity : ComponentActivity() {
             ) {
                 ArflixTvTheme(
                     oledBlackBackground = oledBlackBackground,
-                    accentColorName = accentColorName
+                    accentColorName = accentColorName,
+                    backgroundStyle = backgroundStyle
                 ) {
                     val startupState by startupViewModel.state.collectAsStateWithLifecycle()
                     ArflixApp(
@@ -935,19 +940,7 @@ fun ArflixApp(
         modifier = Modifier
             .fillMaxSize()
             // Background fills edge-to-edge (including behind transparent bars).
-            .background(
-                brush = if (oledBlackBackground) {
-                    Brush.linearGradient(colors = listOf(Color.Black, Color.Black))
-                } else {
-                    Brush.linearGradient(
-                        colors = listOf(
-                            appBackgroundDark(),
-                            appBackgroundDark(),
-                            appBackgroundDark()
-                        )
-                    )
-                }
-            )
+            .background(appBackgroundDark())
             // Mobile navigation overlays scrollable content; other screens reserve its height.
             // Player screens remain completely stable edge-to-edge without jumping when
             // transient system bars appear or disappear.

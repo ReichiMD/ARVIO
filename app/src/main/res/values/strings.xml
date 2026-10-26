@@ -1939,5 +1939,13 @@
     <string name="youtube_collection_full">This collection has reached the limit of %1$d videos. Remove a video before adding another.</string>
     <string name="youtube_parent_approval_required">A correct parent PIN is required to add videos to this kids profile. Set a parent PIN in Manage Profiles if needed.</string>
     <string name="youtube_profile_changed">The profile changed. Please add the video again.</string>
+    <string name="background_style">Background</string>
+    <string name="background_style_desc">Colour behind the pages. Accent glow follows your accent colour. OLED black takes priority.</string>
+    <string name="background_style_standard">Standard</string>
+    <string name="background_style_anthracite">Anthracite</string>
+    <string name="background_style_glow">Accent glow</string>
+    <string name="full_view">Full view</string>
+    <string name="full_view_desc">Shows the real pages with your look. Back on the home page returns here.</string>
+    <string name="full_view_hint">Full view · Back returns to settings</string>
 </resources>
 

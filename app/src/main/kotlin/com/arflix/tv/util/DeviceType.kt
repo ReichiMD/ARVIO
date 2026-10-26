@@ -40,6 +40,9 @@ val OLED_BLACK_BACKGROUND_KEY = booleanPreferencesKey("oled_black_background")
 /** Key for the user-selected accent colour (e.g. "White", "Red", "Blue") */
 val ACCENT_COLOR_KEY = stringPreferencesKey("accent_color")
 
+/** Key for the page background style ("standard", "anthracite", "glow"); kept on this device only. */
+val BACKGROUND_STYLE_KEY = stringPreferencesKey("background_style")
+
 /**
  * Fast-path cache for the device-mode override. Read before onCreate() during
  * cold start, where the DataStore IO would otherwise block the main thread for

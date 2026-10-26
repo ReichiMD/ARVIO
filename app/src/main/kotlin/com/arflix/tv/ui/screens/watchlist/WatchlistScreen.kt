@@ -1,5 +1,6 @@
 package com.arflix.tv.ui.screens.watchlist
 
+import com.arflix.tv.ui.theme.appBackground
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -244,7 +245,7 @@ fun WatchlistScreen(
             viewModel.prefetchLogos(items.subList(first.coerceAtMost(items.size), (last + 17).coerceAtMost(items.size)))
         }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black).testTag("oled-library")) {
+    BoxWithConstraints(Modifier.fillMaxSize().appBackground(standardColor = Color.Black).testTag("oled-library")) {
         val compact = touch && maxWidth < 700.dp
         val sideWidth = if (touch) 160.dp else 126.dp
             if (!touch) {

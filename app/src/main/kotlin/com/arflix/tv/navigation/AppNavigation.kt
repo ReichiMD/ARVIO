@@ -11,6 +11,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Box
@@ -228,6 +230,17 @@ fun AppNavigation(
         }
     }
 
+    // "Full view" from the appearance settings: Home shows the real pages, and Back on Home returns to the settings.
+    var fullViewReturn by rememberSaveable { mutableStateOf(false) }
+    val returnFromFullView: () -> Unit = {
+        fullViewReturn = false
+        navController.navigate(Screen.Settings.createRoute(initialSection = "appearance")) {
+            popUpTo(Screen.Home.route) { saveState = true }
+            launchSingleTop = true
+            restoreState = false
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -253,6 +266,7 @@ fun AppNavigation(
 
         // Home screen
         composable(Screen.Home.route) {
+          FullViewHint(active = fullViewReturn) {
           CalendarIdlePreload(calendarViewModel, currentProfile?.id) {
             HomeScreen(
                 preloadedCategories = preloadedCategories,
@@ -304,8 +318,10 @@ fun AppNavigation(
                     onSwitchProfile()
                     navController.navigateToProfileSelection()
                 },
-                onExitApp = onExitApp
+                onExitApp = onExitApp,
+                onBackOverride = if (fullViewReturn) returnFromFullView else null
             )
+          }
           }
         }
 
@@ -439,8 +455,14 @@ fun AppNavigation(
                     navController.navigateToProfileSelection()
                 },
                 onBack = { navController.popBackStack() },
-                onSubPageChanged = onSettingsSubPageChanged
+                onSubPageChanged = onSettingsSubPageChanged,
+                onOpenFullView = {
+                    fullViewReturn = true
+                    navigateHome()
+                }
             )
+            // Reached the settings another way: Back on Home goes back to normal.
+            LaunchedEffect(Unit) { fullViewReturn = false }
         }
 
         // Telegram settings screen

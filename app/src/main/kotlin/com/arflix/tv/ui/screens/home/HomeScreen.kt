@@ -181,6 +181,7 @@ import com.arflix.tv.ui.skin.ArvioFocusableSurface
 import com.arflix.tv.ui.skin.ArvioSkin
 import com.arflix.tv.ui.skin.rememberArvioCardShape
 import com.arflix.tv.ui.theme.AnimationConstants
+import com.arflix.tv.ui.theme.appBackground
 import com.arflix.tv.ui.theme.ArflixTypography
 import com.arflix.tv.ui.theme.BackgroundCard
 import com.arflix.tv.ui.theme.appBackgroundDark
@@ -793,7 +794,9 @@ fun HomeScreen(
     onNavigateToPlayer: (MediaType, Int, String, String?, String?) -> Unit = { _, _, _, _, _ -> },
     onNavigateToSettings: () -> Unit = {},
     onSwitchProfile: () -> Unit = {},
-    onExitApp: () -> Unit = {}
+    onExitApp: () -> Unit = {},
+    /** Set while the full view from the appearance settings is open: a short Back goes there instead. */
+    onBackOverride: (() -> Unit)? = null
 ) {
     val isMobile = LocalDeviceType.current.isTouchDevice()
 
@@ -1347,7 +1350,7 @@ fun HomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(appBackgroundDark())
+            .appBackground()
       ) {
         val currentBackdrop = displayHeroItem?.let { item ->
             if (viewModel.isCollectionItem(item)) {
@@ -1585,6 +1588,7 @@ fun HomeScreen(
             onNavigateToSettings = onNavigateToSettings,
             onSwitchProfile = onSwitchProfile,
             onExitApp = onExitApp,
+            onBackOverride = onBackOverride,
             featuredTrailerKey = if (uiState.trailerInCards) focusedHomeTrailerKey else null,
             netflix = if (netflixHome) {
                 val billboard = billboardItem?.let { item ->
@@ -1647,7 +1651,7 @@ fun HomeScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(appBackgroundDark()),
+                    .appBackground(),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -2770,6 +2774,7 @@ internal fun HomeInputLayer(
     onNavigateToSettings: () -> Unit,
     onSwitchProfile: () -> Unit,
     onExitApp: () -> Unit,
+    onBackOverride: (() -> Unit)? = null,
     featuredTrailerKey: String? = null,
     reserveTrailerSpace: Boolean = featuredTrailerKey != null,
     featuredTrailerDelayMs: Long = 0L,
@@ -2797,6 +2802,7 @@ internal fun HomeInputLayer(
     fun shortBack() {
         selectPressedInHome = false
         selectDownAtMs = 0L
+        onBackOverride?.let { it(); return }
         if (focusState.isSidebarFocused) {
             onExitApp()
         } else {
