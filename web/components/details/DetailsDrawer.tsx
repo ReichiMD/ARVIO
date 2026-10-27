@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { MediaCard } from "@/components/media/MediaCard";
 import { RailScroller } from "@/components/media/RailScroller";
 import { premiumAllows } from "@/lib/premiumGate";
+import { relaySupportsTraktLink, simklRedirectUrl, traktLinkUrl, traktPageViaSimkl } from "@/lib/externalLinks";
 import { getContinueWatching, saveWatchedState } from "@/lib/cloud";
 import { parseDebridStream } from "@/lib/debrid";
 import { clearPlayOnOpen, peekPlayOnOpen } from "@/lib/playIntent";
@@ -20,7 +21,7 @@ import { verifyAutoplayCandidates } from "@/lib/autoplayVerify";
 import { playbackPlan } from "@/lib/streamCompatibility";
 import { claimEscape, isTopmostLayer } from "@/lib/playerKeys";
 import { collectResumePoints, episodeKey, episodeProgressMap, firstUnwatchedEpisode, planPrimaryAction, type ResumePoint } from "@/lib/playerResume";
-import { authClient, getPriorityConfig, useApp } from "@/lib/store";
+import { authClient, getPriorityConfig, useAppPick } from "@/lib/store";
 import { simklClient, getSimklItemUrl } from "@/lib/simkl";
 import { syncClient, syncSeasonWatched } from "@/lib/sync";
 import { getLogoUrl, getPersonDetails } from "@/lib/tmdb";
@@ -31,7 +32,7 @@ import { buildDetailMeta, cleanReviewText, formatDate } from "./detailsText";
 import { SourcePickerModal, useCompactSources } from "./SourcePicker";
 
 export function DetailsDrawer() {
-  const { selected: item } = useApp();
+  const { selected: item } = useAppPick("selected");
   if (!item) return null;
   return <DetailsView key={`${item.mediaType}-${item.id}`} item={item} />;
 }
@@ -99,7 +100,7 @@ type AutoplayRequest = { resumeSeconds: number };
 
 function DetailsView({ item }: { item: MediaItem }) {
   const translateUi = useTranslation();
-  const { streams, playStream, selectedEpisode, activeProfile, activeStream, addons: installedAddons, loadEpisodeStreams, openDetails, closeDetails, playTrailer, setToast, settings, watchlist, refreshData, busy, isWatched, markWatchedLocally, toggleWatchlist, mdblistConnected, continueWatching } = useApp();
+  const { streams, playStream, selectedEpisode, activeProfile, activeStream, addons: installedAddons, loadEpisodeStreams, openDetails, closeDetails, playTrailer, setToast, settings, watchlist, refreshData, busy, isWatched, markWatchedLocally, toggleWatchlist, mdblistConnected, continueWatching } = useAppPick("streams", "playStream", "selectedEpisode", "activeProfile", "activeStream", "addons", "loadEpisodeStreams", "openDetails", "closeDetails", "playTrailer", "setToast", "settings", "watchlist", "refreshData", "busy", "isWatched", "markWatchedLocally", "toggleWatchlist", "mdblistConnected", "continueWatching");
   const [detailsItem, setDetailsItem] = useState<MediaItem>(item);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [reviews, setReviews] = useState<ReviewInfo[]>([]);
@@ -152,6 +153,19 @@ function DetailsView({ item }: { item: MediaItem }) {
     return () => window.clearTimeout(timer);
   }, [starting, activeStream]);
   const [logo, setLogo] = useState<string | null>(null);
+  const [relayTraktLink, setRelayTraktLink] = useState(false);
+  useEffect(() => { let active = true; void relaySupportsTraktLink().then((ok) => { if (active) setRelayTraktLink(ok); }); return () => { active = false; }; }, []);
+  // Trakt's own page, found through Simkl's id mapping; the relay redirect and
+  // a title search remain the fallbacks.
+  const [traktPage, setTraktPage] = useState<string | null>(null);
+  const traktImdb = detailsItem?.imdbId ?? item.imdbId ?? null;
+  useEffect(() => {
+    setTraktPage(null);
+    let active = true;
+    void traktPageViaSimkl({ id: item.id, imdbId: traktImdb, mediaType: item.mediaType }).then((url) => { if (active) setTraktPage(url); });
+    return () => { active = false; };
+  }, [item.id, item.mediaType, traktImdb]);
+
   const displayItem = detailsItem ?? item;
   const priorityConfig = useMemo(() => getPriorityConfig(settings), [settings]);
 
@@ -417,10 +431,12 @@ function DetailsView({ item }: { item: MediaItem }) {
   const simklIds = simklClient.findItemIds(displayItem.id, displayItem.mediaType === "movie" ? "movie" : "tv")
     ?? (displayItem as unknown as { ids?: Parameters<typeof getSimklItemUrl>[0] })?.ids;
   const simklUrl = getSimklItemUrl(simklIds, displayItem.mediaType === "movie" ? "movie" : "tv")
-    ?? `https://simkl.com/search?q=${encodeURIComponent(displayItem.title)}`;
+    ?? simklRedirectUrl(displayItem);
   const busyPlaying = Boolean(autoplayRequest) || starting;
   const playLabel = busyPlaying
-    ? (busy === "Finding sources" || streams.length === 0 ? translateUi("Finding sources…") : translateUi("Starting…"))
+    // Finding sources → checking the best ones → opening the player.
+    ? (busy === "Finding sources" && streams.length === 0 ? translateUi("Finding sources…")
+      : autoplayRequest ? translateUi("Picking the best source…") : translateUi("Starting…"))
     : translateUi(plan.label, plan.labelValues);
 
   return (
@@ -488,6 +504,7 @@ function DetailsView({ item }: { item: MediaItem }) {
           </div>
           <div className="detail-links">
             <a href={simklUrl} target="_blank" rel="noopener noreferrer" className="detail-link">{translateUi("View on Simkl")}</a>
+            <a href={traktPage ?? traktLinkUrl(displayItem, relayTraktLink)} target="_blank" rel="noopener noreferrer" className="detail-link">{translateUi("View on Trakt")}</a>
           </div>
           {!streams.length && !isTv && busy !== "Finding sources" && (
             <p className="detail-action-hint">{translateUi("Sources will appear here when an installed addon returns results.")}</p>
@@ -712,7 +729,7 @@ function SeasonEpisodes({ sectionRef, item, loadingDetails, selectedEpisode, pre
   onPlayEpisode: (season: number, episode: number) => void;
 }) {
   const translateUi = useTranslation();
-  const { openContextMenu, setToast, settings, toggleWatched } = useApp();
+  const { openContextMenu, setToast, settings, toggleWatched } = useAppPick("openContextMenu", "setToast", "settings", "toggleWatched");
   const narrow = useCompactSources();
   const seasons = (item.seasons ?? []).filter(entry => entry.seasonNumber > 0 || settings.includeSpecials || item.seasonNumber === 0);
   const [season, setSeason] = useState(selectedEpisode?.season ?? item.seasonNumber ?? preferredSeason ?? seasons[0]?.seasonNumber ?? 1);

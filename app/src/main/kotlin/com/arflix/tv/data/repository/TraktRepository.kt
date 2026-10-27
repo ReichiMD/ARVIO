@@ -80,6 +80,7 @@ class TraktRepository @Inject constructor(
     private val profileManager: ProfileManager,
     private val mdbListRepository: MdbListRepository,
     private val syncProviderStore: com.arflix.tv.data.repository.sync.SyncProviderStore,
+    private val weTrakrProvider: com.arflix.tv.data.repository.wetrakr.WeTrakrRemoteProvider,
     private val simklSyncService: com.arflix.tv.data.repository.simkl.SimklSyncService,
     private val continueWatchingUpdates: ContinueWatchingUpdates,
     @javax.inject.Named("traktAuth") private val traktAuthApi: TraktApi = traktApi
@@ -296,7 +297,7 @@ class TraktRepository @Inject constructor(
                 newToken.accessToken
             } catch (e: HttpException) {
                 val code = e.code()
-                if (code == 401 || code == 403) {
+                if (code == 401) {
                     // A rejected refresh token cannot recover automatically.
                     // Keeping it made the UI report Trakt as connected while
                     // Continue Watching silently fell back to an old snapshot.
@@ -763,6 +764,13 @@ class TraktRepository @Inject constructor(
                 if (e is kotlinx.coroutines.CancellationException) throw e
             }
         }
+        if (com.arflix.tv.data.repository.sync.SyncProvider.WETRAKR in syncProviderStore.writeProviders()) {
+            try {
+                weTrakrProvider.markWatched(com.arflix.tv.data.model.MediaType.MOVIE, tmdbId)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+            }
+        }
     }
 
     /**
@@ -783,6 +791,13 @@ class TraktRepository @Inject constructor(
         if (com.arflix.tv.data.repository.sync.SyncProvider.SIMKL in syncProviderStore.writeProviders()) {
             try {
                 simklSyncService.markUnwatched(com.arflix.tv.data.model.MediaType.MOVIE, tmdbId)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+            }
+        }
+        if (com.arflix.tv.data.repository.sync.SyncProvider.WETRAKR in syncProviderStore.writeProviders()) {
+            try {
+                weTrakrProvider.markWatched(com.arflix.tv.data.model.MediaType.MOVIE, tmdbId, watched = false)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
             }
@@ -811,6 +826,14 @@ class TraktRepository @Inject constructor(
         if (com.arflix.tv.data.repository.sync.SyncProvider.SIMKL in syncProviderStore.writeProviders()) {
             try {
                 simklSyncService.markWatched(com.arflix.tv.data.model.MediaType.TV, showTmdbId, season, episode, isAnime = isAnime)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                AppLogger.e("TraktRepository", "Failed to mirror episode watched state to Simkl", e)
+            }
+        }
+        if (com.arflix.tv.data.repository.sync.SyncProvider.WETRAKR in syncProviderStore.writeProviders()) {
+            try {
+                weTrakrProvider.markWatched(com.arflix.tv.data.model.MediaType.TV, showTmdbId, season, episode)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 AppLogger.e("TraktRepository", "Failed to mirror episode watched state to Simkl", e)
@@ -859,6 +882,13 @@ class TraktRepository @Inject constructor(
             if (com.arflix.tv.data.repository.sync.SyncProvider.SIMKL in syncProviderStore.writeProviders()) {
                 try {
                     simklSyncService.markUnwatched(com.arflix.tv.data.model.MediaType.TV, showTmdbId, season, episode, isAnime = isAnime)
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                }
+            }
+        if (com.arflix.tv.data.repository.sync.SyncProvider.WETRAKR in syncProviderStore.writeProviders()) {
+                try {
+                    weTrakrProvider.markWatched(com.arflix.tv.data.model.MediaType.TV, showTmdbId, season, episode, watched = false)
                 } catch (e: Exception) {
                     if (e is kotlinx.coroutines.CancellationException) throw e
                 }
@@ -1635,7 +1665,8 @@ class TraktRepository @Inject constructor(
         )
 
     suspend fun isAlternativeRemoteActive(): Boolean =
-        isMdbListActive() || isSimklActive()
+        isMdbListActive() || isSimklActive() || (weTrakrProvider.isConnected() &&
+            com.arflix.tv.data.repository.sync.SyncProvider.WETRAKR in syncProviderStore.readProviders(com.arflix.tv.data.repository.sync.TrackingFeature.CONTINUE_WATCHING))
 
     suspend fun getContinueWatching(forceRefresh: Boolean = false): List<ContinueWatchingItem> = coroutineScope {
         ensureProfileCacheScope()
@@ -1724,10 +1755,10 @@ class TraktRepository @Inject constructor(
             // the breaker instead of the next one retrying straight into it.
             val rateLimited = java.util.concurrent.atomic.AtomicBoolean(false)
 
-            // Helper: detect HTTP 401/403 from Retrofit exceptions
+            // A forbidden request (403) does not prove the token was revoked.
             fun isAuthError(e: Exception): Boolean {
                 val httpEx = e as? retrofit2.HttpException ?: return false
-                return httpEx.code() in setOf(401, 403)
+                return httpEx.code() == 401
             }
             // Re-acquire auth if the original token was stale
             val authHolder = arrayOf(auth)
@@ -4754,6 +4785,9 @@ class TraktRepository @Inject constructor(
         if (com.arflix.tv.data.repository.sync.SyncProvider.SIMKL in providers) {
             synced = simklSyncService.markSeasonWatched(showTmdbId, seasonNumber, episodes, watched = true, isAnime = isAnime) || synced
         }
+        if (com.arflix.tv.data.repository.sync.SyncProvider.WETRAKR in providers) {
+            for (episode in episodes) synced = weTrakrProvider.markWatched(MediaType.TV, showTmdbId, seasonNumber, episode, watched = true) || synced
+        }
 
         loadWatchedCacheBeforeWrite()
         episodes.forEach { ep ->
@@ -4861,6 +4895,9 @@ class TraktRepository @Inject constructor(
 
         if (com.arflix.tv.data.repository.sync.SyncProvider.SIMKL in providers) {
             synced = simklSyncService.markSeasonWatched(showTmdbId, seasonNumber, episodes, watched = false, isAnime = isAnime) || synced
+        }
+        if (com.arflix.tv.data.repository.sync.SyncProvider.WETRAKR in providers) {
+            for (episode in episodes) synced = weTrakrProvider.markWatched(MediaType.TV, showTmdbId, seasonNumber, episode, watched = false) || synced
         }
 
         loadWatchedCacheBeforeWrite()
@@ -5037,6 +5074,7 @@ class TraktRepository @Inject constructor(
                 if (useMdbList) addHistory({ mdbListRepository.getWatchedMovies() }, { mdbListRepository.getWatchedEpisodes() })
                 val useSimkl = com.arflix.tv.data.repository.sync.SyncProvider.SIMKL in readProviders
                 if (useSimkl) addHistory({ simklSyncService.getWatchedMovies() }, { simklSyncService.getWatchedEpisodes() })
+                if (com.arflix.tv.data.repository.sync.SyncProvider.WETRAKR in readProviders) addHistory({ weTrakrProvider.getWatchedMovies() }, { weTrakrProvider.getWatchedEpisodes() })
 
                 // Always read Trakt when it is connected. Without a Supabase account the sync service
                 // only returns what the last full sync kept in memory, and that expands just the 15
@@ -5252,7 +5290,9 @@ data class ContinueWatchingItem(
                 id = 0,
                 seasonNumber = season,
                 episodeNumber = episode,
-                name = episodeTitle ?: "Episode $episode"
+                name = episodeTitle ?: "Episode $episode",
+                displaySeason = displaySeason,
+                displayEpisode = displayEpisode
             )
         } else null
 
@@ -5264,8 +5304,8 @@ data class ContinueWatchingItem(
                 (effectiveDurationSeconds * (100L - progress) / 100L).coerceAtLeast(0L)
             else -> 0L
         }
-        val timeRemainingLabel = if (showPlaybackProgress) {
-            formatTimeRemainingCompact(timeRemainingSeconds)
+        val timeRemainingMinutes = if (showPlaybackProgress) {
+            wholeMinutesRemaining(timeRemainingSeconds)
         } else {
             null
         }
@@ -5295,7 +5335,7 @@ data class ContinueWatchingItem(
             nextEpisode = nextEp,
             totalEpisodes = totalEpisodeCount,
             watchedEpisodes = watchedEpisodeCount,
-            timeRemainingLabel = timeRemainingLabel,
+            timeRemainingMinutes = timeRemainingMinutes,
             showPlaybackProgress = showPlaybackProgress,
             addonNativeId = addonNativeId,
             addonNativeAddonId = addonNativeAddonId,
@@ -5369,20 +5409,11 @@ private fun formatResumeClock(totalSeconds: Long): String {
         "%d:%02d".format(minutes, seconds)
     }
 }
-/**
- * Format seconds to a compact human-readable time remaining string.
- * e.g., "45min left", "1hr 15min left", "2hr left"
- */
-private fun formatTimeRemainingCompact(totalSeconds: Long): String? {
+/** Whole minutes left for the Continue Watching badge; null under a minute. */
+private fun wholeMinutesRemaining(totalSeconds: Long): Int? {
     val safe = totalSeconds.coerceAtLeast(0L)
     if (safe < 60) return null // Less than a minute
-    val hours = safe / 3600
-    val minutes = (safe % 3600) / 60
-    return when {
-        hours > 0 && minutes > 0 -> "${hours}hr ${minutes}min left"
-        hours > 0 -> "${hours}hr left"
-        else -> "${minutes}min left"
-    }
+    return (safe / 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
 }
 
 private fun parseRuntimeLabelSeconds(label: String): Long {

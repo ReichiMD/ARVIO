@@ -376,29 +376,11 @@ fun MediaCard(
 
                 // Subtle green watched badge
                 if (item.isWatched) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                        .padding(bottom = 6.dp, end = 6.dp)
-                        .size(14.dp)
-                        .background(
-                            color = ArvioSkin.colors.watchedGreen.copy(alpha = 0.2f),
-                            shape = CircleShape
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = ArvioSkin.colors.watchedGreen,
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        tint = ArvioSkin.colors.watchedGreen,
-                        modifier = Modifier.size(8.dp)
+                    WatchedBadge(
+                        Modifier.align(Alignment.BottomEnd)
+                            .padding(bottom = 6.dp, end = 6.dp)
+                            .testTag("media_watched_${item.mediaType}_${item.id}")
                     )
-                }
                 }
 
                 // Subtle playback progress bar for Continue Watching.
@@ -426,9 +408,16 @@ fun MediaCard(
 
                 // ── Continue Watching badges ──
                 if (showProgress) {
+                    // A narrow poster cannot hold both top badges in full, so the right one is shortened too.
+                    val compactBadges = !isLandscape && width < CONTINUE_WATCHING_FULL_BADGE_MIN_WIDTH
                     // Top-right: time remaining or "New Episode" badge
-                    val topRightLabel = item.timeRemainingLabel
-                        ?: if (item.mediaType == MediaType.TV && item.progress == 0 && !item.isWatched) stringResource(R.string.component_badge_new_episode) else null
+                    val topRightLabel = item.timeRemainingMinutes?.let { timeRemainingBadgeLabel(it, compactBadges) }
+                        ?: if (item.mediaType == MediaType.TV && item.progress == 0 && !item.isWatched) {
+                            stringResource(
+                                if (compactBadges) R.string.component_badge_new_episode_short
+                                else R.string.component_badge_new_episode
+                            )
+                        } else null
                     if (topRightLabel != null) {
                         Box(
                             modifier = Modifier
@@ -497,8 +486,8 @@ fun MediaCard(
                             Text(
                                 text = stringResource(
                                     R.string.component_season_episode_marker,
-                                    nextEpisode.seasonNumber,
-                                    nextEpisode.episodeNumber
+                                    nextEpisode.displaySeason ?: nextEpisode.seasonNumber,
+                                    nextEpisode.displayEpisode ?: nextEpisode.episodeNumber
                                 ),
                                 style = ArvioSkin.typography.badge,
                                 color = ArvioSkin.colors.textPrimary,
@@ -571,6 +560,31 @@ fun MediaCard(
                 )
             }
         }
+    }
+}
+
+/** Narrower posters show the short Continue Watching badges ("Neu", "25 Min."); the full ones overlap there. */
+private val CONTINUE_WATCHING_FULL_BADGE_MIN_WIDTH = 140.dp
+
+/** Remaining time for the Continue Watching badge, e.g. "25min left", or "25m" when [compact]. */
+@Composable
+internal fun timeRemainingBadgeLabel(totalMinutes: Int, compact: Boolean): String {
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours == 0 -> stringResource(
+            if (compact) R.string.component_time_left_minutes_short else R.string.component_time_left_minutes,
+            minutes
+        )
+        minutes == 0 -> stringResource(
+            if (compact) R.string.component_time_left_hours_short else R.string.component_time_left_hours,
+            hours
+        )
+        else -> stringResource(
+            if (compact) R.string.component_time_left_hours_minutes_short else R.string.component_time_left_hours_minutes,
+            hours,
+            minutes
+        )
     }
 }
 
@@ -855,7 +869,34 @@ fun FeaturedMediaCard(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .padding(start = 10.dp, end = if (item.isWatched) 36.dp else 10.dp, top = 8.dp, bottom = 8.dp)
+        )
+        if (item.isWatched) {
+            WatchedBadge(
+                Modifier.align(Alignment.BottomEnd)
+                    .padding(bottom = 8.dp, end = 10.dp)
+                    .testTag("featured_watched_${item.mediaType}_${item.id}"),
+                size = 18.dp
+            )
+        }
+    }
+}
+
+/** The green tick on a watched title. Every card that shows a title draws this one. */
+@Composable
+fun WatchedBadge(modifier: Modifier = Modifier, size: Dp = 14.dp) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .background(color = ArvioSkin.colors.watchedGreen.copy(alpha = 0.2f), shape = CircleShape)
+            .border(width = 1.dp, color = ArvioSkin.colors.watchedGreen, shape = CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Check,
+            contentDescription = null,
+            tint = ArvioSkin.colors.watchedGreen,
+            modifier = Modifier.size(size * (8f / 14f))
         )
     }
 }
