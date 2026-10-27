@@ -66,6 +66,7 @@ import com.arflix.tv.ui.components.LocalBottomBarInset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed as standardItemsIndexed
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -93,7 +94,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -2070,7 +2070,10 @@ private fun DetailsContent(
         val heroAlpha = 1f - 0.65f * railExpansionProgress
         // Episode cards are taller than the room a long hero leaves; lift just enough to show them whole.
         val episodeLiftProgress by animateFloatAsState(
-            targetValue = if (focusSectionForUi == FocusSection.EPISODES) 1f else 0f,
+            targetValue = if (
+                hasEpisodeRail &&
+                (focusSectionForUi == FocusSection.SEASONS || focusSectionForUi == FocusSection.EPISODES)
+            ) 1f else 0f,
             animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
             label = "details_episode_lift"
         )
@@ -2086,6 +2089,9 @@ private fun DetailsContent(
             )
         }
         val expandedRowHeight = restingRowHeight + shiftAmount
+        // Column top padding + season rail (6 + 36 + 2 + 6) + spacing + episode rail (6 + 16:9 card + 6).
+        val episodeCardHeight = (if (configuration.screenWidthDp < 1400) 292.dp else 300.dp) * 9f / 16f
+        val episodeRowsHeight = 6.dp + (if (totalSeasons > 1) 54.dp else 0.dp) + episodeCardHeight + 12.dp + 4.dp
 
         val contentRowBottomPadding = 0.dp
 
@@ -2095,6 +2101,9 @@ private fun DetailsContent(
             expansionProgress = railExpansionProgress,
             modifier = Modifier.fillMaxSize(),
             liftProgress = episodeLiftProgress,
+            liftRowsHeight = episodeRowsHeight,
+            // Never more than the hero's own top inset, so the logo only slides under the top bar.
+            maxLift = heroTopPadding,
         ) {
             Column(
                 modifier = Modifier
@@ -2186,7 +2195,6 @@ private fun DetailsContent(
                 val hasSecondaryMetadata = primaryNetworkLogo != null ||
                     hasRatingMetadata ||
                     hasBudgetMetadata
-                val overviewMaxHeight = if (isCompactHeight) 78.dp else 88.dp
 
                 val separatorStyle = ArflixTypography.caption.copy(
                     fontSize = 13.sp,
@@ -2339,10 +2347,10 @@ private fun DetailsContent(
                 Box(
                     modifier = Modifier
                         .width(minOf(820.dp, configuration.screenWidthDp.dp * 0.66f).coerceAtLeast(420.dp))
-                        .heightIn(max = overviewMaxHeight)
                 ) {
                     DetailsTvOverviewText(
                         text = displayOverview,
+                        active = !isBrowsingRails,
                         style = ArflixTypography.body.copy(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Normal,
@@ -3078,22 +3086,26 @@ private fun DetailsEpisodeRatingsRail(
 private fun DetailsTvOverviewText(
     text: String,
     style: TextStyle,
+    active: Boolean,
     visibleLines: Int = 3,
 ) {
-    val scrollState = rememberScrollState()
+    // Keyed on the text so a new overview starts at the top and is measured afresh.
+    val scrollState = remember(text) { ScrollState(0) }
     val textAlpha = remember(text) { Animatable(1f) }
     val density = LocalDensity.current
     val viewportHeight = with(density) { (style.lineHeight * visibleLines).toDp() }
     val pxPerSecond = with(density) { 10.dp.toPx() }
 
-    LaunchedEffect(text) {
+    // Paused while the hero is faded for the deeper rails; resumes from the top.
+    LaunchedEffect(text, active) {
+        if (!active) return@LaunchedEffect
+        textAlpha.snapTo(1f)
         scrollState.scrollTo(0)
-        // The text measures after the first frame; wait for it before deciding whether to roll.
-        val distance = snapshotFlow { scrollState.maxValue }.first { it != Int.MAX_VALUE }
-        if (distance <= 0) return@LaunchedEffect
         while (true) {
             delay(4_000)
             val target = scrollState.maxValue
+            // Fits in the visible lines (or not measured yet): nothing to roll, check again later.
+            if (target <= 0 || target == Int.MAX_VALUE) continue
             scrollState.animateScrollTo(
                 value = target,
                 animationSpec = tween(

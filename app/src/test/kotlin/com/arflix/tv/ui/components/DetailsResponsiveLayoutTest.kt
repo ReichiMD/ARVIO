@@ -164,4 +164,24 @@ class DetailsResponsiveLayoutTest {
         assertThat(lifted.heroOffsetYPx).isEqualTo(0)
         assertThat(lifted.liftPx).isEqualTo(0)
     }
+
+    @Test
+    fun liftStopsAtWhatTheRowsNeedAndAtTheMaximum() {
+        // Single-season shows need less than the resting height: lift only up to that need.
+        val needed = resolveDetailsTvHeroBounds(540, 365, 240, 375, 0f, 12f, 1f, liftRowsHeightPx = 182)
+        assertThat(needed.rowsHeightPx).isEqualTo(182)
+        val capped = resolveDetailsTvHeroBounds(540, 365, 240, 375, 0f, 12f, 1f, maxLiftPx = 40)
+        assertThat(capped.rowsHeightPx).isEqualTo(203)
+        assertThat(capped.liftPx).isEqualTo(40)
+    }
+
+    @Test
+    fun liftAndExpansionKeepTheGapWhileBothAnimate() {
+        for (step in 0..100) {
+            val progress = step / 100f
+            val bounds = resolveDetailsTvHeroBounds(540, 365, 240, 375, progress, 12f, 1f - progress)
+            val rowsTop = 540 - bounds.rowsHeightPx
+            assertThat(rowsTop).isAtLeast(365 + bounds.heroOffsetYPx + 12)
+        }
+    }
 }

@@ -32,13 +32,16 @@ internal fun resolveDetailsTvHeroBounds(
     expansionProgress: Float,
     gapPx: Float,
     liftProgress: Float = 0f,
+    liftRowsHeightPx: Int = restingRowsHeightPx,
+    maxLiftPx: Int = Int.MAX_VALUE,
 ): DetailsTvHeroBounds {
     val reservedHeight = ceil(heroHeightPx + gapPx).toInt()
         .coerceIn(0, containerHeightPx)
     val fittingHeight = restingRowsHeightPx.coerceIn(0, containerHeightPx - reservedHeight)
-    // A tall hero squeezes the rows below their resting height; lifting gives back only what is missing.
-    val liftPx = ((restingRowsHeightPx.coerceIn(0, containerHeightPx) - fittingHeight) *
-        liftProgress.coerceIn(0f, 1f)).toInt()
+    // A tall hero squeezes the rows below what they need; lifting gives back only what is missing.
+    val missingPx = (liftRowsHeightPx.coerceIn(0, containerHeightPx) - fittingHeight)
+        .coerceIn(0, maxLiftPx.coerceAtLeast(0))
+    val liftPx = (missingPx * liftProgress.coerceIn(0f, 1f)).toInt()
     val restingHeight = fittingHeight + liftPx
     val expandedHeight = expandedRowsHeightPx.coerceIn(restingHeight, containerHeightPx)
     val rowsHeight = (restingHeight +

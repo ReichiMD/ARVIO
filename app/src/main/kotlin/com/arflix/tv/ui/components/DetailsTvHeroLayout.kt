@@ -2,6 +2,7 @@ package com.arflix.tv.ui.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -14,6 +15,8 @@ internal fun DetailsTvHeroLayout(
     expansionProgress: Float,
     modifier: Modifier = Modifier,
     liftProgress: Float = 0f,
+    liftRowsHeight: Dp = restingRowsHeight,
+    maxLift: Dp = Dp.Infinity,
     content: @Composable () -> Unit,
 ) {
     Layout(content = content, modifier = modifier) { measurables, constraints ->
@@ -26,6 +29,8 @@ internal fun DetailsTvHeroLayout(
             expansionProgress = expansionProgress,
             gapPx = 12.dp.toPx(),
             liftProgress = liftProgress,
+            liftRowsHeightPx = liftRowsHeight.roundToPx(),
+            maxLiftPx = if (maxLift == Dp.Infinity) Int.MAX_VALUE else maxLift.roundToPx(),
         )
         val rows = measurables[1].measure(
             constraints.copy(minHeight = bounds.rowsHeightPx, maxHeight = bounds.rowsHeightPx)
@@ -35,7 +40,11 @@ internal fun DetailsTvHeroLayout(
             hero.placeRelativeWithLayer(0, 0) {
                 translationY = bounds.heroOffsetYPx.toFloat()
                 // Dim the lifted hero a little so it recedes behind the top bar it slides under.
-                if (bounds.liftPx > 0) alpha = 1f - 0.3f * liftProgress.coerceIn(0f, 1f)
+                if (bounds.liftPx > 0) {
+                    alpha = 1f - 0.3f * liftProgress.coerceIn(0f, 1f)
+                    // Fade each draw instead of compositing the whole hero offscreen every frame.
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                }
             }
             rows.placeRelative(0, constraints.maxHeight - rows.height)
         }
