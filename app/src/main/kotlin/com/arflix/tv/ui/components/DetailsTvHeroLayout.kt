@@ -27,7 +27,7 @@ internal fun DetailsTvHeroLayout(
             restingRowsHeightPx = restingRowsHeight.roundToPx(),
             expandedRowsHeightPx = expandedRowsHeight.roundToPx(),
             expansionProgress = expansionProgress,
-            gapPx = 12.dp.toPx(),
+            gapPx = 4.dp.toPx(),
             liftProgress = liftProgress,
             liftRowsHeightPx = liftRowsHeight.roundToPx(),
             maxLiftPx = if (maxLift == Dp.Infinity) Int.MAX_VALUE else maxLift.roundToPx(),

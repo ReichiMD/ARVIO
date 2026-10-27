@@ -2089,9 +2089,9 @@ private fun DetailsContent(
             )
         }
         val expandedRowHeight = restingRowHeight + shiftAmount
-        // Column top padding + season rail (6 + 36 + 2 + 6) + spacing + episode rail (6 + 16:9 card + 6).
+        // Column top padding + season rail (6 + 36 + 2 + 2) + spacing + episode rail (6 + 16:9 card + 6) + slack.
         val episodeCardHeight = (if (configuration.screenWidthDp < 1400) 292.dp else 300.dp) * 9f / 16f
-        val episodeRowsHeight = 6.dp + (if (totalSeasons > 1) 54.dp else 0.dp) + episodeCardHeight + 12.dp + 4.dp
+        val episodeRowsHeight = 2.dp + (if (totalSeasons > 1) 50.dp else 0.dp) + episodeCardHeight + 12.dp + 4.dp
 
         val contentRowBottomPadding = 0.dp
 
@@ -2631,7 +2631,8 @@ private fun DetailsTvRows(
             .arvioDpadFocusGroup(enableFocusRestorer = false)
             .clipToBounds(),
         verticalArrangement = Arrangement.spacedBy(4.dp),
-        contentPadding = PaddingValues(top = 6.dp)
+        // Tight under the hero so a full episode card fits below a long overview.
+        contentPadding = PaddingValues(top = 2.dp)
     ) {
         if (item.mediaType == MediaType.TV && (episodes.isNotEmpty() || isSeasonLoading)) {
             if (totalSeasons > 1) {
@@ -2792,7 +2793,7 @@ private fun DetailsSeasonRail(
                 minimum = 150.dp
             ),
             top = 6.dp,
-            bottom = 6.dp,
+            bottom = 2.dp,
         ),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
