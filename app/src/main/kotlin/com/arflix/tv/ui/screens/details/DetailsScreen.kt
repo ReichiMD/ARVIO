@@ -22,6 +22,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
@@ -92,6 +93,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -129,6 +131,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -2065,6 +2068,12 @@ private fun DetailsContent(
             label = "details_rail_expansion"
         )
         val heroAlpha = 1f - 0.65f * railExpansionProgress
+        // Episode cards are taller than the room a long hero leaves; lift just enough to show them whole.
+        val episodeLiftProgress by animateFloatAsState(
+            targetValue = if (focusSectionForUi == FocusSection.EPISODES) 1f else 0f,
+            animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+            label = "details_episode_lift"
+        )
 
         val minRestingRowHeight = if (hasEpisodeRail) 240.dp else if (hasPosterDetailRails) 226.dp else 210.dp
         val maxRestingRowHeight = if (hasEpisodeRail) 260.dp else if (hasPosterDetailRails) 246.dp else 226.dp
@@ -2085,6 +2094,7 @@ private fun DetailsContent(
             expandedRowsHeight = expandedRowHeight,
             expansionProgress = railExpansionProgress,
             modifier = Modifier.fillMaxSize(),
+            liftProgress = episodeLiftProgress,
         ) {
             Column(
                 modifier = Modifier
@@ -2331,18 +2341,14 @@ private fun DetailsContent(
                         .width(minOf(820.dp, configuration.screenWidthDp.dp * 0.66f).coerceAtLeast(420.dp))
                         .heightIn(max = overviewMaxHeight)
                 ) {
-                    Text(
+                    DetailsTvOverviewText(
                         text = displayOverview,
                         style = ArflixTypography.body.copy(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Normal,
                             lineHeight = 19.sp,
                             shadow = textShadow
-                        ),
-                        color = Color.White,
-                        // Four lines at this width; still fits overviewMaxHeight.
-                        maxLines = 4,
-                        overflow = TextOverflow.Ellipsis
+                        )
                     )
                 }
 
@@ -3062,6 +3068,55 @@ private fun DetailsEpisodeRatingsRail(
             }
         }
     }
+}
+
+/**
+ * Three visible lines; a longer overview waits, rolls slowly to its end, waits, fades and starts
+ * over, so the hero stays short enough for the rails below it.
+ */
+@Composable
+private fun DetailsTvOverviewText(
+    text: String,
+    style: TextStyle,
+    visibleLines: Int = 3,
+) {
+    val scrollState = rememberScrollState()
+    val textAlpha = remember(text) { Animatable(1f) }
+    val density = LocalDensity.current
+    val viewportHeight = with(density) { (style.lineHeight * visibleLines).toDp() }
+    val pxPerSecond = with(density) { 10.dp.toPx() }
+
+    LaunchedEffect(text) {
+        scrollState.scrollTo(0)
+        // The text measures after the first frame; wait for it before deciding whether to roll.
+        val distance = snapshotFlow { scrollState.maxValue }.first { it != Int.MAX_VALUE }
+        if (distance <= 0) return@LaunchedEffect
+        while (true) {
+            delay(4_000)
+            val target = scrollState.maxValue
+            scrollState.animateScrollTo(
+                value = target,
+                animationSpec = tween(
+                    durationMillis = (target / pxPerSecond * 1_000).toInt().coerceAtLeast(1_500),
+                    easing = LinearEasing
+                )
+            )
+            delay(3_000)
+            textAlpha.animateTo(0f, tween(400))
+            scrollState.scrollTo(0)
+            textAlpha.animateTo(1f, tween(400))
+        }
+    }
+
+    Text(
+        text = text,
+        style = style,
+        color = Color.White,
+        modifier = Modifier
+            .heightIn(max = viewportHeight)
+            .graphicsLayer { alpha = textAlpha.value }
+            .verticalScroll(scrollState, enabled = false)
+    )
 }
 
 @Composable

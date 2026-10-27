@@ -13,6 +13,7 @@ internal fun DetailsTvHeroLayout(
     expandedRowsHeight: Dp,
     expansionProgress: Float,
     modifier: Modifier = Modifier,
+    liftProgress: Float = 0f,
     content: @Composable () -> Unit,
 ) {
     Layout(content = content, modifier = modifier) { measurables, constraints ->
@@ -24,6 +25,7 @@ internal fun DetailsTvHeroLayout(
             expandedRowsHeightPx = expandedRowsHeight.roundToPx(),
             expansionProgress = expansionProgress,
             gapPx = 12.dp.toPx(),
+            liftProgress = liftProgress,
         )
         val rows = measurables[1].measure(
             constraints.copy(minHeight = bounds.rowsHeightPx, maxHeight = bounds.rowsHeightPx)
@@ -32,6 +34,8 @@ internal fun DetailsTvHeroLayout(
         layout(constraints.maxWidth, constraints.maxHeight) {
             hero.placeRelativeWithLayer(0, 0) {
                 translationY = bounds.heroOffsetYPx.toFloat()
+                // Dim the lifted hero a little so it recedes behind the top bar it slides under.
+                if (bounds.liftPx > 0) alpha = 1f - 0.3f * liftProgress.coerceIn(0f, 1f)
             }
             rows.placeRelative(0, constraints.maxHeight - rows.height)
         }

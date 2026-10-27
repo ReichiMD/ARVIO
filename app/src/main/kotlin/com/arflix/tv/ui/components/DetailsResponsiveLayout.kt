@@ -20,6 +20,8 @@ internal fun resolveDetailsBackdropHeightDp(
 internal data class DetailsTvHeroBounds(
     val rowsHeightPx: Int,
     val heroOffsetYPx: Int,
+    /** How far [liftProgress] pushed the hero up to give the rows their resting height. */
+    val liftPx: Int = 0,
 )
 
 internal fun resolveDetailsTvHeroBounds(
@@ -29,10 +31,15 @@ internal fun resolveDetailsTvHeroBounds(
     expandedRowsHeightPx: Int,
     expansionProgress: Float,
     gapPx: Float,
+    liftProgress: Float = 0f,
 ): DetailsTvHeroBounds {
     val reservedHeight = ceil(heroHeightPx + gapPx).toInt()
         .coerceIn(0, containerHeightPx)
-    val restingHeight = restingRowsHeightPx.coerceIn(0, containerHeightPx - reservedHeight)
+    val fittingHeight = restingRowsHeightPx.coerceIn(0, containerHeightPx - reservedHeight)
+    // A tall hero squeezes the rows below their resting height; lifting gives back only what is missing.
+    val liftPx = ((restingRowsHeightPx.coerceIn(0, containerHeightPx) - fittingHeight) *
+        liftProgress.coerceIn(0f, 1f)).toInt()
+    val restingHeight = fittingHeight + liftPx
     val expandedHeight = expandedRowsHeightPx.coerceIn(restingHeight, containerHeightPx)
     val rowsHeight = (restingHeight +
         (expandedHeight - restingHeight) * expansionProgress.coerceIn(0f, 1f)).toInt()
@@ -40,6 +47,7 @@ internal fun resolveDetailsTvHeroBounds(
     // Expand the rails without sacrificing poster height or changing the gap to the hero.
     return DetailsTvHeroBounds(
         rowsHeightPx = rowsHeight,
-        heroOffsetYPx = restingHeight - rowsHeight,
+        heroOffsetYPx = fittingHeight - rowsHeight,
+        liftPx = liftPx,
     )
 }

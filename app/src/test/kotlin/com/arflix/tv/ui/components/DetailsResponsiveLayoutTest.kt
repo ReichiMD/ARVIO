@@ -147,4 +147,21 @@ class DetailsResponsiveLayoutTest {
         assertThat(landscape).isLessThan(portrait)
         assertThat(portraitAgain).isEqualTo(portrait)
     }
+
+    @Test
+    fun liftGivesSqueezedRowsOnlyTheMissingHeight() {
+        // Hero leaves 163 of the 240 the episode rows need: lifting adds exactly the 77 missing.
+        val lifted = resolveDetailsTvHeroBounds(540, 365, 240, 375, 0f, 12f, liftProgress = 1f)
+        assertThat(lifted.rowsHeightPx).isEqualTo(240)
+        assertThat(lifted.heroOffsetYPx).isEqualTo(-77)
+        assertThat(lifted.liftPx).isEqualTo(77)
+    }
+
+    @Test
+    fun liftLeavesRowsAloneWhenTheyAlreadyFit() {
+        val lifted = resolveDetailsTvHeroBounds(720, 390, 246, 421, 0f, 12f, liftProgress = 1f)
+        assertThat(lifted.rowsHeightPx).isEqualTo(246)
+        assertThat(lifted.heroOffsetYPx).isEqualTo(0)
+        assertThat(lifted.liftPx).isEqualTo(0)
+    }
 }
