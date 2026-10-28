@@ -113,7 +113,8 @@ class MediaRepository @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val streamRepository: StreamRepository,
     private val homeServerRepository: HomeServerRepository,
-    private val simklListsRepository: com.arflix.tv.data.repository.simkl.SimklListsRepository? = null
+    private val simklListsRepository: com.arflix.tv.data.repository.simkl.SimklListsRepository? = null,
+    private val personalRecommendations: PersonalRecommendationsRepository? = null
 ) {
 
     data class CategoryPageResult(
@@ -829,7 +830,9 @@ class MediaRepository @Inject constructor(
 
             val pinnedLeadCatalogs = topLevelCatalogs.take(3)
             val trailingCatalogs = topLevelCatalogs.drop(3)
-            return pinnedLeadCatalogs + collectionRails + templateCollections + trailingCatalogs
+            // The personal rows come first, right under Continue Watching.
+            return PersonalRecommendations.defaultCatalogs() +
+                pinnedLeadCatalogs + collectionRails + templateCollections + trailingCatalogs
         }
     }
 
@@ -1014,7 +1017,7 @@ class MediaRepository @Inject constructor(
             CatalogSourceType.MDBLIST -> loadMdblistCatalogRefs(catalog.sourceUrl, catalog.sourceRef)
             CatalogSourceType.TMDB -> loadTmdbCatalogRefs(catalog.sourceUrl, catalog.sourceRef)
             CatalogSourceType.ADDON -> loadAddonCatalogRefsPage(catalog, offset = 0, limit = effectiveMaxItems).refs
-            CatalogSourceType.PREINSTALLED -> emptyList()
+            CatalogSourceType.PREINSTALLED -> personalRecommendations?.refsFor(catalog).orEmpty()
             CatalogSourceType.HOME_SERVER -> emptyList()
             CatalogSourceType.YOUTUBE -> emptyList()
         }
@@ -1077,7 +1080,7 @@ class MediaRepository @Inject constructor(
                 CatalogSourceType.MDBLIST -> loadMdblistCatalogRefs(catalog.sourceUrl, catalog.sourceRef)
                 CatalogSourceType.TMDB -> loadTmdbCatalogRefs(catalog.sourceUrl, catalog.sourceRef)
                 CatalogSourceType.ADDON -> emptyList()
-                CatalogSourceType.PREINSTALLED -> emptyList()
+                CatalogSourceType.PREINSTALLED -> personalRecommendations?.refsFor(catalog).orEmpty()
                 CatalogSourceType.HOME_SERVER -> emptyList()
                 CatalogSourceType.YOUTUBE -> emptyList()
             }.distinct()

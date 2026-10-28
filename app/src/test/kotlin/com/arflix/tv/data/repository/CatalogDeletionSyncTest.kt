@@ -110,6 +110,34 @@ class CatalogDeletionSyncTest {
         assertFalse(repository.getCatalogs().any { it.id == target.id })
     }
 
+    @Test fun forYouRowsReachExistingProfilesAtTheTopAndKeepTheirSource() = runBlocking {
+        val defaults = MediaRepository.buildPreinstalledDefaults()
+        // A profile set up before the "For You" rows existed.
+        repository.ensurePreinstalledDefaults(defaults.filterNot { it.id in PersonalRecommendations.catalogIds })
+        repository.ensurePreinstalledDefaults(defaults)
+
+        val catalogs = repository.getCatalogs()
+        assertEquals(
+            listOf(PersonalRecommendations.MOVIES_CATALOG_ID, PersonalRecommendations.SHOWS_CATALOG_ID),
+            catalogs.take(2).map { it.id }
+        )
+        catalogs.take(2).forEach {
+            assertTrue(it.isPreinstalled)
+            assertEquals(CatalogSourceType.PREINSTALLED, it.sourceType)
+            assertTrue(it.sourceRef!!.startsWith(PersonalRecommendations.SOURCE_REF_PREFIX))
+            assertNotNull(PersonalRecommendations.mediaTypeOf(it))
+        }
+    }
+
+    @Test fun deletedForYouRowStaysDeleted() = runBlocking {
+        val defaults = MediaRepository.buildPreinstalledDefaults()
+        repository.ensurePreinstalledDefaults(defaults)
+        repository.removeCustomCatalog(PersonalRecommendations.SHOWS_CATALOG_ID).getOrThrow()
+        repository.ensurePreinstalledDefaults(defaults)
+        assertFalse(repository.getCatalogs().any { it.id == PersonalRecommendations.SHOWS_CATALOG_ID })
+        assertTrue(repository.getCatalogs().any { it.id == PersonalRecommendations.MOVIES_CATALOG_ID })
+    }
+
     @Test fun automaticSetupDoesNotOutrankExistingCloudChoices() = runBlocking {
         repository.ensurePreinstalledDefaults(MediaRepository.buildPreinstalledDefaults())
         assertEquals(0L, JSONObject(state.value[tsKey] ?: "{}").optLong("c:default:catalogsByProfile"))

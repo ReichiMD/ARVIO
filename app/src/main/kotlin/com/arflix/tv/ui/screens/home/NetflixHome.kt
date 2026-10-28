@@ -216,7 +216,7 @@ internal fun handleNetflixHomeKey(
     categories: List<Category>,
     isRtl: Boolean,
     onBillboardOpen: (MediaItem, Boolean) -> Unit,
-    onOpenContextMenu: (MediaItem, Boolean) -> Unit
+    onOpenContextMenu: (MediaItem, String?) -> Unit
 ): Boolean? {
     val keyDown = event.type == KeyEventType.KeyDown
     val isSelect = event.key == Key.Enter || event.key == Key.DirectionCenter
@@ -261,7 +261,7 @@ internal fun handleNetflixHomeKey(
             }
             Key.Menu, Key.Info -> {
                 netflix.billboardItem?.takeIf { isActionableHomeItem(it) }
-                    ?.let { onOpenContextMenu(it, false) }
+                    ?.let { onOpenContextMenu(it, null) }
                 true
             }
             Key.Back, Key.Escape -> {

@@ -29,6 +29,8 @@ import com.arflix.tv.R
 import com.arflix.tv.data.repository.KidsContentFilter
 import com.arflix.tv.data.repository.MediaRepository
 import com.arflix.tv.data.repository.PersonalListsRepository
+import com.arflix.tv.data.repository.PersonalRecommendations
+import com.arflix.tv.data.repository.PersonalRecommendationsRepository
 import com.arflix.tv.ui.components.PersonalListPicker
 import com.arflix.tv.network.OkHttpProvider
 import com.arflix.tv.network.TmdbPriorityDispatcher
@@ -400,6 +402,7 @@ class HomeViewModel @Inject constructor(
     private val youTubeExtractor: com.arflix.tv.data.api.InAppYouTubeExtractor,
     private val personalListsRepository: PersonalListsRepository,
     private val kidsContentFilter: KidsContentFilter,
+    private val personalRecommendations: PersonalRecommendationsRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     /** "Add to list" from the context menu; the result shows as a Home toast. */
@@ -3131,6 +3134,7 @@ class HomeViewModel @Inject constructor(
                         .filter {
                             it.isPreinstalled &&
                                 it.sourceUrl.isNullOrBlank() &&
+                                it.sourceRef.isNullOrBlank() &&
                                 !isCollectionRailConfig(it) &&
                                 !isCollectionTileConfig(it)
                         }
@@ -3810,7 +3814,7 @@ class HomeViewModel @Inject constructor(
 
         // 5. TMDB Built-in Categories (Trending Movies, Shows, Anime) - fast independent single-request fetches
         val tmdbConfigs = savedCatalogs.filter {
-            (it.id in BUILTIN_TMDB_CATEGORY_IDS) || (it.isPreinstalled && it.sourceUrl.isNullOrBlank() && !isCollectionRailConfig(it) && !isCollectionTileConfig(it))
+            (it.id in BUILTIN_TMDB_CATEGORY_IDS) || (it.isPreinstalled && it.sourceUrl.isNullOrBlank() && it.sourceRef.isNullOrBlank() && !isCollectionRailConfig(it) && !isCollectionTileConfig(it))
         }
         tmdbConfigs.forEach { cfg ->
             viewModelScope.launch(networkDispatcher) {
@@ -4169,7 +4173,8 @@ class HomeViewModel @Inject constructor(
                 val catalog = savedCatalogById[categoryId]
                 val pageSize = getCategoryPageSize(categoryId)
                 val result = if (categoryId in BUILTIN_TMDB_CATEGORY_IDS ||
-                    (catalog?.isPreinstalled == true && catalog.sourceUrl.isNullOrBlank())
+                    (catalog?.isPreinstalled == true && catalog.sourceUrl.isNullOrBlank() &&
+                        catalog.sourceRef.isNullOrBlank())
                 ) {
                     // Pure TMDB preinstalled catalog (no MDBList source)
                     val nextPage = (realItems.size / 20) + 1
@@ -4297,6 +4302,8 @@ class HomeViewModel @Inject constructor(
             if (isCollectionTileConfig(cfg)) return@forEach
             // Omit Favorite TV and Popular Live Sports from initial skeleton
             if (cfg.id == FAVORITE_TV_CATEGORY_ID) return@forEach
+            // Empty for a profile without history; a placeholder would flash and vanish.
+            if (cfg.id in PersonalRecommendations.catalogIds) return@forEach
             if (cfg.id == SportsAddonCapabilities.POPULAR_LIVE_TV_ROW_ID) return@forEach
             if (cfg.id == SportsAddonCapabilities.SPORTS_CATEGORY_ROW_ID) {
                 rows.add(sportsRepository.sportsCategoryOnlyRow(locked = true))
@@ -5769,6 +5776,45 @@ class HomeViewModel @Inject constructor(
                 if (e is CancellationException) throw e
                 _uiState.value = _uiState.value.copy(
                     toastMessage = context.getString(R.string.home_failed_remove_continue_watching),
+                    toastType = ToastType.ERROR
+                )
+            }
+        }
+    }
+
+    /** "Not interested" on a "For You" card: it leaves the row now and stays out of later loads. */
+    fun hideRecommendation(item: MediaItem) {
+        viewModelScope.launch {
+            try {
+                personalRecommendations.hide(item.mediaType, item.id)
+                // The repository's list lost this title too, so the next page starts one earlier.
+                PersonalRecommendations.catalogIds.forEach { rowId ->
+                    val row = _uiState.value.categories.firstOrNull { it.id == rowId } ?: return@forEach
+                    if (row.items.any { it.id == item.id && it.mediaType == item.mediaType }) {
+                        categoryPaginationStates[rowId]?.let { it.nextOffset = (it.nextOffset - 1).coerceAtLeast(0) }
+                    }
+                }
+                val updatedCategories = _uiState.value.categories.map { category ->
+                    if (category.id in PersonalRecommendations.catalogIds) {
+                        category.copy(items = category.items.filterNot {
+                            it.id == item.id && it.mediaType == item.mediaType
+                        })
+                    } else {
+                        category
+                    }
+                }.filter { category ->
+                    category.id !in PersonalRecommendations.catalogIds || category.items.isNotEmpty()
+                }
+                _uiState.value = _uiState.value.copy(
+                    categories = updatedCategories,
+                    toastMessage = context.getString(R.string.home_not_interested_done),
+                    toastType = ToastType.SUCCESS
+                )
+                persistCategoriesCache(updatedCategories)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.value = _uiState.value.copy(
+                    toastMessage = context.getString(R.string.home_not_interested_failed),
                     toastType = ToastType.ERROR
                 )
             }

@@ -1,5 +1,35 @@
 [
   {
+    "id": "for_you_movies",
+    "title": "For You: Movies",
+    "sourceType": "preinstalled",
+    "sourceRef": "arvio_for_you:movie",
+    "isPreinstalled": true,
+    "kind": "STANDARD",
+    "collectionTileShape": "LANDSCAPE",
+    "collectionHideTitle": false,
+    "collectionSources": [],
+    "requiredAddonUrls": [],
+    "name": "For You: Movies",
+    "enabled": true,
+    "mediaType": "movie"
+  },
+  {
+    "id": "for_you_shows",
+    "title": "For You: Shows",
+    "sourceType": "preinstalled",
+    "sourceRef": "arvio_for_you:tv",
+    "isPreinstalled": true,
+    "kind": "STANDARD",
+    "collectionTileShape": "LANDSCAPE",
+    "collectionHideTitle": false,
+    "collectionSources": [],
+    "requiredAddonUrls": [],
+    "name": "For You: Shows",
+    "enabled": true,
+    "mediaType": "tv"
+  },
+  {
     "id": "trending_movies",
     "title": "Trending in Movies",
     "sourceType": "mdblist",

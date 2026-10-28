@@ -1083,6 +1083,11 @@
     <string name="home_popular_live_sports">Popular Live Sports</string>
     <string name="home_just_added">Just Added</string>
     <string name="home_top_movies_week">Top Movies This Week</string>
+    <string name="home_for_you_movies">For You: Movies</string>
+    <string name="home_for_you_shows">For You: Shows</string>
+    <string name="not_interested">Not interested</string>
+    <string name="home_not_interested_done">Won\'t be recommended again</string>
+    <string name="home_not_interested_failed">Could not hide this title</string>
     <string name="home_new_kdramas">New in K-Dramas</string>
     <string name="home_please_check_connection">Please check your connection</string>
     <string name="home_sports_addon_required">Add a sports live TV addon first</string>

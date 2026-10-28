@@ -1483,6 +1483,11 @@
     <string name="home_popular_live_sports">Beliebter Live-Sport</string>
     <string name="home_just_added">Neu hinzugefügt</string>
     <string name="home_top_movies_week">Top-Filme diese Woche</string>
+    <string name="home_for_you_movies">Für dich: Filme</string>
+    <string name="home_for_you_shows">Für dich: Serien</string>
+    <string name="not_interested">Nicht interessiert</string>
+    <string name="home_not_interested_done">Wird dir nicht mehr empfohlen</string>
+    <string name="home_not_interested_failed">Titel konnte nicht ausgeblendet werden</string>
     <string name="home_new_kdramas">Neu bei K-Dramas</string>
     <string name="home_please_check_connection">Bitte überprüfe deine Verbindung</string>
     <string name="home_sports_addon_required">Füge zuerst ein Sport-Live-TV-Addon hinzu</string>

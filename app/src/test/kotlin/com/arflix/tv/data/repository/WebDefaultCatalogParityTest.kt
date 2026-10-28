@@ -13,7 +13,9 @@ import org.junit.Test
 class WebDefaultCatalogParityTest {
     @Test fun `web defaults match the APK catalogs artwork queries and ordering`() {
         val gson = Gson()
-        val television = setOf("trending_tv", "trending_anime", "favorite_tv", "top10_shows_today", "new_kdramas")
+        val television = setOf(
+            PersonalRecommendations.SHOWS_CATALOG_ID, "trending_tv", "trending_anime", "favorite_tv", "top10_shows_today", "new_kdramas"
+        )
         val expected = JsonArray().apply {
             MediaRepository.buildPreinstalledDefaults().forEach { catalog ->
                 add(gson.toJsonTree(catalog).asJsonObject.apply {

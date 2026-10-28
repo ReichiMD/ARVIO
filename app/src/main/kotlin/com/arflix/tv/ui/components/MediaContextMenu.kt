@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -86,6 +87,8 @@ fun MediaContextMenu(
     onRemoveFromContinueWatching: (() -> Unit)? = null,
     // Shown when a service with personal lists (Trakt, MDBList) is connected.
     onAddToList: (() -> Unit)? = null,
+    // Shown on cards of the "For You" rows.
+    onNotInterested: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val isMobile = LocalDeviceType.current.isTouchDevice()
@@ -120,6 +123,13 @@ fun MediaContextMenu(
             labelRes = if (isWatched) R.string.unwatched else R.string.watched,
             action = onToggleWatched
         ))
+        if (onNotInterested != null) {
+            add(MenuItem(
+                icon = Icons.Default.VisibilityOff,
+                labelRes = R.string.not_interested,
+                action = onNotInterested
+            ))
+        }
         // Add "Remove from Continue Watching" only when applicable
         if (isContinueWatching && onRemoveFromContinueWatching != null) {
             add(MenuItem(

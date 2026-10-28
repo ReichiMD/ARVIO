@@ -382,6 +382,30 @@ interface TraktApi {
         @Body body: TraktWatchlistBody
     ): TraktSyncResponse
 
+    // ========== Recommendations ==========
+
+    /** Personal picks from the user's history and ratings; `type` is "movies" or "shows". */
+    @GET("recommendations/{type}")
+    suspend fun getRecommendations(
+        @Header("Authorization") auth: String,
+        @Header("trakt-api-key") clientId: String,
+        @Header("trakt-api-version") version: String = "2",
+        @Path("type") type: String,
+        @Query("limit") limit: Int,
+        @Query("ignore_collected") ignoreCollected: String = "true",
+        @Query("ignore_watchlisted") ignoreWatchlisted: String = "true"
+    ): List<TraktRecommendation>
+
+    /** Stops recommending a title; `id` is its Trakt id, slug or IMDb id (not a TMDB id). */
+    @DELETE("recommendations/{type}/{id}")
+    suspend fun hideRecommendation(
+        @Header("Authorization") auth: String,
+        @Header("trakt-api-key") clientId: String,
+        @Header("trakt-api-version") version: String = "2",
+        @Path("type") type: String,
+        @Path("id") id: String
+    ): Response<okhttp3.ResponseBody>
+
     // ========== Up Next ==========
 
     @GET("shows/{id}/progress/watched")
@@ -720,6 +744,13 @@ data class TraktCalendarEpisode(
     val number: Int = 0,
     val title: String? = null,
     @SerializedName("first_aired") val firstAired: String? = null
+)
+
+/** One title of `GET /recommendations/{type}`; the `favorited_by` notes are not read. */
+data class TraktRecommendation(
+    val title: String? = null,
+    val year: Int? = null,
+    val ids: TraktIds? = null
 )
 
 data class TraktShowInfo(

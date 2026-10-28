@@ -165,6 +165,7 @@ import com.arflix.tv.ui.components.ProfileAvatarVisual
 import com.arflix.tv.util.LocalDeviceType
 import com.arflix.tv.util.TmdbImageSizing
 import com.arflix.tv.ui.components.ListPickerMenu
+import com.arflix.tv.data.repository.PersonalRecommendations
 import com.arflix.tv.ui.components.MediaContextMenu
 import com.arflix.tv.ui.components.rememberCardLayoutMode
 import com.arflix.tv.ui.components.rememberCatalogueRowLayoutMode
@@ -396,6 +397,8 @@ internal fun localizedCategoryTitle(category: Category): String = when (category
     "top10_movies_today"       -> stringResource(R.string.home_top10_movies_today)
     "top10_shows_today"        -> stringResource(R.string.home_top10_shows_today)
     "favorite_tv"              -> stringResource(R.string.home_favorite_tv)
+    PersonalRecommendations.MOVIES_CATALOG_ID -> stringResource(R.string.home_for_you_movies)
+    PersonalRecommendations.SHOWS_CATALOG_ID  -> stringResource(R.string.home_for_you_shows)
     "sports"                   -> stringResource(R.string.home_sports)
     "popular_live_tv"          -> stringResource(R.string.home_popular_live_sports)
     "just_added"               -> stringResource(R.string.home_just_added)
@@ -1032,6 +1035,7 @@ fun HomeScreen(
     var showContextMenu by remember { mutableStateOf(false) }
     var contextMenuItem by remember { mutableStateOf<MediaItem?>(null) }
     var contextMenuIsContinueWatching by remember { mutableStateOf(false) }
+    var contextMenuIsRecommendation by remember { mutableStateOf(false) }
     var contextMenuIsInWatchlist by remember { mutableStateOf(false) }
     var contextMenuHasLists by remember { mutableStateOf(false) }
     val listPicker by viewModel.listPicker.collectAsStateWithLifecycle()
@@ -1614,9 +1618,10 @@ fun HomeScreen(
             reserveTrailerSpace = reserveTrailerSpace,
             featuredTrailerDelayMs = uiState.trailerDelaySeconds * 1000L,
             featuredTrailerVolume = if (uiState.trailerSoundEnabled) 1f else 0f,
-            onOpenContextMenu = { item, isContinue ->
+            onOpenContextMenu = { item, rowId ->
                 contextMenuItem = item
-                contextMenuIsContinueWatching = isContinue
+                contextMenuIsContinueWatching = rowId == "continue_watching"
+                contextMenuIsRecommendation = rowId in PersonalRecommendations.catalogIds
                 showContextMenu = true
             }
         )
@@ -1716,10 +1721,14 @@ fun HomeScreen(
                     onAddToList = if (contextMenuHasLists) {
                         { viewModel.openListPicker(item) }
                     } else null,
+                    onNotInterested = if (contextMenuIsRecommendation) {
+                        { viewModel.hideRecommendation(item) }
+                    } else null,
                     onDismiss = {
                         showContextMenu = false
                         contextMenuItem = null
                         contextMenuIsContinueWatching = false
+                        contextMenuIsRecommendation = false
                     }
                 )
             }
@@ -2775,7 +2784,8 @@ internal fun HomeInputLayer(
     featuredTrailerVolume: Float = 0f,
     netflix: NetflixHomeContent? = null,
     onBillboardOpen: (item: MediaItem, play: Boolean) -> Unit = { _, _ -> },
-    onOpenContextMenu: (MediaItem, Boolean) -> Unit,
+    // The row the card was opened from (null for the billboard).
+    onOpenContextMenu: (MediaItem, String?) -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
     val homeView = androidx.compose.ui.platform.LocalView.current
@@ -3119,9 +3129,7 @@ internal fun HomeInputLayer(
                                     if (isSportsHomeItem(item)) {
                                         onSportsHomeItemClick(item)
                                     } else {
-                                        val currentCategory = categories.getOrNull(focusState.currentRowIndex)
-                                        val isContinue = currentCategory?.id == "continue_watching"
-                                        onOpenContextMenu(item, isContinue)
+                                        onOpenContextMenu(item, categories.getOrNull(focusState.currentRowIndex)?.id)
                                     }
                                 }
                             }
@@ -3147,9 +3155,7 @@ internal fun HomeInputLayer(
                                     }
                                     if (holdMs >= 500L) {
                                         // Long-press: open context menu
-                                        val currentCategory = categories.getOrNull(focusState.currentRowIndex)
-                                        val isContinue = currentCategory?.id == "continue_watching"
-                                        onOpenContextMenu(item, isContinue)
+                                        onOpenContextMenu(item, categories.getOrNull(focusState.currentRowIndex)?.id)
                                     } else {
                                         // Short press: navigate. Must check collection:
                                         // BEFORE falling through to Details — D-pad SELECT
@@ -3272,11 +3278,11 @@ internal fun HomeInputLayer(
                 }
             },
             onItemLongClick = if (isMobile) {
-                { item, isContinue ->
+                { item, rowId ->
                     if (isSportsHomeItem(item)) {
                         onSportsHomeItemClick(item)
                     } else {
-                        onOpenContextMenu(item, isContinue)
+                        onOpenContextMenu(item, rowId)
                     }
                 }
             } else null
@@ -3319,7 +3325,7 @@ private fun HomeRowsLayer(
     netflix: NetflixHomeContent? = null,
     isSpecialItem: (MediaItem) -> Boolean = { false },
     onItemClick: (MediaItem) -> Unit,
-    onItemLongClick: ((MediaItem, Boolean) -> Unit)? = null
+    onItemLongClick: ((MediaItem, String?) -> Unit)? = null
 ) {
     if (!isMobile && netflix != null) {
         NetflixTvHomeRowsLayer(
@@ -3405,7 +3411,7 @@ private fun MobileHomeRowsLayer(
     onLoadMoreCategory: (String) -> Unit = {},
     onNavigateToDetails: (MediaType, Int, Int?, Int?) -> Unit = { _, _, _, _ -> },
     onItemClick: (MediaItem) -> Unit,
-    onItemLongClick: ((MediaItem, Boolean) -> Unit)? = null,
+    onItemLongClick: ((MediaItem, String?) -> Unit)? = null,
     onViewAllCategory: (String) -> Unit = {},
     onCategoryVisiblePosition: (String, Int) -> Unit = { _, _ -> }
 ) {
@@ -3569,8 +3575,8 @@ private fun MobileHomeRowsLayer(
                                 { onItemClick(currentItem.value) }
                             }
                             val onCardLongClick = if (onItemLongClick != null) {
-                                remember {
-                                    { onItemLongClick(currentItem.value, isContinueWatching) }
+                                remember(category.id) {
+                                    { onItemLongClick(currentItem.value, category.id) }
                                 }
                             } else null
 

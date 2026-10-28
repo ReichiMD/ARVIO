@@ -4333,6 +4333,44 @@ class TraktRepository @Inject constructor(
         }
     }
 
+    /**
+     * Trakt's personal picks for the signed-in user, best first, without titles already on the
+     * Trakt watchlist or in the collection. Null when Trakt is not connected or the request failed,
+     * so a caller can tell "nothing to recommend" from "could not ask".
+     */
+    suspend fun getRecommendations(mediaType: MediaType, limit: Int): List<TraktIds>? {
+        val auth = getAuthHeader() ?: return null
+        return try {
+            traktApi.getRecommendations(
+                auth = auth,
+                clientId = clientId,
+                type = if (mediaType == MediaType.MOVIE) "movies" else "shows",
+                limit = limit.coerceIn(1, 100)
+            ).mapNotNull { it.ids }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            com.arflix.tv.util.AppLogger.e("TraktRepository", "Recommendations request failed", e)
+            null
+        }
+    }
+
+    /** Asks Trakt to stop recommending a title. Trakt needs its own id, slug or IMDb id for this. */
+    suspend fun hideRecommendation(mediaType: MediaType, ids: TraktIds): Boolean {
+        val id = ids.trakt?.toString() ?: ids.slug ?: ids.imdb ?: return false
+        val auth = getAuthHeader() ?: return false
+        return try {
+            traktApi.hideRecommendation(
+                auth = auth,
+                clientId = clientId,
+                type = if (mediaType == MediaType.MOVIE) "movies" else "shows",
+                id = id
+            ).isSuccessful
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            false
+        }
+    }
+
     suspend fun checkInWatchlist(mediaType: MediaType, tmdbId: Int): Boolean {
         val auth = getAuthHeader() ?: return false
         return try {
