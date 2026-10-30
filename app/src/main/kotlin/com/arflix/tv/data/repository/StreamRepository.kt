@@ -128,10 +128,16 @@ internal fun buildTmdbEpisodeIdCandidate(
     return "tmdb:$tmdbId:$season:$episode"
 }
 
-internal fun buildEpisodeAddonLookupIds(imdbId: String, tmdbId: Int?): List<String> {
+internal fun buildEpisodeAddonLookupIds(
+    imdbId: String,
+    tmdbId: Int?,
+    anthologySeriesId: String? = null
+): List<String> {
     return buildList {
         add(imdbId)
         if (tmdbId != null) add("tmdb:$tmdbId")
+        // The IMDb series an anthology season belongs to: IMDb-only addons qualify through it.
+        anthologySeriesId?.let(::add)
     }.distinct()
 }
 
@@ -354,6 +360,7 @@ class StreamRepository @Inject constructor(
 ) {
     private val gson = Gson()
     private val TAG = "StreamRepository"
+    private val anthologyEpisodeResolver = AnthologyEpisodeResolver(okHttpClient)
     private val openSubtitlesUrl = "https://opensubtitles-v3.strem.io/subtitles"
     private data class CachedStreamResult(
         val result: StreamResult,
@@ -1854,6 +1861,22 @@ class StreamRepository @Inject constructor(
             addonSupportsIdFamily(addon, "kisskh")
     }
 
+    /**
+     * The IMDb episode for a show TMDB links to no IMDb id ([imdbId] is then "tmdb:<id>"), found
+     * through Cinemeta — anthology seasons such as Netflix's "Monster" (see [AnthologyEpisodeResolver]).
+     * Null for every other request, and whenever the episode cannot be matched exactly.
+     */
+    private suspend fun anthologyEpisodeTarget(
+        imdbId: String,
+        tmdbId: Int?,
+        season: Int,
+        episode: Int,
+        title: String
+    ): AnthologyEpisodeTarget? {
+        if (tmdbId == null || !imdbId.equals("tmdb:$tmdbId", ignoreCase = true)) return null
+        return anthologyEpisodeResolver.resolve(tmdbId, season, episode, title)
+    }
+
     private fun getEpisodeStreamAddons(
         addons: List<Addon>,
         imdbId: String,
@@ -1862,9 +1885,10 @@ class StreamRepository @Inject constructor(
         genreIds: List<Int>,
         originalLanguage: String?,
         // A native item's own type ("Podcasts"): an addon declaring only that type still qualifies.
-        nativeType: String? = null
+        nativeType: String? = null,
+        anthologySeriesId: String? = null
     ): List<Addon> {
-        val seriesAddons = buildEpisodeAddonLookupIds(imdbId, tmdbId)
+        val seriesAddons = buildEpisodeAddonLookupIds(imdbId, tmdbId, anthologySeriesId)
             .flatMap { id -> getStreamAddons(addons, nativeType ?: "series", id) }
             .distinctBy { it.id }
         val hasNativeAnimeAddon = addons.any(::shouldPreferNativeAnimeIds)
@@ -2193,6 +2217,8 @@ class StreamRepository @Inject constructor(
                     return@withTimeout streams
                 }
                 val (baseUrl, queryParams) = getAddonBaseUrl(addon.url ?: return@withTimeout emptyList())
+                // Cached: the source search already looked it up once for all addons.
+                val anthologyTarget = anthologyEpisodeTarget(imdbId, tmdbId, season, episode, title)
 
                 val strictAnime = animeMapper.isAnimeContent(tmdbId, genreIds, originalLanguage)
                 val nativeAnimeAddon = nativeAnimeAddonHint
@@ -2238,7 +2264,7 @@ class StreamRepository @Inject constructor(
                     }
                     nativeEpisodeStreamId(meta, season, episode) ?: return@withTimeout emptyList()
                 } else {
-                    "$imdbId:$season:$episode"
+                    anthologyTarget?.contentId ?: "$imdbId:$season:$episode"
                 }
                 val supportsKitsu = addonSupportsIdFamily(addon, "kitsu") ||
                     addon.url.contains("torrentio") ||
@@ -2342,7 +2368,10 @@ class StreamRepository @Inject constructor(
                     tmdbId = tmdbId,
                     season = season,
                     episode = episode,
-                    supportsTmdbIds = addonSupportsIdFamily(addon, "tmdb")
+                    // Once the IMDb episode is known, an addon that reads IMDb ids gets only that:
+                    // the TMDB id is exactly what such addons resolved to the wrong season.
+                    supportsTmdbIds = addonSupportsIdFamily(addon, "tmdb") &&
+                        (anthologyTarget == null || !addonSupportsIdFamily(addon, "tt"))
                 )
 
                 var addonStreams = emptyList<StreamSource>()
@@ -3242,6 +3271,7 @@ class StreamRepository @Inject constructor(
         val subtitles = mutableListOf<Subtitle>()
         val allAddons = installedAddonsForSourceResolution()
         val isAnime = animeMapper.isAnimeContent(tmdbId, genreIds, originalLanguage)
+        val anthologyTarget = anthologyEpisodeTarget(imdbId, tmdbId, season, episode, title)
         val streamAddons = getEpisodeStreamAddons(
             addons = allAddons,
             imdbId = imdbId,
@@ -3249,7 +3279,8 @@ class StreamRepository @Inject constructor(
             isAnime = isAnime,
             genreIds = genreIds,
             originalLanguage = originalLanguage,
-            nativeType = nativeType
+            nativeType = nativeType,
+            anthologySeriesId = anthologyTarget?.seriesImdbId
         )
         val cacheKey = streamCacheKey(
             profileId = profileManager.getProfileIdSync(),
@@ -3328,6 +3359,7 @@ class StreamRepository @Inject constructor(
             ensureAddonHealthLoaded()
             val allAddons = installedAddonsForSourceResolution()
             val isAnime = animeMapper.isAnimeContent(tmdbId, genreIds, originalLanguage)
+            val anthologyTarget = anthologyEpisodeTarget(imdbId, tmdbId, season, episode, title)
             val streamAddons = getEpisodeStreamAddons(
                 addons = allAddons,
                 imdbId = imdbId,
@@ -3335,7 +3367,8 @@ class StreamRepository @Inject constructor(
                 isAnime = isAnime,
                 genreIds = genreIds,
                 originalLanguage = originalLanguage,
-                nativeType = nativeType
+                nativeType = nativeType,
+                anthologySeriesId = anthologyTarget?.seriesImdbId
             )
             val baseCacheKey = streamCacheKey(
                 profileId = profileManager.getProfileIdSync(),
@@ -3808,7 +3841,9 @@ class StreamRepository @Inject constructor(
             MediaType.TV -> {
                 val s = season ?: return@withContext emptyList()
                 val e = episode ?: return@withContext emptyList()
-                "$imdbId:$s:$e"
+                // Same IMDb episode the sources came from (anthology seasons; cached by then).
+                val tmdbShowId = imdbId.substringAfter("tmdb:", missingDelimiterValue = "").toIntOrNull()
+                anthologyEpisodeTarget(imdbId, tmdbShowId, s, e, title = "")?.contentId ?: "$imdbId:$s:$e"
             }
             else -> return@withContext emptyList()
         }
