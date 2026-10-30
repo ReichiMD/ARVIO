@@ -1,0 +1,99 @@
+name: "Test APK (Für dich rows, TV, with Trakt)"
+
+# Test branch only. This workflow and the committed test keystore must never
+# reach a pull request against upstream. A push to this branch is the trigger.
+
+on:
+  push:
+    branches:
+      - claude/fuerdich-test-apk
+  workflow_dispatch:
+
+jobs:
+  build-test-apk:
+    name: Build TV test APK (staging, armeabi-v7a)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # The point of this build: the Trakt path of the "For You" rows needs a
+      # real Trakt client. Fail early (without printing anything) if missing.
+      - name: Prepare runtime configuration
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+        run: |
+          cp secrets.defaults.properties secrets.properties
+          for name in TMDB_API_KEY TRAKT_CLIENT_ID TRAKT_CLIENT_SECRET; do
+            value="${!name}"
+            value="$(printf '%s' "$value" | tr -d '[:space:]')"
+            if [ -z "$value" ]; then
+              echo "::error::secret $name is empty or missing"
+              exit 1
+            fi
+            sed -i "s|^$name=.*|$name=$value|" secrets.properties
+            echo "$name injected (length ${#value})"
+          done
+          if grep -qi '=your-\(tmdb\|trakt\)' secrets.properties; then
+            echo "::error::a placeholder survived in secrets.properties"
+            exit 1
+          fi
+
+      - name: Own package, TV ABI and a fixed signature
+        run: |
+          sed -i 's/applicationIdSuffix = ".beta"/applicationIdSuffix = ".fuerdich"/' app/build.gradle.kts
+          sed -i 's/addAll(listOf("armeabi-v7a", "arm64-v8a"))/add("armeabi-v7a")/' app/build.gradle.kts
+          sed -i "s/versionCode = [0-9]*/versionCode = $((950000 + GITHUB_RUN_NUMBER))/" app/build.gradle.kts
+          grep -q 'applicationIdSuffix = ".fuerdich"' app/build.gradle.kts || { echo "::error::suffix patch"; exit 1; }
+          grep -q 'add("armeabi-v7a")' app/build.gradle.kts || { echo "::error::abi patch"; exit 1; }
+          cat >> app/build.gradle.kts <<'KTS'
+
+          // CI only: pin the debug signature (used by staging without a release
+          // keystore) so the test APK installs over the previous one.
+          android {
+              signingConfigs {
+                  getByName("debug") {
+                      storeFile = rootProject.file(".github/test-signing/debug.keystore")
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+          }
+          KTS
+
+      - name: Run the For You unit tests
+        run: ./gradlew testSideloadDebugUnitTest --no-daemon --tests '*PersonalRecommendations*'
+
+      # Release-grade but without Telegram/Supabase release keys: skip only
+      # that check, Trakt and TMDB are real.
+      - name: Build sideload staging APK
+        run: ./gradlew assembleSideloadStaging -x validateReleaseCloudSecrets --no-daemon
+
+      - name: Check signature and package
+        run: |
+          APK=$(find app/build/outputs/apk/sideload/staging -name '*.apk' -type f | head -1)
+          EXPECTED=$(keytool -list -v -keystore .github/test-signing/debug.keystore -storepass android | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          ACTUAL=$(keytool -printcert -jarfile "$APK" -v | grep -i 'SHA256:' | head -1 | tr -d ' \t')
+          [ "$EXPECTED" = "$ACTUAL" ] || { echo "::error::signature mismatch"; exit 1; }
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort | tail -1)
+          "$AAPT" dump badging "$APK" | grep -E "^package:|native-code|application-label:"
+          ls -la "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: arvio-fuerdich-tv-apk
+          path: app/build/outputs/apk/sideload/staging/*.apk
+          if-no-files-found: error
+          retention-days: 14
