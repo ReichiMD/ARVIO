@@ -2368,10 +2368,10 @@ class StreamRepository @Inject constructor(
                     tmdbId = tmdbId,
                     season = season,
                     episode = episode,
-                    // Once the IMDb episode is known, an addon that reads IMDb ids gets only that:
-                    // the TMDB id is exactly what such addons resolved to the wrong season.
-                    supportsTmdbIds = addonSupportsIdFamily(addon, "tmdb") &&
-                        (anthologyTarget == null || !addonSupportsIdFamily(addon, "tt"))
+                    // Still asked after the IMDb episode of an anthology season, when that finds
+                    // nothing: scrapers that search by title find "Monster: The Ed Gein Story
+                    // S01E01" releases through the TMDB id, but nothing under "Monster S03E01".
+                    supportsTmdbIds = addonSupportsIdFamily(addon, "tmdb")
                 )
 
                 var addonStreams = emptyList<StreamSource>()
