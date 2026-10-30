@@ -6,9 +6,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.arflix.tv.data.api.TmdbApi
-import com.arflix.tv.data.api.TmdbListResponse
-import com.arflix.tv.data.api.TmdbMediaItem
 import com.arflix.tv.data.api.TraktIds
 import com.arflix.tv.data.model.MediaType
 import com.arflix.tv.util.settingsDataStore
@@ -31,34 +28,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.ConscryptMode
 
-class PersonalRecommendationsRankingTest {
-    @Test
-    fun titlesRecommendedForSeveralSeedsRiseAndExcludedOnesAreDropped() {
-        val ranked = rankSeedRecommendations(
-            perSeed = listOf(listOf(10, 20, 30), listOf(30, 40), listOf(30, 50)),
-            excluded = setOf(20),
-            limit = 10
-        )
-        assertEquals(30, ranked.first())
-        assertTrue(20 !in ranked)
-        assertEquals(ranked.size, ranked.distinct().size)
-    }
-
-    @Test
-    fun earlierSeedsAndHigherPlacesWinTiesKeepFirstAppearance() {
-        assertEquals(listOf(1, 2, 3, 4), rankSeedRecommendations(listOf(listOf(1, 2), listOf(3, 4)), emptySet(), 10))
-        assertEquals(listOf(1, 2), rankSeedRecommendations(listOf(listOf(1, 2, 3)), emptySet(), 2))
-    }
-
-    @Test
-    fun seedsComeFromNewestHistoryFirstThenOtherWatchedTitles() {
-        val history = listOf(
-            entry("tv", 7), entry("movie", 1), entry("movie", 1), entry("movie", 2), entry("movie", 0)
-        )
-        assertEquals(listOf(1, 2, 9), pickRecommendationSeeds(history, MediaType.MOVIE, listOf(2, 9, 8), 3))
-        assertEquals(listOf(7), pickRecommendationSeeds(history, MediaType.TV, emptyList(), 3))
-    }
-
+class PersonalRecommendationsWatchedTest {
     @Test
     fun startedShowsAreReadFromEpisodeKeys() {
         assertEquals(
@@ -66,8 +36,6 @@ class PersonalRecommendationsRankingTest {
             startedShowIdsFromEpisodeKeys(setOf("show_tmdb:5:1:2", "show_tmdb:6:1:1", "trakt:99", "show_tmdb:x:1:1"))
         )
     }
-
-    private fun entry(type: String, id: Int) = WatchHistoryEntry(user_id = "u", media_type = type, show_tmdb_id = id)
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -77,8 +45,6 @@ class PersonalRecommendationsRepositoryTest {
     private val state = MutableStateFlow(emptyPreferences())
     private val context: Context get() = RuntimeEnvironment.getApplication()
     private val trakt = mockk<TraktRepository>(relaxed = true)
-    private val tmdb = mockk<TmdbApi>()
-    private val history = mockk<WatchHistoryRepository>()
     private val watchlist = mockk<WatchlistRepository>()
     private val profiles = mockk<ProfileManager>()
     private lateinit var repository: PersonalRecommendationsRepository
@@ -103,8 +69,7 @@ class PersonalRecommendationsRepositoryTest {
         every { trakt.getWatchedMoviesFromCache() } returns setOf(3)
         every { trakt.getWatchedEpisodesFromCache() } returns setOf("show_tmdb:70:1:1")
         coEvery { watchlist.exportWatchlistForProfile("p1") } returns listOf(LocalWatchlistItem(4, "movie", "On list"))
-        coEvery { history.getWatchHistory() } returns emptyList()
-        repository = PersonalRecommendationsRepository(context, trakt, tmdb, history, watchlist, profiles)
+        repository = PersonalRecommendationsRepository(context, trakt, watchlist, profiles)
     }
 
     @After
@@ -122,22 +87,25 @@ class PersonalRecommendationsRepositoryTest {
     }
 
     @Test
-    fun withoutTraktTheRowIsBuiltFromTheWatchedTitles() = runBlocking {
+    fun withoutTraktThereIsNoRow() = runBlocking {
         coEvery { trakt.hasTrakt() } returns false
-        coEvery { history.getWatchHistory() } returns
-            listOf(WatchHistoryEntry(user_id = "u", media_type = "tv", show_tmdb_id = 80))
-        coEvery { tmdb.getRecommendations("tv", 80, any(), any()) } returns tmdbList(70, 81, 82)
-        coEvery { tmdb.getRecommendations("tv", 70, any(), any()) } returns tmdbList(82, 80, 83)
-
-        // 70 and 80 are watched seeds, 82 is recommended for both.
-        assertEquals(listOf(82, 81, 83), repository.refsFor(shows).map { it.second })
+        assertTrue(repository.refsFor(movies).isEmpty())
+        coVerify(exactly = 0) { trakt.getRecommendations(any(), any()) }
     }
 
     @Test
-    fun noHistoryMeansNoRow() = runBlocking {
+    fun disconnectingTraktEmptiesTheCachedRow() = runBlocking {
+        coEvery { trakt.hasTrakt() } returns true
+        coEvery { trakt.getRecommendations(MediaType.MOVIE, any()) } returns listOf(ids(1))
+        assertEquals(listOf(1), repository.refsFor(movies).map { it.second })
+
         coEvery { trakt.hasTrakt() } returns false
-        every { trakt.getWatchedMoviesFromCache() } returns emptySet()
         assertTrue(repository.refsFor(movies).isEmpty())
+
+        // Connected again (maybe another account): Trakt is asked afresh.
+        coEvery { trakt.hasTrakt() } returns true
+        coEvery { trakt.getRecommendations(MediaType.MOVIE, any()) } returns listOf(ids(2))
+        assertEquals(listOf(2), repository.refsFor(movies).map { it.second })
     }
 
     @Test
@@ -167,17 +135,15 @@ class PersonalRecommendationsRepositoryTest {
     }
 
     @Test
-    fun aFailedTraktRequestFallsBackToHistoryAndAsksTraktAgainLater() = runBlocking {
+    fun aFailedTraktRequestIsAskedAgainOnTheNextVisit() = runBlocking {
         coEvery { trakt.hasTrakt() } returns true
         coEvery { trakt.getRecommendations(MediaType.TV, any()) } returns null
-        coEvery { history.getWatchHistory() } returns
-            listOf(WatchHistoryEntry(user_id = "u", media_type = "tv", show_tmdb_id = 80))
-        coEvery { tmdb.getRecommendations("tv", any(), any(), any()) } returns tmdbList(81)
+        assertTrue(repository.refsFor(shows).isEmpty())
 
+        coEvery { trakt.getRecommendations(MediaType.TV, any()) } returns listOf(ids(81), ids(70))
+        // 70 is a started show.
         assertEquals(listOf(81), repository.refsFor(shows).map { it.second })
     }
 
     private fun ids(tmdb: Int) = TraktIds(trakt = tmdb + 1000, tmdb = tmdb)
-
-    private fun tmdbList(vararg ids: Int) = TmdbListResponse(results = ids.map { TmdbMediaItem(id = it) })
 }
