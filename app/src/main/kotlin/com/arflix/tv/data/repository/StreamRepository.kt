@@ -3288,7 +3288,7 @@ class StreamRepository @Inject constructor(
             imdbId = imdbId,
             season = season,
             episode = episode,
-            providerEpisodeId = animeQueryOverride,
+            providerEpisodeId = animeQueryOverride ?: anthologyTarget?.contentId,
             addonRevision = integrationCacheRevision(streamAddons)
         )
         // This lookup is addon-only; see addonOnlyCacheKey for why it never writes the full key.
@@ -3376,7 +3376,8 @@ class StreamRepository @Inject constructor(
                 imdbId = imdbId,
                 season = season,
                 episode = episode,
-                providerEpisodeId = animeQueryOverride,
+                // A list fetched while the anthology lookup failed must not stand in for the right one.
+                providerEpisodeId = animeQueryOverride ?: anthologyTarget?.contentId,
                 addonRevision = integrationCacheRevision(streamAddons)
             )
             val cacheKey = if (sequential) "$baseCacheKey:seq" else baseCacheKey

@@ -1,6 +1,12 @@
 package com.arflix.tv.data.repository
 
 import android.app.Application
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
@@ -98,6 +104,35 @@ class AnthologyEpisodeResolverTest {
             tmdbApiKey = { "key" }
         )
         assertNull(resolver.resolve(1, 1, 1, "Some Show"))
+    }
+
+    @Test
+    fun `generic episode names never match by date`() {
+        val episodes = listOf(CinemetaEpisode(1, 3, "Episode 3", "2024-09-19", null))
+        assertNull(matchCinemetaEpisode(episodes, EpisodeFingerprint("Episode 3", "2024-09-19", null)))
+    }
+
+    @Test
+    fun `a cancelled caller does not end the lookup for the others`() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val resolver = AnthologyEpisodeResolver(
+            fetchJson = { url ->
+                gate.await()
+                when {
+                    url.contains("/season/") -> """{"name":"Bloodbath","air_date":"2026-09-17","external_ids":{"tvdb_id":11934436}}"""
+                    url.contains("/tv/") -> """{"name":"Monster: The Lizzie Borden Story"}"""
+                    url.contains("search=") -> """{"metas":[{"id":"tt13207736"}]}"""
+                    else -> """{"meta":{"videos":$monsterVideos}}"""
+                }
+            },
+            tmdbApiKey = { "key" }
+        )
+        val prefetch = launch(Dispatchers.Default) { resolver.resolve(299939, 1, 1, "") }
+        val player = async(Dispatchers.Default) { resolver.resolve(299939, 1, 1, "") }
+        delay(100)
+        prefetch.cancelAndJoin()
+        gate.complete(Unit)
+        assertEquals("tt13207736:4:1", player.await()?.contentId)
     }
 
     @Test
