@@ -123,7 +123,8 @@ internal class AnthologyEpisodeResolver(
             else -> FAILED_TTL_MS
         }
         targets[key] = CachedTarget(result, System.currentTimeMillis(), ttl)
-        Log.i(TAG, "tmdb:$key -> ${result?.contentId ?: "no IMDb match"}${if (finished) "" else " (timeout or error)"}")
+        // Warning level: release builds strip info logs, and this line says why a show got its sources.
+        Log.w(TAG, "tmdb:$key -> ${result?.contentId ?: "no IMDb match"}${if (finished) "" else " (timeout or error)"}")
         return result
     }
 
